@@ -140,14 +140,19 @@ public enum ToolRunner {
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF, .makePDFSearchable, .compressPDF, .cropPDF: "pdf"
+                    case .convertDocuments: options.documents.target.fileExtension
                     case .extractText: "txt"
-                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
+                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                         throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
-                    let output = staging.appendingPathComponent(
-                        "\(index + 1) - \(input.deletingPathExtension().lastPathComponent).\(ext)"
-                    )
+                    let stem = tool == .convertDocuments
+                        ? try DocumentConvert.outputStem(input, position: index + 1, options: options.documents)
+                        : "\(index + 1) - \(input.deletingPathExtension().lastPathComponent)"
+                    let output = staging.appendingPathComponent("\(stem).\(ext)")
+                    guard !manager.fileExists(atPath: output.path) else {
+                        throw ToolError.invalid("The output name is already in use. Add {index} to the filename template to give each file a unique name.")
+                    }
                     stagedOutput = output
                     switch tool {
                     case .resizeImages: try await ImageResizing.resize(input, output: output, imageSize: imageSize, options: options)
@@ -260,6 +265,11 @@ public enum ToolRunner {
                         try await PDFPageEditing.extract(input, to: output, options: options.pdfExtract, progress: progress)
                     case .signPDF:
                         try await PDFSigning.sign(input, to: output, options: options.pdfSignature, progress: progress)
+                    case .convertDocuments:
+                        let summary = try await DocumentConvert.export(input, to: output, options: options.documents) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
                     case .cropPDF:
                         let summary = try await PDFCrop.export(input, to: output, options: options.pdfCrop) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
@@ -292,7 +302,7 @@ public enum ToolRunner {
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
                     case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames, .mergeVideos,
-                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
+                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                         break
                     }
                     outputs.append(output)

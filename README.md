@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 58 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 61 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -93,6 +93,9 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Compress PDF** estimates savings from a page sample and verifies the exported page geometry, selectable text, and links. Use qpdf for structural compression or Ghostscript for image DPI reduction.
 - **Crop PDF** applies precise edge offsets to selected pages and previews the visible area before export.
 - **Make PDF Searchable** adds invisible, selectable Vision OCR text to chosen PDF pages. Preview recognized text, choose a language, and optionally skip pages that already contain text.
+- **Redact PDF** permanently removes marked content in a rasterized copy of an unencrypted PDF. The copy contains rendered pages, with text selection, links, and forms removed.
+- **Web Page to PDF** previews an HTTP or HTTPS page and exports a continuous or paginated PDF. Paginated export supports paper, margins, and print backgrounds.
+- **Convert Documents** uses Pandoc and LibreOffice for supported conversion pairs, with text previews and batch filename templates. Plain-text export drops formatting and images.
 - **Markdown to PDF** previews GFM Markdown and exports searchable, paginated PDF with theme, paper, margin, and source-folder image options.
 - **Add Password** encrypts a PDF copy with AES-256 and controls printing and copying permissions. **Remove Password** previews the PDF after unlocking it and saves a decrypted copy. Both use a selected qpdf executable.
 

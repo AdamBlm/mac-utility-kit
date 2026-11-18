@@ -1,5 +1,4 @@
 import AppKit
-import PDFKit
 import WebKit
 
 @MainActor
@@ -81,67 +80,11 @@ public final class MarkdownPDFWebPage: NSObject, WKNavigationDelegate {
 @MainActor
 public enum MarkdownPDFPrint {
     public static func render(_ document: MarkdownPDFDocument) async throws -> Data {
-        try Task.checkCancellation()
-        let manager = FileManager.default
-        let scratch = manager.temporaryDirectory.appending(path: ".MarkdownPDF-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try manager.createDirectory(at: scratch, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
-        defer { try? manager.removeItem(at: scratch) }
-        let output = scratch.appendingPathComponent("document.pdf")
+        let page = MarkdownPDFWebPage()
         let size = document.options.paper.size
         let margin = document.options.margin.points
-        let frame = CGRect(x: 0, y: 0, width: size.width - margin * 2, height: size.height - margin * 2)
-        let page = MarkdownPDFWebPage()
-        let host = NSWindow(contentRect: frame, styleMask: [.borderless], backing: .buffered, defer: true)
-        host.contentView = page.webView
-        page.webView.frame = frame
-        defer { host.contentView = nil }
+        page.webView.frame.size = CGSize(width: size.width - margin * 2, height: size.height - margin * 2)
         try await page.load(document)
-        try Task.checkCancellation()
-
-        let info = NSPrintInfo()
-        info.paperSize = size
-        info.topMargin = margin
-        info.rightMargin = margin
-        info.bottomMargin = margin
-        info.leftMargin = margin
-        info.isHorizontallyCentered = false
-        info.isVerticallyCentered = false
-        info.horizontalPagination = .fit
-        info.verticalPagination = .automatic
-        info.jobDisposition = .save
-        info.dictionary()[NSPrintInfo.AttributeKey.jobSavingURL] = output
-        let operation = page.webView.printOperation(with: info)
-        // WebKit's private printing view can start with a zero-size frame.
-        operation.view?.frame = page.webView.bounds
-        operation.showsPrintPanel = false
-        operation.showsProgressPanel = false
-        // WebKit computes print pages asynchronously on the main run loop. The
-        // AppKit worker leaves that run loop available instead of using preview pagination.
-        operation.canSpawnSeparateThread = true
-        var completion: MarkdownPrintCompletion?
-        let succeeded: Bool = await withCheckedContinuation { continuation in
-            completion = MarkdownPrintCompletion(continuation: continuation)
-            operation.runModal(for: host, delegate: completion,
-                               didRun: #selector(MarkdownPrintCompletion.finished(_:success:context:)), contextInfo: nil)
-        }
-        withExtendedLifetime(completion) {}
-        guard succeeded, let pdf = PDFDocument(url: output), pdf.pageCount > 0 else {
-            throw ToolError.invalid("WebKit could not print the Markdown document to PDF.")
-        }
-        try Task.checkCancellation()
-        return try Data(contentsOf: output)
-    }
-}
-
-
-private final class MarkdownPrintCompletion: NSObject {
-    private let continuation: CheckedContinuation<Bool, Never>
-
-    init(continuation: CheckedContinuation<Bool, Never>) {
-        self.continuation = continuation
-    }
-
-    @objc func finished(_ operation: NSPrintOperation, success: Bool, context: UnsafeMutableRawPointer?) {
-        continuation.resume(returning: success)
+        return try await WebKitPDFPrinting.paginated(page.webView, paper: size, margin: margin, backgrounds: true)
     }
 }

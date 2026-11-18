@@ -37,8 +37,14 @@ struct MarkdownLocalImages {
               values.isRegularFile == true, let fileSize = values.fileSize, fileSize <= 16_000_000,
               let source = CGImageSourceCreateWithURL(file as CFURL, nil),
               let identifier = CGImageSourceGetType(source) as String?,
-              Self.rasterTypes.contains(identifier),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
+              Self.rasterTypes.contains(identifier) else {
+            return .failure(.invalid("Could not read a supported raster image: \(displayName)"))
+        }
+        guard let metadata = try? ImageConversion.imageProperties(source),
+              (try? ImageConversion.validatedDimensions(metadata)) != nil else {
+            return .failure(.invalid("Unsupported image dimensions: \(displayName)"))
+        }
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
                 kCGImageSourceCreateThumbnailFromImageAlways: true,
                 kCGImageSourceCreateThumbnailWithTransform: true,
                 kCGImageSourceShouldCacheImmediately: true,

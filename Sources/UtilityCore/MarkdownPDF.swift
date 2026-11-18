@@ -1,4 +1,3 @@
-import CoreGraphics
 import Foundation
 import cmark_gfm
 import cmark_gfm_extensions
@@ -19,42 +18,10 @@ public enum MarkdownPDFTheme: String, CaseIterable, Identifiable, Sendable {
     }
 }
 
-public enum MarkdownPDFPaper: String, CaseIterable, Identifiable, Sendable {
-    case a4 = "A4"
-    case letter = "US Letter"
-    case legal = "US Legal"
-
-    public var id: Self { self }
-
-    public var size: CGSize {
-        switch self {
-        case .a4: CGSize(width: 595.28, height: 841.89)
-        case .letter: CGSize(width: 612, height: 792)
-        case .legal: CGSize(width: 612, height: 1008)
-        }
-    }
-}
-
-public enum MarkdownPDFMargin: String, CaseIterable, Identifiable, Sendable {
-    case compact = "0.5 in"
-    case comfortable = "0.75 in"
-    case wide = "1 in"
-
-    public var id: Self { self }
-
-    public var points: CGFloat {
-        switch self {
-        case .compact: 36
-        case .comfortable: 54
-        case .wide: 72
-        }
-    }
-}
-
 public struct MarkdownPDFOptions: Equatable, Sendable {
     public var theme = MarkdownPDFTheme.classic
-    public var paper = MarkdownPDFPaper.a4
-    public var margin = MarkdownPDFMargin.comfortable
+    public var paper = PDFPrintPaper.a4
+    public var margin = PDFPrintMargin.comfortable
     public var imageFolder: URL?
 
     public init() {}

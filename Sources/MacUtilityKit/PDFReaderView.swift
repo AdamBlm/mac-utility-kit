@@ -109,6 +109,11 @@ struct PDFReaderView: View {
                             if let source { onHandoff(tool, source) }
                         }
                     }
+                    if !document.isEncrypted {
+                        Button(Tool.redactPDF.title) {
+                            if let source { onHandoff(.redactPDF, source) }
+                        }
+                    }
                 }
                 .fixedSize()
             }

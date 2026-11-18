@@ -58,6 +58,8 @@ struct ToolWorkspace: View {
         case .downloadVideo: VideoDownloadView(draft: $draft.videoDownload)
         case .colorPicker: ColorPickerToolView(draft: $draft.colorPicker)
         case .markdownToPDF: MarkdownPDFView(draft: $draft.markdownPDF)
+        case .webPageToPDF: WebPagePDFView(draft: $draft.webPagePDF)
+        case .redactPDF: RedactPDFView(draft: $draft.pdfRedaction)
         case .addPassword, .removePassword: PDFProtectionView(tool: tool)
         default: EmptyView()
         }
@@ -194,6 +196,8 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .makePDFSearchable:
                             SearchablePDFControls(inputs: draft.inputs, options: $draft.options.searchablePDF)
+                        case .convertDocuments:
+                            DocumentConvertControls(inputs: draft.inputs, options: $draft.options.documents)
                         case .cropPDF:
                             PDFCropControls(input: draft.inputs.first, options: $draft.options.pdfCrop)
                                 .id(draft.pdfSourceRevision)
@@ -201,7 +205,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

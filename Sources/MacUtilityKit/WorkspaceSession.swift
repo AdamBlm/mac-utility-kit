@@ -24,6 +24,8 @@ struct ToolDraft {
     var videoDownload = VideoDownloadDraft()
     var colorPicker = ColorPickerToolDraft()
     var markdownPDF = MarkdownPDFDraft()
+    var webPagePDF = WebPagePDFDraft()
+    var pdfRedaction = PDFRedactionDraft()
     var captureAttachments: [CaptureTextAttachment] = []
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()

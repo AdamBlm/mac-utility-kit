@@ -48,6 +48,7 @@ import UtilityCore
         let local = assets.appendingPathComponent("valid image.png")
         try createPNG(local)
         try createPNG(outside)
+        try createPNG(assets.appendingPathComponent("too-wide.png"), width: 17_000)
         let symlink = assets.appendingPathComponent("link.png")
         try FileManager.default.createSymbolicLink(at: symlink, withDestinationURL: outside)
         let source = """
@@ -60,6 +61,8 @@ import UtilityCore
         ![Absolute](\(outside.path))
 
         ![Missing](missing.png)
+
+        ![Oversized](too-wide.png)
         """
         let without = try await MarkdownPDF.prepare(source)
         #expect(!without.html.contains("data:image/png;base64,"))
@@ -68,7 +71,8 @@ import UtilityCore
         let prepared = try await MarkdownPDF.prepare(source, options: options)
         #expect(prepared.html.components(separatedBy: "data:image/png;base64,").count == 2)
         #expect(prepared.html.contains("alt=\"Local\""))
-        #expect(prepared.imageIssues.count == 4)
+        #expect(prepared.imageIssues.count == 5)
+        #expect(prepared.imageIssues.contains(where: { $0.contains("Unsupported image dimensions") }))
         #expect(prepared.imageIssues.contains(where: { $0.contains("outside the chosen folder") }))
         #expect(prepared.imageIssues.contains(where: { $0.contains("missing.png") }))
     }
@@ -91,6 +95,9 @@ import UtilityCore
         #expect(pages.allSatisfy { abs($0.bounds(for: .mediaBox).width - 612) < 2 && abs($0.bounds(for: .mediaBox).height - 792) < 2 })
         let text = pages.compactMap(\.string).joined(separator: "\n")
         #expect(text.contains("Searchable — café"))
+        let heading = try #require(pdf.findString("Searchable", withOptions: []).first)
+        let first = try #require(pages.first)
+        #expect(abs(heading.bounds(for: first).minX - options.margin.points) < 2)
         #expect(text.filter { !$0.isNewline }.contains("CODETAIL"))
         #expect(text.contains("Paragraph 100 marker"))
         #expect(pages.flatMap(\.annotations).contains { annotation in
@@ -98,12 +105,12 @@ import UtilityCore
         })
     }
 
-    private func createPNG(_ url: URL) throws {
-        let context = try #require(CGContext(data: nil, width: 24, height: 12, bitsPerComponent: 8, bytesPerRow: 0,
+    private func createPNG(_ url: URL, width: Int = 24) throws {
+        let context = try #require(CGContext(data: nil, width: width, height: 12, bitsPerComponent: 8, bytesPerRow: 0,
                                              space: CGColorSpaceCreateDeviceRGB(),
                                              bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue))
         context.setFillColor(CGColor(red: 0.3, green: 0.5, blue: 0.7, alpha: 1))
-        context.fill(CGRect(x: 0, y: 0, width: 24, height: 12))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: 12))
         let image = try #require(context.makeImage())
         let writer = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
         CGImageDestinationAddImage(writer, image, nil)

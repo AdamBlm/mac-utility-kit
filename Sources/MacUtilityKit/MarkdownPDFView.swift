@@ -82,13 +82,13 @@ struct MarkdownPDFView: View {
                 }
                 SettingRow("Paper") {
                     Picker("Paper", selection: $draft.options.paper) {
-                        ForEach(MarkdownPDFPaper.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(PDFPrintPaper.allCases) { Text($0.rawValue).tag($0) }
                     }
                     .labelsHidden()
                 }
                 SettingRow("Margins") {
                     Picker("Margins", selection: $draft.options.margin) {
-                        ForEach(MarkdownPDFMargin.allCases) { Text($0.rawValue).tag($0) }
+                        ForEach(PDFPrintMargin.allCases) { Text($0.rawValue).tag($0) }
                     }
                     .labelsHidden()
                 }

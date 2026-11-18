@@ -227,7 +227,12 @@ struct Workspace: View {
 
     private func handoffPDF(to tool: Tool, input: URL) {
         var draft = session.drafts[tool, default: ToolDraft()]
-        if tool.requiresSinglePDF {
+        if tool == .redactPDF {
+            if draft.pdfRedaction.input != input {
+                draft.pdfRedaction = PDFRedactionDraft()
+                draft.pdfRedaction.input = input
+            }
+        } else if tool.requiresSinglePDF {
             if draft.inputs.first != input { draft.replacePDF(with: input) }
         } else if !draft.inputs.contains(input) {
             draft.inputs.append(input)
