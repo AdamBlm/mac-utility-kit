@@ -64,8 +64,21 @@ public enum ChangeSpeed {
         let result = try localAsset(candidate)
         let videoTracks = try await result.loadTracks(withMediaType: .video)
         let audioTracks = try await result.loadTracks(withMediaType: .audio)
-        guard !videoTracks.isEmpty, !expectsAudio || !audioTracks.isEmpty, try await result.load(.isPlayable) else {
+        guard let resultVideo = videoTracks.first, !expectsAudio || !audioTracks.isEmpty,
+              try await result.load(.isPlayable) else {
             throw ToolError.invalid("The export did not contain all expected playable media.")
+        }
+        let (resultRange, resultRate) = try await resultVideo.load(.timeRange, .nominalFrameRate)
+        let expectedEnd = videoLength.seconds / options.multiplier
+        let tolerance = resultRate.isFinite && resultRate > 0 ? max(0.065, 2 / Double(resultRate)) : 0.1
+        guard resultRange.end.seconds.isFinite, abs(resultRange.end.seconds - expectedEnd) <= tolerance else {
+            throw ToolError.invalid("The exported video did not match the selected playback speed.")
+        }
+        if let resultAudio = audioTracks.first {
+            let resultEnd = try await resultAudio.load(.timeRange).end.seconds
+            guard resultEnd.isFinite, resultEnd <= expectedEnd + tolerance else {
+                throw ToolError.invalid("The exported audio extends past the adjusted video.")
+            }
         }
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)
@@ -98,6 +111,7 @@ public enum ChangeSpeed {
               export.supportedFileTypes.contains(.mp4) else {
             throw ToolError.invalid("This video cannot be exported as MP4.")
         }
+        export.timeRange = CMTimeRange(start: .zero, duration: scaledDuration)
         export.audioTimePitchAlgorithm = .spectral
         export.shouldOptimizeForNetworkUse = true
         let states = export.states(updateInterval: 0.2)

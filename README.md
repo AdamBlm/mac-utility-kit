@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 39 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 41 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -54,6 +54,7 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 ### Image tools
 
+- **Rotate Images** previews quarter-turns and horizontal or vertical flips. Export a PNG or keep a supported original format with normalized orientation metadata.
 - **Convert Images** exports the primary image to JPEG, PNG, HEIC, or TIFF using Image I/O. A user-selected ImageMagick executable adds WebP. The tool applies orientation and can preserve supported metadata or flatten transparency against a chosen color.
 - **Compress Images** uses the same encoding pipeline. It reports measured sizes and whether a best-effort size goal was reached. Compare opens the original and result side by side with linked zoom. Animated and multi-image sources require an explicit conversion workflow.
 - **Remove Metadata** works on single-image JPEG and PNG. The native path removes supported location metadata. A user-selected ExifTool executable enables camera, dates, IPTC, and XMP groups. The tool verifies selected fields and checks dimensions, orientation, and color profile before publishing a copy.
@@ -80,6 +81,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Sign PDF** places a typed or drawn visual signature and optional date label on selected pages of a new PDF copy. It uses PDF annotations for the visual mark. Certificate-based signatures are a different operation.
 - **Extract Text** uses embedded PDF text when available and Apple Vision for images, scanned pages, and selected regions. Choose a recognition language or use automatic detection. Turn off embedded text to run OCR across mixed-content pages. Copy or export the result as editable plain text.
 - **Capture Text** recognizes text in a selected screen region with Apple Vision. Review, copy, or send the capture to Extract Text. macOS screen capture permission is required.
+- **Text to Speech** reads typed text, TXT, RTF, or a PDF text layer with an installed macOS voice. Select a passage and rate, preview and seek, or export WAV.
 - **Transcribe** runs whisper.cpp locally using a selected executable and model. Transcribe a time range, edit the timestamped text, export TXT, SRT, or VTT, or send video captions to Burn In Subtitles.
 - **Word Counter** uses Apple Natural Language to count words, sentences, and nonblank paragraph tokens. Character counts use Unicode grapheme clusters, and reading time uses your reading speed. The draft stays in memory when switching tools.
 

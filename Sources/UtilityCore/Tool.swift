@@ -16,18 +16,18 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
-    case convertImages, compressImages, removeMetadata
+    case convertImages, compressImages, removeMetadata, rotateImages
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
-    case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText
+    case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech: true
         default: false
         }
     }
@@ -44,6 +44,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .resizeImages: "Resize Images"
         case .convertImages: "Convert Images"
+        case .rotateImages: "Rotate Images"
         case .compressImages: "Compress Images"
         case .removeMetadata: "Remove Metadata"
         case .mergePDFs: "Merge PDFs"
@@ -58,6 +59,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .wordCounter: "Word Counter"
         case .transcribe: "Transcribe"
         case .captureText: "Capture Text"
+        case .textToSpeech: "Text to Speech"
         case .qrCode: "QR Code"
         case .batchRename: "Batch Rename"
         case .keepAwake: "Keep Awake"
@@ -88,9 +90,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var group: ToolCategory {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata: .images
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
-        case .extractText, .wordCounter, .transcribe, .captureText: .text
+        case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
@@ -101,9 +103,10 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var inputTypes: [UTType] {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .imagesToPDF: [.image]
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .wordCounter: [.plainText]
+        case .textToSpeech: [.plainText, .rtf, .pdf]
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]
         case .jsonFormatter: [.json]

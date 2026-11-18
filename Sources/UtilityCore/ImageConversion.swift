@@ -113,7 +113,7 @@ public enum ImageConversion {
         return "\(input.lastPathComponent) · \(options.format.title) · \(outputImage.width) × \(outputImage.height)\(notice)"
     }
 
-    private static func loadSource(_ input: URL) throws -> CGImageSource {
+    static func loadSource(_ input: URL) throws -> CGImageSource {
         guard input.isFileURL,
               let source = CGImageSourceCreateWithURL(input as CFURL, nil),
               CGImageSourceGetCount(source) > 0 else {
@@ -122,7 +122,7 @@ public enum ImageConversion {
         return source
     }
 
-    private static func imageProperties(_ source: CGImageSource) throws -> [CFString: Any] {
+    static func imageProperties(_ source: CGImageSource) throws -> [CFString: Any] {
         guard let properties = CGImageSourceCopyPropertiesAtIndex(
             source, CGImageSourceGetPrimaryImageIndex(source), nil
         ) as? [CFString: Any] else {
@@ -131,7 +131,7 @@ public enum ImageConversion {
         return properties
     }
 
-    private static func validatedDimensions(_ properties: [CFString: Any]) throws -> (Int, Int) {
+    static func validatedDimensions(_ properties: [CFString: Any]) throws -> (Int, Int) {
         guard let width = properties[kCGImagePropertyPixelWidth] as? Int,
               let height = properties[kCGImagePropertyPixelHeight] as? Int,
               (1...16_384).contains(width), (1...16_384).contains(height), width * height <= 64_000_000 else {
@@ -140,7 +140,7 @@ public enum ImageConversion {
         return (width, height)
     }
 
-    private static func imageContainsAlpha(_ image: CGImage) -> Bool {
+    static func imageContainsAlpha(_ image: CGImage) -> Bool {
         switch image.alphaInfo {
         case .first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly: true
         default: false
@@ -174,7 +174,7 @@ public enum ImageConversion {
         return flattened
     }
 
-    private static func encode(
+    static func encode(
         _ image: CGImage, to output: URL, format: ImageConversionFormat,
         source: CGImageSource, options: ImageConversionOptions
     ) throws {

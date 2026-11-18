@@ -74,6 +74,7 @@ extension Tool {
         switch self {
         case .resizeImages: "photo.on.rectangle"
         case .convertImages: "photo.badge.arrow.down"
+        case .rotateImages: "rotate.right"
         case .compressImages: "arrow.down.right.and.arrow.up.left"
         case .removeMetadata: "eye.slash"
         case .mergePDFs: "document.on.document"
@@ -88,6 +89,7 @@ extension Tool {
         case .wordCounter: "number"
         case .transcribe: "waveform.bubble"
         case .captureText: "viewfinder"
+        case .textToSpeech: "speaker.wave.2"
         case .qrCode: "qrcode"
         case .batchRename: "rectangle.and.pencil.and.ellipsis"
         case .keepAwake: "moon.zzz"
@@ -118,6 +120,7 @@ extension Tool {
         switch self {
         case .resizeImages: "Change the dimensions of one image or a whole batch."
         case .convertImages: "Change image formats and control transparency."
+        case .rotateImages: "Rotate and flip images with a before-and-after preview."
         case .compressImages: "Reduce image file size and compare the result."
         case .removeMetadata: "Inspect and remove private details from image copies."
         case .mergePDFs: "Choose and combine pages from PDFs and images."
@@ -132,6 +135,7 @@ extension Tool {
         case .wordCounter: "Count words, characters, and reading time as you type."
         case .transcribe: "Create and edit a timestamped transcript with a local Whisper model."
         case .captureText: "Recognize text from a selected part of the screen."
+        case .textToSpeech: "Listen to text with a local voice and export the audio."
         case .qrCode: "Generate and scan QR codes."
         case .batchRename: "Preview and apply filename rules in batches."
         case .keepAwake: "Keep your Mac awake for a session."
@@ -160,13 +164,13 @@ extension Tool {
 
     var dropHint: String {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata: "or drop images anywhere in this pane"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages: "or drop images anywhere in this pane"
         case .mergePDFs: "or drop PDFs and images anywhere in this pane"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "or drop one PDF anywhere in this pane"
         case .imagesToPDF: "or drop images anywhere in this pane"
         case .extractText: "or drop images and PDFs anywhere in this pane"
         case .wordCounter: "or drop a text file anywhere in this pane"
-        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText: ""
+        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech: ""
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
         case .mediaInfo, .cleanUpAudio: "or drop audio or video anywhere in this pane"
@@ -176,13 +180,13 @@ extension Tool {
 
     var dropTitle: String {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata: "Drop images here"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages: "Drop images here"
         case .mergePDFs: "Drop PDFs or images here"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "Drop one PDF here"
         case .imagesToPDF: "Drop images here"
         case .extractText: "Drop images or PDFs here"
         case .wordCounter: "Drop a text file here"
-        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText: ""
+        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech: ""
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"
         case .mediaInfo, .cleanUpAudio: "Drop media files here"

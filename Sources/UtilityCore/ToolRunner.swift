@@ -132,11 +132,12 @@ public enum ToolRunner {
                     case .convertAudio: options.audioConvert.format.rawValue
                     case .cleanUpAudio: options.audioCleanup.output.rawValue
                     case .convertImages: options.imageConversion.format.rawValue
+                    case .rotateImages: try ImageRotate.outputExtension(input, options: options.rotation)
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
                     case .extractText: "txt"
-                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText:
+                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech:
                         throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
@@ -221,6 +222,8 @@ public enum ToolRunner {
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
+                    case .rotateImages:
+                        summaries.append(try ImageRotate.export(input, to: output, options: options.rotation))
                     case .convertImages:
                         summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
                     case .compressImages:
@@ -253,7 +256,7 @@ public enum ToolRunner {
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
                     case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames, .mergeVideos,
-                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText:
+                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech:
                         break
                     }
                     outputs.append(output)

@@ -18,6 +18,7 @@ struct ToolDraft {
     var hashGenerator = HashGeneratorDraft()
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()
+    var textToSpeech = TextToSpeechDraft()
     var captureAttachments: [CaptureTextAttachment] = []
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()

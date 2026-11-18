@@ -47,6 +47,7 @@ struct ToolWorkspace: View {
         case .hashGenerator: HashGeneratorView(draft: $draft.hashGenerator)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
+        case .textToSpeech: TextToSpeechView(draft: $draft.textToSpeech)
         default: EmptyView()
         }
     }
@@ -107,6 +108,8 @@ struct ToolWorkspace: View {
                             imageControls()
                         case .convertImages:
                             imageConversionControls()
+                        case .rotateImages:
+                            ImageRotateControls(inputs: draft.inputs, options: $draft.options.rotation)
                         case .compressImages:
                             imageCompressionControls()
                         case .removeMetadata:
@@ -160,7 +163,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {
