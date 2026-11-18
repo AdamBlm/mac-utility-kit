@@ -1,0 +1,12 @@
+name: Build and test
+on: [push, pull_request]
+permissions:
+  contents: read
+jobs:
+  macOS:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+      - run: ./scripts/build-app.sh
+      - run: codesign --verify --strict 'build/Mac Utility Kit.app'
