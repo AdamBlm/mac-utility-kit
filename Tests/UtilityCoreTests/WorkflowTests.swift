@@ -292,3 +292,23 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(try Data(contentsOf: source) == original)
     #expect(try FileManager.default.contentsOfDirectory(atPath: output.deletingLastPathComponent().path) == [output.lastPathComponent])
 }
+
+@Test func mediaInfoPublishesJSONAndPreservesOtherBatchResultsOnBadInput() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let valid = folder.appendingPathComponent("source.mov")
+    let invalid = folder.appendingPathComponent("broken.mov")
+    try await writeVideoFixture(to: valid, frames: 8)
+    try Data("No media".utf8).write(to: invalid)
+    let report = try await ToolRunner.run(
+        .mediaInfo, inputs: [valid, invalid], destination: folder, imageSize: 0
+    ) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.outputs.count == 1)
+    #expect(report.summaries.first?.hasPrefix("source.mov\n") == true)
+    let output = try #require(report.outputs.first)
+    #expect(output.pathExtension == "json")
+    let data = try Data(contentsOf: output)
+    #expect(try JSONDecoder().decode([MediaInspectionReport.Section].self, from: data).count >= 2)
+    #expect(try Data(contentsOf: invalid) == Data("No media".utf8))
+}

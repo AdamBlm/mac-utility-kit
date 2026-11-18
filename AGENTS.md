@@ -12,3 +12,8 @@
 - Use the current native workspace as the approved design baseline. Keep its compact window chrome, focused empty state, and progressive disclosure consistent across tools. Put shared visual tokens and components in the presentation layer. Keep window layout, per-tool controls, and session coordination separate so a visual overhaul can replace them independently.
 - Keep processing in `UtilityCore`, with focused operations and engine adapters for each domain. Engine code accepts explicit inputs and options and reports progress, cancellation, results, and errors independently of SwiftUI. Shared job orchestration owns staging, batching, and publication. Add domain behavior in the relevant operation or adapter.
 - Keep interfaces small and prefer established framework boundaries. Introduce a shared abstraction when multiple callers genuinely need the same behavior. Verify changes through existing workflow tests and run the relevant engine integration fixture when changing an adapter.
+
+## Development waves
+
+- For each new tool, verify required subfeatures and upstream choices before implementation. When working in parallel, delegate research, implementation, and independent adversarial review to separate agents for that tool. Rotate roles across tools and keep shared integration under one owner.
+- Review the actual app entry point and output, including invalid input, unsupported engine combinations, and batch or cancellation behavior where relevant. Fix review findings before merging. Record any remaining limitations alongside the tool.

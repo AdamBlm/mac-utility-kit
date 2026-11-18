@@ -100,7 +100,11 @@ struct Workspace: View {
                         Text(runningTool.title)
                             .lineLimit(1)
                         Spacer(minLength: 8)
-                        ProgressView(value: session.progress).frame(width: 88)
+                        if session.progress > 0 {
+                            ProgressView(value: session.progress).frame(width: 88)
+                        } else {
+                            ProgressView().controlSize(.small)
+                        }
                         Button("Cancel") { session.cancel() }
                     }
                     .font(.callout)

@@ -20,6 +20,17 @@ struct ToolWorkspace: View {
         }
     }
 
+    private var requiresMissingEngine: Bool {
+        switch tool {
+        case .convertVideo:
+            draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil
+        case .extractAudio:
+            draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        default:
+            false
+        }
+    }
+
     private func editor(for tool: Tool) -> some View {
         return VStack(spacing: 0) {
             ScrollView {
@@ -42,6 +53,12 @@ struct ToolWorkspace: View {
                             imageControls()
                         case .compressVideo:
                             videoControls()
+                        case .convertVideo:
+                            conversionControls()
+                        case .mediaInfo:
+                            inspectionControls()
+                        case .extractAudio:
+                            extractionControls()
                         case .mergePDFs:
                             SettingRow("Output filename") {
                                 TextField("Output filename", text: Binding(
@@ -59,8 +76,14 @@ struct ToolWorkspace: View {
                     }
                     if let report = session.reports[tool] {
                         WorkspaceSection("Results", palette: palette) {
-                            ForEach(Array(report.summaries.enumerated()), id: \.offset) { _, summary in
-                                Text(summary).font(.callout).textSelection(.enabled)
+                            if tool == .mediaInfo {
+                                ForEach(Array(report.inspections.enumerated()), id: \.offset) { _, inspection in
+                                    MediaInspectionResultView(inspection: inspection)
+                                }
+                            } else {
+                                ForEach(Array(report.summaries.enumerated()), id: \.offset) { _, summary in
+                                    Text(summary).font(.callout).textSelection(.enabled)
+                                }
                             }
                             ForEach(report.outputs, id: \.self) { output in
                                 HStack {
@@ -103,10 +126,10 @@ struct ToolWorkspace: View {
                     Button("Preview") { session.start(tool, draft: draft, preview: true) }
                         .disabled(draft.inputs.isEmpty || session.isRunning)
                 }
-                Button(tool.title) { session.start(tool, draft: draft) }
+                Button(tool == .mediaInfo ? "Inspect media" : tool.title) { session.start(tool, draft: draft) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(draft.inputs.isEmpty || session.isRunning)
+                    .disabled(draft.inputs.isEmpty || session.isRunning || requiresMissingEngine)
             }
             .controlSize(.large)
             .frame(maxWidth: 660)

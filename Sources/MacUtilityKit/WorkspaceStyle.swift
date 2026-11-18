@@ -75,6 +75,9 @@ extension Tool {
         case .resizeImages: "photo.on.rectangle"
         case .mergePDFs: "document.on.document"
         case .compressVideo: "film"
+        case .convertVideo: "arrow.triangle.2.circlepath"
+        case .mediaInfo: "info.circle"
+        case .extractAudio: "waveform"
         }
     }
 
@@ -83,6 +86,9 @@ extension Tool {
         case .resizeImages: "Change the dimensions of one image or a whole batch."
         case .mergePDFs: "Choose and combine pages from PDFs and images."
         case .compressVideo: "Make videos smaller while keeping their resolution."
+        case .convertVideo: "Save a video in another format."
+        case .mediaInfo: "Inspect the streams and properties of a media file."
+        case .extractAudio: "Save a selected audio track from a video."
         }
     }
 
@@ -91,6 +97,8 @@ extension Tool {
         case .resizeImages: "or drop images anywhere in this pane"
         case .mergePDFs: "or drop PDFs and images anywhere in this pane"
         case .compressVideo: "or drop videos anywhere in this pane"
+        case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
+        case .mediaInfo: "or drop audio or video anywhere in this pane"
         }
     }
 
@@ -99,6 +107,8 @@ extension Tool {
         case .resizeImages: "Drop images here"
         case .mergePDFs: "Drop PDFs or images here"
         case .compressVideo: "Drop videos here"
+        case .convertVideo, .extractAudio: "Drop videos here"
+        case .mediaInfo: "Drop media files here"
         }
     }
 }

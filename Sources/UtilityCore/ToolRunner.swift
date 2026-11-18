@@ -4,6 +4,12 @@ public struct JobReport: Sendable {
     public let outputs: [URL]
     public let failures: [String]
     public let summaries: [String]
+    public let inspections: [MediaInspectionResult]
+}
+
+public struct MediaInspectionResult: Sendable {
+    public let filename: String
+    public let report: MediaInspectionReport
 }
 
 public enum ToolError: LocalizedError {
@@ -40,6 +46,7 @@ public enum ToolRunner {
         var outputs: [URL] = []
         var failures: [String] = []
         var summaries: [String] = []
+        var inspections: [MediaInspectionResult] = []
 
         if tool == .mergePDFs {
             let name = options.pdfOutputName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -52,7 +59,14 @@ public enum ToolRunner {
         } else {
             for (index, input) in inputs.enumerated() {
                 try Task.checkCancellation()
-                let ext = tool == .resizeImages ? options.imageFormat.rawValue : options.videoFormat.rawValue
+                let ext = switch tool {
+                case .resizeImages: options.imageFormat.rawValue
+                case .compressVideo: options.videoFormat.rawValue
+                case .convertVideo: options.conversion.format.rawValue
+                case .mediaInfo: "json"
+                case .extractAudio: options.extraction.format.rawValue
+                case .mergePDFs: "pdf"
+                }
                 let output = staging.appendingPathComponent(
                     "\(index + 1) - \(input.deletingPathExtension().lastPathComponent).\(ext)"
                 )
@@ -61,6 +75,21 @@ public enum ToolRunner {
                     case .resizeImages: try await ImageResizing.resize(input, output: output, imageSize: imageSize, options: options)
                     case .compressVideo:
                         let summary = try await VideoOperations.compress(input, output: output, options: options) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .convertVideo:
+                        let summary = try await VideoConversion.convert(input, to: output, options: options.conversion) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .mediaInfo:
+                        let report = try await MediaInspection.inspect(input, options: options.inspection)
+                        try report.json.write(to: output)
+                        summaries.append("\(input.lastPathComponent)\n\n\(report.summary)")
+                        inspections.append(MediaInspectionResult(filename: input.lastPathComponent, report: report))
+                    case .extractAudio:
+                        let summary = try await AudioExtraction.extract(input, to: output, options: options.extraction) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
@@ -77,11 +106,11 @@ public enum ToolRunner {
         }
 
         try Task.checkCancellation()
-        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: []) }
+        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], inspections: []) }
         try manager.moveItem(at: staging, to: result)
         return JobReport(
             outputs: outputs.map { result.appendingPathComponent($0.lastPathComponent) },
-            failures: failures, summaries: summaries
+            failures: failures, summaries: summaries, inspections: inspections
         )
     }
 

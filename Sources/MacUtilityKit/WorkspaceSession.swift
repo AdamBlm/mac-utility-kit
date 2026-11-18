@@ -78,6 +78,32 @@ final class WorkspaceSession {
         }
     }
 
+    func startAudioPreview(_ draft: ToolDraft) {
+        guard !isRunning, let input = draft.inputs.first else { return }
+        runningTool = .extractAudio
+        progress = 0
+        previewURL = nil
+        errors[.extractAudio] = nil
+        job = Task { @MainActor in
+            defer {
+                runningTool = nil
+                job = nil
+            }
+            let folder = FileManager.default.temporaryDirectory
+                .appendingPathComponent("MacUtilityKit-Audio-" + UUID().uuidString, isDirectory: true)
+            let output = folder.appendingPathComponent("Preview.m4a")
+            do {
+                try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+                try await AudioExtraction.preview(input, to: output, options: draft.options.extraction)
+                try Task.checkCancellation()
+                previewURL = output
+            } catch {
+                try? FileManager.default.removeItem(at: folder)
+                errors[.extractAudio] = error is CancellationError ? "Canceled." : error.localizedDescription
+            }
+        }
+    }
+
     func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false) {
         guard !isRunning else { return }
         runningTool = tool

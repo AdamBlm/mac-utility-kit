@@ -1,7 +1,10 @@
 import Foundation
 
 enum ExternalTool {
-    static func run(_ executable: URL, name: String, arguments: [String], directory: URL) async throws {
+    static func run(
+        _ executable: URL, name: String, arguments: [String], directory: URL,
+        standardOutput: FileHandle? = nil
+    ) async throws {
         guard executable.isFileURL, FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw ToolError.invalid("Choose an executable \(name) binary.")
         }
@@ -16,7 +19,7 @@ enum ExternalTool {
         process.currentDirectoryURL = directory
         process.standardInput = FileHandle.nullDevice
         process.arguments = arguments
-        process.standardOutput = FileHandle.nullDevice
+        process.standardOutput = standardOutput ?? FileHandle.nullDevice
         process.standardError = handle
         try process.run()
         do {

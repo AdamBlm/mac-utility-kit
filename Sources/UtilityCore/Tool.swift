@@ -1,7 +1,7 @@
 import UniformTypeIdentifiers
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
-    case resizeImages, mergePDFs, compressVideo
+    case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
 
     public var id: String { rawValue }
     public var title: String {
@@ -9,6 +9,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .resizeImages: "Resize Images"
         case .mergePDFs: "Merge PDFs"
         case .compressVideo: "Compress Video"
+        case .convertVideo: "Convert Video"
+        case .mediaInfo: "Media Info"
+        case .extractAudio: "Extract Audio"
         }
     }
 
@@ -16,7 +19,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .resizeImages: "Images"
         case .mergePDFs: "Documents"
-        case .compressVideo: "Video"
+        case .compressVideo, .convertVideo, .mediaInfo: "Video"
+        case .extractAudio: "Audio"
         }
     }
 
@@ -24,7 +28,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .resizeImages: [.image]
         case .mergePDFs: [.pdf, .image]
-        case .compressVideo: [.movie]
+        case .compressVideo, .convertVideo, .extractAudio: [.movie]
+        case .mediaInfo: [.movie, .audio]
         }
     }
 }
