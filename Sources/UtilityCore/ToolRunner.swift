@@ -45,7 +45,7 @@ public enum ToolRunner {
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> JobReport {
         guard !inputs.isEmpty else { throw ToolError.invalid("Choose at least one file.") }
-        if tool.editsOnePDF, inputs.count != 1 {
+        if tool.requiresSinglePDF, inputs.count != 1 {
             throw ToolError.invalid("Choose one PDF for this operation.")
         }
         if tool == .resizeImages, options.imageSizing == .longestEdge, !(1...16_384).contains(imageSize) {
@@ -75,6 +75,12 @@ public enum ToolRunner {
             outputs.append(output)
         } else if tool == .splitPDF {
             outputs = try await PDFPageEditing.split(inputs[0], into: staging, options: options.pdfSplit, progress: progress)
+        } else if tool == .imagesToPDF {
+            let output = staging.appendingPathComponent("Images.pdf")
+            try await ImagesToPDF.export(inputs, to: output, options: options.imagesToPDF, progress: progress)
+            outputs = [output]
+        } else if tool == .pdfToImages {
+            outputs = try await PDFToImages.export(inputs[0], into: staging, options: options.pdfToImages, progress: progress)
         } else {
             for (index, input) in inputs.enumerated() {
                 try Task.checkCancellation()
@@ -89,7 +95,8 @@ public enum ToolRunner {
                     case .convertImages: options.imageConversion.format.rawValue
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
-                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages: "pdf"
+                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF: "pdf"
+                    case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
                     let output = staging.appendingPathComponent(
                         "\(index + 1) - \(input.deletingPathExtension().lastPathComponent).\(ext)"
@@ -129,7 +136,9 @@ public enum ToolRunner {
                         try await PDFPageEditing.organize(input, to: output, options: options.pdfOrganize, progress: progress)
                     case .deletePDFPages:
                         try await PDFPageEditing.delete(input, to: output, options: options.pdfDelete, progress: progress)
-                    case .mergePDFs, .splitPDF: break
+                    case .extractPDFPages:
+                        try await PDFPageEditing.extract(input, to: output, options: options.pdfExtract, progress: progress)
+                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages: break
                     }
                     outputs.append(output)
                 } catch {

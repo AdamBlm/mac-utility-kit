@@ -375,3 +375,50 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(deletedPDF.page(at: 1)?.bounds(for: .mediaBox).width == 200)
     #expect(try Data(contentsOf: source) == original)
 }
+
+@Test func pdfConversionWavePublishesOrderedOutputsAndPreservesInputs() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    let image = try imageFixture(in: folder)
+    let imageBytes = try Data(contentsOf: image)
+    let source = folder.appendingPathComponent("Mixed.pdf")
+    try writePDF(widths: [100, 150, 200], to: source)
+    let sourceBytes = try Data(contentsOf: source)
+
+    var options = ToolOptions()
+    options.pdfExtract.range = "3, 1"
+    options.pdfExtract.order = .selection
+    let extracted = try await ToolRunner.run(
+        .extractPDFPages, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let extractedURL = try #require(extracted.outputs.first)
+    let extractedDocument = try #require(PDFDocument(url: extractedURL))
+    #expect(extractedDocument.pageCount == 2)
+    #expect(extractedDocument.page(at: 0)?.bounds(for: .mediaBox).width == 200)
+
+    options.imagesToPDF.paper = .original
+    options.imagesToPDF.margin = 0
+    let combined = try await ToolRunner.run(
+        .imagesToPDF, inputs: [image, image], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let combinedURL = try #require(combined.outputs.first)
+    let combinedDocument = try #require(PDFDocument(url: combinedURL))
+    #expect(combinedDocument.pageCount == 2)
+    #expect(combinedDocument.page(at: 0)?.bounds(for: .mediaBox).width == 100)
+
+    options.pdfToImages.range = "3, 1"
+    options.pdfToImages.resolution = .dpi
+    options.pdfToImages.dpi = 72
+    let converted = try await ToolRunner.run(
+        .pdfToImages, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(converted.outputs.map(\.lastPathComponent) == ["Mixed-3.png", "Mixed-1.png"])
+    let widths = try converted.outputs.map { output in
+        let data = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+        return try #require(CGImageSourceCreateImageAtIndex(data, 0, nil)).width
+    }
+    #expect(widths == [200, 100])
+    #expect(try Data(contentsOf: source) == sourceBytes)
+    #expect(try Data(contentsOf: image) == imageBytes)
+}

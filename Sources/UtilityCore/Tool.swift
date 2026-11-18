@@ -14,11 +14,11 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
     case convertImages, compressImages, removeMetadata
 
-    case splitPDF, organizePDF, deletePDFPages
+    case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
-    public var editsOnePDF: Bool {
+    public var requiresSinglePDF: Bool {
         switch self {
-        case .splitPDF, .organizePDF, .deletePDFPages: true
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages: true
         default: false
         }
     }
@@ -34,6 +34,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .splitPDF: "Split PDF"
         case .organizePDF: "Organize PDF"
         case .deletePDFPages: "Delete Pages"
+        case .extractPDFPages: "Extract Pages"
+        case .imagesToPDF: "Images to PDF"
+        case .pdfToImages: "PDF to Images"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
@@ -46,7 +49,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     public var group: ToolCategory {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata: .images
-        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages: .documents
+        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages: .documents
         case .compressVideo, .convertVideo, .mediaInfo: .video
         case .extractAudio: .audio
         }
@@ -54,9 +57,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var inputTypes: [UTType] {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata: [.image]
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .imagesToPDF: [.image]
         case .mergePDFs: [.pdf, .image]
-        case .splitPDF, .organizePDF, .deletePDFPages: [.pdf]
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio: [.movie]
         case .mediaInfo: [.movie, .audio]
         }

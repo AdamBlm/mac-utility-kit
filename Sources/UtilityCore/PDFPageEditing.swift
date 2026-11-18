@@ -53,7 +53,42 @@ public struct PDFDeleteOptions: Sendable {
     public init() {}
 }
 
+public enum PDFExtractOrder: String, CaseIterable, Identifiable, Sendable {
+    case document = "Document order"
+    case selection = "Selection order"
+
+    public var id: Self { self }
+}
+
+public struct PDFExtractOptions: Sendable {
+    public var range = ""
+    public var order: PDFExtractOrder = .document
+    public var password = ""
+
+    public init() {}
+}
+
 public enum PDFPageEditing {
+    public static func extractPages(pageCount: Int, options: PDFExtractOptions) throws -> [Int] {
+        guard pageCount > 0 else { throw ToolError.invalid("The PDF has no pages.") }
+        let range = options.range.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !range.isEmpty else { throw ToolError.invalid("Select at least one page to extract.") }
+        let pages = try PageSelection.indices(range, pageCount: pageCount).map { $0 + 1 }
+        guard !pages.isEmpty else { throw ToolError.invalid("Select at least one page to extract.") }
+        return options.order == .document ? pages.sorted() : pages
+    }
+
+    public static func extract(
+        _ input: URL, to output: URL, options: PDFExtractOptions,
+        progress: @Sendable (Double) async -> Void
+    ) async throws {
+        try Task.checkCancellation()
+        let original = try open(input, password: options.password)
+        let selected = try extractPages(pageCount: original.pageCount, options: options)
+        try writeCopy(selected.map { PDFPageEdit(pageNumber: $0) }, from: original, to: output)
+        await progress(1)
+    }
+
     public static func pageCount(_ input: URL, password: String = "") throws -> Int {
         try open(input, password: password).pageCount
     }

@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has twelve tools for images, PDFs, video, and audio.
+Working name for an open-source macOS utility suite with its own interface. The current build has fifteen tools for images, PDFs, video, and audio.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -44,3 +44,6 @@ Set `MAC_UTILITY_EXIFTOOL_TEST` to a local ExifTool executable to run its integr
 **Split PDF** exports individual pages, fixed-size groups, or named ranges with filename previews. **Organize PDF** supports reordering, rotation, removal, restoration, and in-session undo and redo. **Delete Pages** takes a typed range or thumbnail selections and previews the marked and remaining pages.
 
 Each tool operates on one PDF at a time and writes new copies. These page edits preserve tested page content and rotation. Document-level outlines, tags, and form structure may be omitted. Exported copies of encrypted PDFs are unencrypted.
+
+
+**Extract Pages** exports selected pages in document or selection order. **Images to PDF** places ordered images on original-size, standard, or custom paper with margins, a background color, and a placement preview. **PDF to Images** renders the selected pages to PNG, JPEG, or HEIC with DPI or pixel limits, visible annotations, and a filename and dimensions preview.

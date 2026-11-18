@@ -1,0 +1,80 @@
+import Foundation
+import PDFKit
+import Testing
+import UtilityCore
+
+@Test func extractPagesRespectsSelectedOrderWithoutDuplicatingPages() throws {
+    var options = PDFExtractOptions()
+    options.range = "3, 1–2, 3"
+    options.order = .selection
+    #expect(try PDFPageEditing.extractPages(pageCount: 3, options: options) == [3, 1, 2])
+
+    options.order = .document
+    #expect(try PDFPageEditing.extractPages(pageCount: 3, options: options) == [1, 2, 3])
+}
+
+@Test func extractPublishesTheRequestedPDFPageSequenceAndPreservesTheOriginal() async throws {
+    let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: directory) }
+
+    let source = directory.appendingPathComponent("Source.pdf")
+    var defaultBox = CGRect(x: 0, y: 0, width: 100, height: 200)
+    let context = try #require(CGContext(source as CFURL, mediaBox: &defaultBox, nil))
+    for width in [100, 110, 120] {
+        var box = CGRect(x: 0, y: 0, width: width, height: 200)
+        let encodedBox = Data(bytes: &box, count: MemoryLayout<CGRect>.size)
+        context.beginPDFPage([kCGPDFContextMediaBox: encodedBox] as CFDictionary)
+        context.endPDFPage()
+    }
+    context.closePDF()
+
+    let document = try #require(PDFDocument(url: source))
+    let rotated = try #require(document.page(at: 2))
+    rotated.rotation = 90
+    try #require(document.write(to: source))
+    let originalBytes = try Data(contentsOf: source)
+
+    let output = directory.appendingPathComponent("Selected.pdf")
+    var options = PDFExtractOptions()
+    options.range = "3, 1, 3"
+    options.order = .selection
+    try await PDFPageEditing.extract(source, to: output, options: options) { _ in }
+
+    let result = try #require(PDFDocument(url: output))
+    let first = try #require(result.page(at: 0))
+    let second = try #require(result.page(at: 1))
+    #expect(result.pageCount == 2)
+    #expect(first.rotation == 90)
+    #expect(min(first.bounds(for: .mediaBox).width, first.bounds(for: .mediaBox).height) == 120)
+    #expect(second.rotation == 0)
+    #expect(second.bounds(for: .mediaBox).width == 100)
+    #expect(try Data(contentsOf: source) == originalBytes)
+
+    let existingBytes = try Data(contentsOf: output)
+    await #expect(throws: ToolError.self) {
+        try await PDFPageEditing.extract(source, to: output, options: options) { _ in }
+    }
+    #expect(try Data(contentsOf: output) == existingBytes)
+
+    options.range = "9"
+    let invalidOutput = directory.appendingPathComponent("Invalid.pdf")
+    await #expect(throws: ToolError.self) {
+        try await PDFPageEditing.extract(source, to: invalidOutput, options: options) { _ in }
+    }
+    #expect(!FileManager.default.fileExists(atPath: invalidOutput.path))
+}
+
+@Test func extractRejectsEmptySelectionsAndInvalidPageCounts() throws {
+    var options = PDFExtractOptions()
+    for invalid in ["", "  ", "none", "0", "4", "1, invalid"] {
+        options.range = invalid
+        #expect(throws: ToolError.self) {
+            try PDFPageEditing.extractPages(pageCount: 3, options: options)
+        }
+    }
+    options.range = "1"
+    #expect(throws: ToolError.self) {
+        try PDFPageEditing.extractPages(pageCount: 0, options: options)
+    }
+}

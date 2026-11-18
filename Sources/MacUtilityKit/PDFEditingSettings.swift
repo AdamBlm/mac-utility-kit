@@ -11,6 +11,7 @@ struct PDFEditingSettings: View {
     @Binding var ready: Bool
     let canEdit: Bool
 
+    @State private var rasterReady = false
     @State private var document: PDFDocument?
     @State private var passwordError = false
 
@@ -26,15 +27,15 @@ struct PDFEditingSettings: View {
                         Text("Could not unlock this PDF. Check the password.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
-                } else if !document.allowsDocumentAssembly {
-                    Text("This PDF requires its owner password for page editing.")
+                } else if !hasPermission(document) {
+                    Text("This PDF requires its owner password for this operation.")
                         .font(.callout).foregroundStyle(.secondary)
                     HStack {
                         SecureField("Owner password", text: password)
                         Button("Unlock editing") { unlock() }
                     }
                     if passwordError {
-                        Text("That password did not allow page editing.")
+                        Text("That password did not grant the required permission.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 } else {
@@ -47,11 +48,19 @@ struct PDFEditingSettings: View {
                         PDFOrganizerView(document: document, pages: $options.pdfOrganize.pages, history: $organizerHistory)
                     case .deletePDFPages:
                         PDFDeletionSettings(document: document, range: $options.pdfDelete.range)
+                    case .extractPDFPages:
+                        PDFExtractSettings(document: document, options: $options.pdfExtract)
+                    case .pdfToImages:
+                        if let input {
+                            PDFToImagesSettings(input: input, document: document, options: $options.pdfToImages, valid: $rasterReady)
+                        }
                     default:
                         EmptyView()
                     }
-                    Text("Page copies may omit document-level outlines, tags, and form structure.")
-                        .font(.caption).foregroundStyle(.secondary)
+                    if tool != .pdfToImages {
+                        Text("Page copies may omit document-level outlines, tags, and form structure.")
+                            .font(.caption).foregroundStyle(.secondary)
+                    }
                     if document.isEncrypted {
                         Label("Exported copies are not password protected.", systemImage: "lock.open")
                             .font(.caption).foregroundStyle(.secondary)
@@ -68,7 +77,7 @@ struct PDFEditingSettings: View {
 
     private var canExport: Bool {
         guard let input, let document, !document.isLocked,
-              document.allowsDocumentAssembly, document.pageCount > 0 else { return false }
+              hasPermission(document), document.pageCount > 0 else { return false }
         switch tool {
         case .splitPDF:
             guard let groups = try? PDFPageEditing.splitGroups(pageCount: document.pageCount, options: options.pdfSplit)
@@ -81,15 +90,25 @@ struct PDFEditingSettings: View {
                   let removed = try? PageSelection.indices(options.pdfDelete.range, pageCount: document.pageCount)
             else { return false }
             return !removed.isEmpty && removed.count < document.pageCount
+        case .extractPDFPages:
+            return (try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options.pdfExtract)) != nil
+        case .pdfToImages:
+            return rasterReady
         default:
             return false
         }
+    }
+
+    private func hasPermission(_ document: PDFDocument) -> Bool {
+        tool == .pdfToImages ? document.allowsCopying : document.allowsDocumentAssembly
     }
 
     private var password: Binding<String> {
         switch tool {
         case .splitPDF: $options.pdfSplit.password
         case .organizePDF: $options.pdfOrganize.password
+        case .extractPDFPages: $options.pdfExtract.password
+        case .pdfToImages: $options.pdfToImages.password
         default: $options.pdfDelete.password
         }
     }
@@ -106,7 +125,7 @@ struct PDFEditingSettings: View {
             passwordError = true
             return
         }
-        passwordError = !unlocked.allowsDocumentAssembly
+        passwordError = !hasPermission(unlocked)
         document = unlocked
     }
 }

@@ -21,6 +21,9 @@ struct ToolDraft {
         options.pdfSplit.password = ""
         options.pdfOrganize = PDFOrganizeOptions()
         options.pdfDelete = PDFDeleteOptions()
+        options.pdfExtract = PDFExtractOptions()
+        options.pdfToImages.password = ""
+        options.pdfToImages.range = ""
     }
 
     mutating func moveInputUp(at index: Int) {

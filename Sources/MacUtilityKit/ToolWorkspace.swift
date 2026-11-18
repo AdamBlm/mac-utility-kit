@@ -80,7 +80,9 @@ struct ToolWorkspace: View {
                             inspectionControls()
                         case .extractAudio:
                             extractionControls()
-                        case .splitPDF, .organizePDF, .deletePDFPages:
+                        case .imagesToPDF:
+                            ImagesToPDFSettings(inputs: draft.inputs, options: $draft.options.imagesToPDF)
+                        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages:
                             PDFEditingSettings(
                                 tool: tool, input: draft.inputs.first, options: $draft.options,
                                 organizerHistory: $draft.pdfOrganizerHistory, ready: $pdfEditorReady,
@@ -164,7 +166,7 @@ struct ToolWorkspace: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.inputs.isEmpty || session.isRunning || requiresMissingEngine
-                              || (tool.editsOnePDF && !pdfEditorReady))
+                              || (tool.requiresSinglePDF && !pdfEditorReady))
             }
             .controlSize(.large)
             .frame(maxWidth: 660)
@@ -183,7 +185,7 @@ struct ToolWorkspace: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if !draft.inputs.isEmpty {
-                    Button(tool.editsOnePDF ? "Replace PDF…" : "Add files…", systemImage: tool.editsOnePDF ? "arrow.triangle.2.circlepath" : "plus") { chooseInputs(for: tool) }
+                    Button(tool.requiresSinglePDF ? "Replace PDF…" : "Add files…", systemImage: tool.requiresSinglePDF ? "arrow.triangle.2.circlepath" : "plus") { chooseInputs(for: tool) }
                         .buttonStyle(.plain)
                         .foregroundStyle(palette.accent)
                 }
@@ -207,7 +209,7 @@ struct ToolWorkspace: View {
                                     }
                                 }
                                 Spacer()
-                                if tool == .mergePDFs {
+                                if tool == .mergePDFs || tool == .imagesToPDF {
                                     Button("Move up", systemImage: "arrow.up") {
                                         draft.moveInputUp(at: index)
                                     }.labelStyle(.iconOnly).disabled(index == 0)
@@ -290,7 +292,7 @@ struct ToolWorkspace: View {
     private func addDroppedFiles(_ urls: [URL], to tool: Tool) -> Bool {
         let files = urls.filter(\.isFileURL)
         guard !files.isEmpty else { return false }
-        if tool.editsOnePDF {
+        if tool.requiresSinglePDF {
             guard files.count == 1 else { return false }
             pdfEditorReady = false
             draft.replacePDF(with: files[0])
@@ -344,7 +346,7 @@ struct ToolWorkspace: View {
     private func chooseInputs(for tool: Tool) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = tool.inputTypes
-        panel.allowsMultipleSelection = !tool.editsOnePDF
+        panel.allowsMultipleSelection = !tool.requiresSinglePDF
         if panel.runModal() == .OK {
             _ = addDroppedFiles(panel.urls, to: tool)
         }
