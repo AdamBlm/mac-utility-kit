@@ -18,6 +18,7 @@ struct ArchiveToolsTests {
         try await ArchiveTools.create([source], to: zip)
         let entries = try await ArchiveTools.list(zip)
         #expect(entries.map(\.path) == ["Source", "Source/Résumé", "Source/Résumé/notes.txt", "Source/Résumé/other.txt", "Source/root.txt"])
+        #expect(entries.first { $0.path.hasSuffix("/notes.txt") }?.uncompressedSize == 5)
         let selected = try #require(entries.first { $0.path == "Source/Résumé" })
         try output.appending(path: "Source").ensureDirectory()
         let original = output.appending(path: "Source/original.txt")

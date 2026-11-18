@@ -31,6 +31,7 @@ struct ToolDraft {
     var translate = TranslateDraft()
     var askDocument = AskDocumentDraft()
     var scanner = DocumentScannerDraft()
+    var pdfForms = PDFFormsDraft()
     var ejectDisks = EjectDisksDraft()
     var findDuplicates = FindDuplicatesDraft()
     var storageExplorer = StorageExplorerDraft()

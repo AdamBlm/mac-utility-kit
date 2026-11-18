@@ -232,7 +232,7 @@ public enum ArchiveTools {
             }
             guard !components.isEmpty else { throw ToolError.invalid("An archive entry has no file name.") }
             let relative = try paths.insert(components, directory: directory)
-            let size = archive_entry_size_is_set(raw) == 1 ? archive_entry_size(raw) : nil
+            let size = archive_entry_size_is_set(raw) != 0 ? archive_entry_size(raw) : nil
             try member(ArchiveEntry(id: .init(ordinal: ordinal, path: relative, directory: directory), isDirectory: directory,
                                     uncompressedSize: size, isEncrypted: archive_entry_is_encrypted(raw) != 0))
         }

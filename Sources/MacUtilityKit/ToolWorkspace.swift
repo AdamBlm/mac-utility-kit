@@ -75,6 +75,9 @@ struct ToolWorkspace: View {
         case .appDamageDiagnosis: AppDamageDiagnosisView()
         case .loginBackgroundItems: LoginBackgroundItemsView()
         case .scanDocument: DocumentScannerView(draft: $draft.scanner)
+        case .fillFlattenForms: PDFFormsView(draft: $draft.pdfForms)
+        case .hiddenSettings: HiddenSettingsView()
+        case .cleanKeyboard: CleanKeyboardView()
         case .deadPixelTest: DeadPixelTestView()
         case .ejectAllDisks: EjectDisksView(draft: $draft.ejectDisks)
         case .zipUnzip: ArchiveToolsView(draft: $draft.archiveTools)
@@ -117,6 +120,8 @@ struct ToolWorkspace: View {
             draft.options.audioCleanup.executable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        case .pdfToWord:
+            draft.inputs.allSatisfy { PDFToWord.optionIssue($0, options: draft.options.pdfToWord) != nil }
         case .compressPDF:
             draft.options.pdfCompression.validationIssue != nil
         case .wordToPDF, .powerPointToPDF, .excelToPDF:
@@ -235,6 +240,8 @@ struct ToolWorkspace: View {
                             if let kind = tool.officePDFKind {
                                 OfficePDFControls(inputs: draft.inputs, options: $draft.options.officePDF, kind: kind)
                             }
+                        case .pdfToWord:
+                            PDFToWordControls(inputs: draft.inputs, options: $draft.options.pdfToWord)
                         case .convertDocuments:
                             DocumentConvertControls(inputs: draft.inputs, options: $draft.options.documents)
                         case .cropPDF:
@@ -244,7 +251,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

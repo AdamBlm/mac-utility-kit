@@ -55,6 +55,7 @@ public struct ToolOptions: Sendable {
     public var searchablePDF = SearchablePDFOptions()
     public var pdfCompression = PDFCompressionOptions()
     public var pdfCrop = PDFCropOptions()
+    public var pdfToWord = PDFToWordOptions()
     public var documents = DocumentConvertOptions()
     public var officePDF = OfficePDFOptions()
     public var textExtraction = TextExtractionOptions()

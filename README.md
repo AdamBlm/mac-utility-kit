@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 93 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 97 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -149,6 +149,10 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Scan Document** imports photos or scans, corrects selectable corners, rotates or recolors pages, and saves the ordered pages as a PDF.
 - **Fix “App Is Damaged”** inspects signing integrity, quarantine status, and current macOS policy through read-only checks.
 - **Login & Background Items** reviews discoverable system entries and opens the native settings for managing them.
+- **PDF to Word** uses LibreOffice to export selected pages as flowing editable text or a layout with positioned text and images. Optional OCR handles scanned pages.
+- **Fill & Flatten Forms** edits PDF form fields, adds text or checkboxes, proposes printed field locations, and saves interactive or flattened copies. Select a Python environment with pypdf for export verification.
+- **Hidden Settings** shows and edits a fixed set of Finder and Dock preferences, with reset to the macOS default.
+- **Clean Keyboard** briefly pauses software keyboard input after a permission check, while keeping the pointer available to stop the session.
 - **Launcher settings** offer an optional menu bar item, Dock icon visibility, a configurable global shortcut, and launch at login.
 
 
