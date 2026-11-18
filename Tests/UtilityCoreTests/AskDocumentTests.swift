@@ -24,7 +24,7 @@ struct AskDocumentTests {
         #expect(answer.citations.first?.quote == expected)
         #expect(answer.citations.first?.location == .section(line: 4, title: "Periwinkle Project"))
         let followup = try await AskDocument.answer("When was it renewed?", in: index,
-                                                     after: .init(question: question, answer: answer),
+                                                     history: [.init(question: question, answer: answer)],
                                                      using: ExactProvider("It was renewed on September 8.", previous: question))
         #expect(followup.hasEvidence)
         let fabricated = try await AskDocument.answer(question, in: index, using: WrongProvider(unknownPassage: false))
@@ -38,6 +38,145 @@ struct AskDocumentTests {
         #expect(throws: ToolError.self) { try index.validateSource() }
         await #expect(throws: ToolError.self) {
             _ = try await AskDocument.answer(question, in: index, using: NeverProvider())
+        }
+    }
+
+    @Test func followsCitedTopicAfterNoEvidenceAndIgnoresUnrelatedNewTopics() async throws {
+        let (folder, source) = try makeSource("projects.md")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let decoys = (1...6).map { "# Project \($0)\nThe limit is 6 permits." }.joined(separator: "\n")
+        let sourceText = """
+            # Northstar
+            Northstar produces antenna hardware.
+            It was renewed on August 2.
+            Its permit ceiling is 47.
+            \(decoys)
+            """
+        try Data(sourceText.utf8).write(to: source)
+        let index = try await AskDocument.index(source)
+        let topic = "What does Northstar produce?"
+        let first = try await AskDocument.answer(topic, in: index,
+                                                  using: ExactProvider("Northstar produces antenna hardware."))
+        let firstTurn = AskDocument.Turn(question: topic, answer: first)
+        let continuation = "When was it renewed?"
+        let second = try await AskDocument.answer(continuation, in: index, history: [firstTurn],
+                                                   using: ExactProvider("It was renewed on August 2.", previous: topic))
+        let secondTurn = AskDocument.Turn(question: continuation, answer: second)
+        let unresolved = "Who is its attorney?"
+        let third = try await AskDocument.answer(unresolved, in: index, history: [firstTurn, secondTurn],
+                                                  using: EmptyProvider())
+        #expect(!third.hasEvidence)
+        let history = [firstTurn, secondTurn, .init(question: unresolved, answer: third)]
+        let fourth = try await AskDocument.answer("What about its limit?", in: index, history: history,
+                                                   using: ExactProvider("Its permit ceiling is 47.", previous: continuation))
+        #expect(fourth.citations.first?.location == .section(line: 1, title: "Northstar"))
+
+        let unrelated = try await AskDocument.answer("How many moons orbit Saturn?", in: index, history: history,
+                                                       using: NeverProvider())
+        #expect(!unrelated.hasEvidence)
+        let afterNewTopic = try await AskDocument.answer("When was it promoted?", in: index,
+            history: history + [.init(question: "How many moons orbit Saturn?", answer: unrelated)],
+            using: NeverProvider())
+        #expect(!afterNewTopic.hasEvidence)
+    }
+
+    @Test func explicitlyNamedTopicOverridesConversationalPhrasing() async throws {
+        let (folder, source) = try makeSource("topics.md")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data("""
+            # Northstar
+            Northstar permits 47 launches.
+
+            # Larkspur
+            Larkspur permits 18 launches.
+            It renews in April.
+            """.utf8).write(to: source)
+        let index = try await AskDocument.index(source)
+        let question = "What are Northstar’s permits?"
+        let first = try await AskDocument.answer(question, in: index,
+                                                 using: ExactProvider("Northstar permits 47 launches."))
+        let history = [AskDocument.Turn(question: question, answer: first)]
+        let namedQuestion = "What about its permits for larkspur?"
+        let named = try await AskDocument.answer(namedQuestion, in: index, history: history,
+                                                 using: ExactProvider("Larkspur permits 18 launches."))
+        #expect(named.citations.first?.location == .section(line: 4, title: "Larkspur"))
+        let following = try await AskDocument.answer("And when does it renew?", in: index,
+            history: history + [.init(question: namedQuestion, answer: named)],
+            using: ExactProvider("It renews in April.", previous: namedQuestion))
+        #expect(following.citations.first?.location == .section(line: 4, title: "Larkspur"))
+
+        let unavailable = try await AskDocument.answer("What about Unlisted?", in: index,
+                                                        history: history, using: NeverProvider())
+        #expect(!unavailable.hasEvidence)
+
+        let plain = folder.appending(path: "plain.txt")
+        try Data("Northstar permits 47 launches. Eastwind was renewed in April and cost 18 dollars.".utf8).write(to: plain)
+        let plainIndex = try await AskDocument.index(plain)
+        let plainFirst = try await AskDocument.answer(question, in: plainIndex,
+            using: ExactProvider("Northstar permits 47 launches."))
+        let compound = try await AskDocument.answer("When was Eastwind renewed, and what did it cost?", in: plainIndex,
+            history: [.init(question: question, answer: plainFirst)],
+            using: ExactProvider("Eastwind was renewed in April and cost 18 dollars."))
+        #expect(compound.hasEvidence)
+    }
+
+    @Test func explicitQuestionModeControlsAmbiguousPlainTextTurns() async throws {
+        let (folder, source) = try makeSource("topics.txt")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try Data("""
+            Northstar has annual permits for 47 launches and a separate training limit.
+            Eastwind’s budget is 18 dollars. Eastwind permits 12 launches. It renews in April.
+            """.utf8).write(to: source)
+        let index = try await AskDocument.index(source)
+        let original = "What does Northstar have?"
+        let first = try await AskDocument.answer(original, in: index,
+                                                 using: ExactProvider("Northstar has annual permits for 47 launches"))
+        let history = [AskDocument.Turn(question: original, answer: first)]
+
+        for (question, quote) in [("What about eastwind’s budget?", "Eastwind’s budget is 18 dollars."),
+                                  ("What about its permits for Eastwind?", "Eastwind permits 12 launches.")] {
+            let answer = try await AskDocument.answer(question, in: index, history: history, mode: .newTopic,
+                                                       using: ExactProvider(quote))
+            #expect(answer.hasEvidence)
+            let following = try await AskDocument.answer("Renewal date in April?", in: index,
+                history: history + [.init(question: question, answer: answer)], mode: .followUp,
+                using: ExactProvider("It renews in April.", previous: question))
+            #expect(following.hasEvidence)
+        }
+    }
+
+    @Test func scopesAllHistoryToExactIndexAndOriginalQuestion() async throws {
+        let (folder, source) = try makeSource("source.md")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let other = folder.appending(path: "other.md")
+        let passage = "# Project\nThe project will renew in April."
+        try Data(passage.utf8).write(to: source)
+        try Data(passage.utf8).write(to: other)
+        let foreign = try await AskDocument.index(source)
+        let current = try await AskDocument.index(other)
+        let prior = "What project will renew? Unshared"
+        let answer = try await AskDocument.answer(prior, in: foreign,
+                                                  using: ExactProvider("The project will renew in April."))
+        let previous = AskDocument.Turn(question: prior, answer: answer)
+        let unanswered = "Who is its attorney?"
+        let empty = try await AskDocument.answer(unanswered, in: foreign, using: NeverProvider())
+        #expect(!empty.hasEvidence)
+        for history in [[previous], [previous, .init(question: unanswered, answer: empty)]] {
+            let result = try await AskDocument.answer("When does it renew?", in: current, history: history,
+                using: ExactProvider("The project will renew in April."))
+            #expect(result.hasEvidence)
+        }
+
+        let forged = AskDocument.Turn(question: "What is its confidential code?", answer: answer)
+        let result = try await AskDocument.answer("When does it renew?", in: foreign, history: [forged],
+            using: ExactProvider("The project will renew in April."))
+        #expect(result.hasEvidence)
+    }
+
+    private struct EmptyProvider: AskDocument.Provider {
+        func choose(_ question: String, context: [AskDocument.Turn], passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
+            #expect(context.count == 2)
+            return []
         }
     }
 
@@ -78,8 +217,8 @@ struct AskDocumentTests {
             self.previous = previous
         }
 
-        func choose(_ question: String, previous: AskDocument.Turn?, passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
-            #expect(previous?.question == self.previous)
+        func choose(_ question: String, context: [AskDocument.Turn], passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
+            #expect(context.last?.question == previous)
             let match = try #require(passages.first { $0.text.contains(exact) })
             return [.init(passage: match.id, quote: exact)]
         }
@@ -87,7 +226,7 @@ struct AskDocumentTests {
 
     private struct WrongProvider: AskDocument.Provider {
         let unknownPassage: Bool
-        func choose(_ question: String, previous: AskDocument.Turn?, passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
+        func choose(_ question: String, context: [AskDocument.Turn], passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
             let match = try #require(passages.first)
             return [.init(passage: unknownPassage ? 999_999 : match.id,
                           quote: unknownPassage ? match.text : "The annual budget is 89,000 dollars.")]
@@ -95,7 +234,7 @@ struct AskDocumentTests {
     }
 
     private struct NeverProvider: AskDocument.Provider {
-        func choose(_ question: String, previous: AskDocument.Turn?, passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
+        func choose(_ question: String, context: [AskDocument.Turn], passages: [AskDocument.Passage]) async throws -> [AskDocument.Evidence] {
             Issue.record("The model should not receive an ungrounded or changed-source question.")
             return []
         }

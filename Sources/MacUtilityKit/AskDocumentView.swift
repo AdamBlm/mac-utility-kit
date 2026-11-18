@@ -10,6 +10,7 @@ struct AskDocumentDraft {
     var index: AskDocument.Index?
     var turns: [AskDocument.Turn] = []
     var question = ""
+    var questionMode: AskDocument.QuestionMode = .automatic
 }
 
 struct AskDocumentView: View {
@@ -123,9 +124,19 @@ struct AskDocumentView: View {
                 Spacer()
                 if !modelReady { Button("Check Again", action: refreshModel) }
             }
+            if !draft.turns.isEmpty {
+                Picker("Question mode", selection: $draft.questionMode) {
+                    ForEach(AskDocument.QuestionMode.allCases) { mode in
+                        Text(mode.rawValue).tag(mode)
+                    }
+                }
+                .pickerStyle(.segmented)
+                .fixedSize()
+                .help("Choose New Topic to start without prior context, or Follow-up to keep it.")
+                .disabled(job != nil)
+            }
             HStack {
-                TextField(draft.turns.isEmpty ? "Ask about this document" : "Ask a follow-up",
-                          text: $draft.question)
+                TextField("Ask about this document", text: $draft.question)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit { ask(index) }
                 Button("Ask", systemImage: "arrow.up.circle", action: { ask(index) })
@@ -159,7 +170,11 @@ struct AskDocumentView: View {
                 }
                 if turn.id != draft.turns.first?.id { Divider() }
             }
-            Button("Clear Questions") { draft.turns.removeAll() }.disabled(job != nil)
+            Button("Clear Questions") {
+                draft.turns.removeAll()
+                draft.questionMode = .automatic
+            }
+            .disabled(job != nil)
         }
     }
 
@@ -180,6 +195,7 @@ struct AskDocumentView: View {
     private func clearIndex() {
         draft.index = nil
         draft.turns.removeAll()
+        draft.questionMode = .automatic
         issue = nil
     }
 
@@ -209,13 +225,15 @@ struct AskDocumentView: View {
         guard modelReady, job == nil else { return }
         let question = draft.question.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !question.isEmpty else { return }
-        let previous = draft.turns.last
+        let history = Array(draft.turns.suffix(8))
+        let mode = draft.questionMode
         run("Checking the document for evidence…") { _ in
-            let answer = try await AskDocument.answer(question, in: index, after: previous)
+            let answer = try await AskDocument.answer(question, in: index, history: history, mode: mode)
             try Task.checkCancellation()
             draft.turns.append(.init(question: question, answer: answer))
             if draft.turns.count > 50 { draft.turns.removeFirst() }
             draft.question = ""
+            draft.questionMode = .automatic
         }
     }
 

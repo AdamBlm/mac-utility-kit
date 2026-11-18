@@ -27,6 +27,7 @@ public enum AskDocument {
         public let sections: [Section]
         public let omittedPages: [Int]
         public let isPDF: Bool
+        let id = UUID()
         let stamp: DuplicateFileStamp
         let passages: [Passage]
         let search: DocumentPassageSearch
@@ -46,6 +47,9 @@ public enum AskDocument {
 
     public struct Answer: Sendable {
         public let citations: [Citation]
+        fileprivate let indexID: UUID
+        fileprivate let question: String
+        fileprivate let usesHistory: Bool
         public var hasEvidence: Bool { !citations.isEmpty }
     }
 
@@ -55,9 +59,17 @@ public enum AskDocument {
         public let answer: Answer
 
         public init(question: String, answer: Answer) {
-            self.question = question
+            self.question = question.trimmingCharacters(in: .whitespacesAndNewlines)
             self.answer = answer
         }
+    }
+
+    public enum QuestionMode: String, CaseIterable, Identifiable, Sendable {
+        case automatic = "Auto"
+        case newTopic = "New Topic"
+        case followUp = "Follow-up"
+
+        public var id: Self { self }
     }
 
     public struct Progress: Sendable {
@@ -77,7 +89,7 @@ public enum AskDocument {
     }
 
     protocol Provider: Sendable {
-        func choose(_ question: String, previous: Turn?, passages: [Passage]) async throws -> [Evidence]
+        func choose(_ question: String, context: [Turn], passages: [Passage]) async throws -> [Evidence]
     }
 
     public static func isPDF(_ url: URL) -> Bool {
@@ -148,11 +160,18 @@ public enum AskDocument {
     }
 
     public static func answer(_ rawQuestion: String, in index: Index, after previous: Turn? = nil) async throws -> Answer {
-        try await answer(rawQuestion, in: index, after: previous, using: AppleDocumentAnswerModel())
+        try await answer(rawQuestion, in: index, history: [previous].compactMap { $0 })
+    }
+
+    public static func answer(
+        _ rawQuestion: String, in index: Index, history: [Turn], mode: QuestionMode = .automatic
+    ) async throws -> Answer {
+        try await answer(rawQuestion, in: index, history: history, mode: mode, using: AppleDocumentAnswerModel())
     }
 
     static func answer(
-        _ rawQuestion: String, in index: Index, after previous: Turn? = nil, using model: any Provider
+        _ rawQuestion: String, in index: Index, history: [Turn] = [], mode: QuestionMode = .automatic,
+        using model: any Provider
     ) async throws -> Answer {
         try Task.checkCancellation()
         try index.validateSource()
@@ -161,28 +180,69 @@ public enum AskDocument {
             throw ToolError.invalid("Enter a question of up to 1,000 UTF-8 bytes.")
         }
         let words = queryTerms(question)
-        let context = isFollowUp(question) ? previous : nil
-        var ids = try index.search.retrieve(Array(words.prefix(24)), limit: context == nil ? 5 : 3)
-        if let context, context.answer.hasEvidence, ids.count < 5 {
-            let knownTerms = Array(queryTerms(context.question).prefix(8))
-            let related = try index.search.retrieve(knownTerms, limit: 5)
-            for id in related where ids.count < 5 && !ids.contains(id) { ids.append(id) }
+        let usesHistory = switch mode {
+        case .automatic: isFollowUp(question, in: index)
+        case .newTopic: false
+        case .followUp: true
         }
+        let context = usesHistory ? followUpContext(history, index: index) : []
+        func result(_ citations: [Citation]) -> Answer {
+            Answer(citations: citations, indexID: index.id, question: question, usesHistory: usesHistory)
+        }
+        let ids = try retrievePassages(words, context: context, index: index)
         let passages = ids.compactMap { id in index.passages.indices.contains(id - 1) ? index.passages[id - 1] : nil }
-        guard !passages.isEmpty else { return Answer(citations: []) }
-        let evidence = try await model.choose(question, previous: context, passages: passages)
+        guard !passages.isEmpty else { return result([]) }
+        let evidence = try await model.choose(question, context: context, passages: passages)
         try Task.checkCancellation()
         try index.validateSource()
         let allowed = Dictionary(uniqueKeysWithValues: passages.map { ($0.id, $0) })
         var citations: [Citation] = []
         for item in evidence.prefix(4) {
             guard let passage = allowed[item.passage], let quote = verifiedQuote(item.quote, in: passage.text) else {
-                return Answer(citations: [])
+                return result([])
             }
             let citation = Citation(location: passage.location, quote: quote)
             if !citations.contains(citation) { citations.append(citation) }
         }
-        return Answer(citations: citations)
+        return result(citations)
+    }
+
+    private static func followUpContext(_ history: [Turn], index: Index) -> [Turn] {
+        var recent: [Turn] = []
+        for turn in history.suffix(8).reversed() {
+            guard turn.answer.indexID == index.id,
+                  turn.question.utf8.elementsEqual(turn.answer.question.utf8)
+            else { break }
+            if !turn.answer.usesHistory {
+                if turn.answer.hasEvidence { recent.append(turn) }
+                break
+            }
+            if turn.answer.hasEvidence, recent.isEmpty { recent.append(turn) }
+        }
+        return Array(recent.reversed())
+    }
+
+    private static func retrievePassages(_ words: [String], context: [Turn], index: Index) throws -> [Int] {
+        let direct = try index.search.retrieve(Array(words.prefix(24)), limit: 5)
+        guard !context.isEmpty else { return direct }
+
+        var ids: [Int] = []
+        for turn in context.reversed() {
+            for citation in turn.answer.citations.prefix(2) {
+                if let passage = index.passages.first(where: {
+                    $0.location == citation.location && verifiedQuote(citation.quote, in: $0.text) != nil
+                }), !ids.contains(passage.id) {
+                    ids.append(passage.id)
+                    break
+                }
+            }
+        }
+        for id in direct.prefix(3) where !ids.contains(id) { ids.append(id) }
+
+        let contextualTerms = context.flatMap { queryTerms($0.question).prefix(8) }
+        let related = try index.search.retrieve(Array(contextualTerms.prefix(24)), limit: 5)
+        for id in related + direct where ids.count < 5 && !ids.contains(id) { ids.append(id) }
+        return ids
     }
 
     private static func queryTerms(_ text: String) -> [String] {
@@ -194,12 +254,43 @@ public enum AskDocument {
         return DocumentPassageSearch.words(text.lowercased()).filter { !ignored.contains($0) && seen.insert($0).inserted }
     }
 
-    private static func isFollowUp(_ text: String) -> Bool {
-        let words = DocumentPassageSearch.words(text.lowercased())
+    private static func isFollowUp(_ text: String, in index: Index) -> Bool {
+        let original = DocumentPassageSearch.words(text)
+        let words = original.map { $0.lowercased() }
         let references: Set<String> = ["it", "its", "they", "their", "this", "that", "these", "those", "he", "she", "his", "her"]
         let opening = Array(words.prefix(2))
-        return words.first == "and" || opening == ["what", "about"] || opening == ["how", "about"]
-            || words.contains(where: references.contains) || queryTerms(text).isEmpty
+        let about = opening == ["what", "about"] || opening == ["how", "about"]
+        guard words.first == "and" || about || words.contains(where: references.contains) || queryTerms(text).isEmpty
+        else { return false }
+
+        let namedWords = words.map { word in
+            word.hasSuffix("'s") || word.hasSuffix("’s") ? String(word.dropLast(2)) : word
+        }
+        let namesAHeading = index.sections.contains { section in
+            guard case .section(_, let title?) = section.location else { return false }
+            let headingWords = DocumentPassageSearch.words(title.lowercased())
+            guard !headingWords.isEmpty, headingWords.count <= namedWords.count else { return false }
+            return (0...(namedWords.count - headingWords.count)).contains { start in
+                namedWords[start..<(start + headingWords.count)].elementsEqual(headingWords)
+            }
+        }
+        if namesAHeading { return false }
+
+        // A new subject can appear after an opener or in the first clause
+        // of a compound question, before the later pronoun.
+        let questionOpeners: Set<String> = ["what", "which", "who", "when", "where", "why", "how"]
+        let auxiliaries: Set<String> = ["is", "was", "are", "were", "did", "does", "do", "has", "have", "had", "will"]
+        let subjectOffset: Int?
+        if about || (words.count >= 2 && questionOpeners.contains(words[0]) && auxiliaries.contains(words[1])) {
+            subjectOffset = 2
+        } else {
+            subjectOffset = words.first == "and" ? 1 : nil
+        }
+        if let subjectOffset {
+            let subject = original.dropFirst(subjectOffset).drop(while: { $0.lowercased() == "the" }).first
+            if subject?.first?.isUppercase == true, !references.contains(subject?.lowercased() ?? "") { return false }
+        }
+        return true
     }
 
     private static func verifiedQuote(_ output: String, in passage: String) -> String? {

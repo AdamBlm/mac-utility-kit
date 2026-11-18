@@ -16,7 +16,7 @@ public struct AppleDocumentAnswerModel: Sendable {
 
 extension AppleDocumentAnswerModel: AskDocument.Provider {
     func choose(
-        _ question: String, previous: AskDocument.Turn?, passages: [AskDocument.Passage]
+        _ question: String, context: [AskDocument.Turn], passages: [AskDocument.Passage]
     ) async throws -> [AskDocument.Evidence] {
         guard Self.isAvailable else { throw ToolError.invalid(Self.message) }
         #if canImport(FoundationModels)
@@ -29,8 +29,9 @@ extension AppleDocumentAnswerModel: AskDocument.Provider {
                 If the passages mention the same topic but do not answer the question, return an empty evidence array.
                 Prior questions and quotes are only context for interpreting a follow-up.
                 """)
-            let payload = PromptPayload(question: question, previousQuestion: previous?.question,
-                                        previousQuotes: previous.map { Array($0.answer.citations.prefix(1)).map(\.quote) } ?? [],
+            let payload = PromptPayload(question: question, context: context.map { turn in
+                PromptTurn(question: turn.question, quote: turn.answer.citations.first?.quote)
+            },
                                         passages: passages.map { PromptPassage(passageID: $0.id, text: $0.text) })
             let prompt = String(decoding: try JSONEncoder().encode(payload), as: UTF8.self)
             let response = try await session.respond(to: prompt, generating: GuidedEvidence.self,
@@ -43,9 +44,13 @@ extension AppleDocumentAnswerModel: AskDocument.Provider {
 
     private struct PromptPayload: Encodable {
         let question: String
-        let previousQuestion: String?
-        let previousQuotes: [String]
+        let context: [PromptTurn]
         let passages: [PromptPassage]
+    }
+
+    private struct PromptTurn: Encodable {
+        let question: String
+        let quote: String?
     }
 
     private struct PromptPassage: Encodable {
