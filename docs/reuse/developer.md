@@ -1,0 +1,20 @@
+# Developer tools (14)
+
+[DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools) is the C# source for the tools shipped with DevToys. For a Swift app, the Swift libraries below cover individual operations without requiring the full DevToys runtime.
+
+| Feature | Open-source repo and license | Reuse and remaining work |
+| --- | --- | --- |
+| JSON Formatter | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools/tree/main/src/DevToys.Tools/Tools/Formatters/Json) (MIT) | **Direct reference.** Port the formatter workflow. Verify parser diagnostics include line and column for malformed input. |
+| Base64 | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools/tree/main/src/DevToys.Tools/Tools/EncodersDecoders/Base64Text) (MIT) | **Partial.** Reuse its Base64 and number-base tools as references. Add a unified byte-oriented editor, file streaming, URL-safe mode, and wrapping as needed. |
+| Hash Generator | [Swift Crypto](https://github.com/apple/swift-crypto) (Apache-2.0) | **Building block.** Swift library for SHA-2 and legacy MD5/SHA-1. Add chunked file input and expected-digest verification. |
+| UUID Generator | [google/uuid](https://github.com/google/uuid) (BSD-3-Clause) | **Building block.** Go reference for v4 and v7 generation and parsing. Port or adapt for Swift, then add batch generation and inspection. |
+| JWT Decoder | [JWTKit](https://github.com/vapor/jwt-kit) (MIT) | **Building block.** Swift library for signature verification, including HMAC. Build the header and claims viewer and clearly distinguish verified output from unverified decoded data. |
+| Timestamp Converter | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools/tree/main/src/DevToys.Tools/Tools/Converters/Date) (MIT) | **Direct reference.** Port the date-tool workflow. Verify the unit and time-zone options, especially microsecond precision and negative epochs. |
+| Diff Checker | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools) (MIT) | **Direct reference.** Port its text comparer as a workflow reference. Verify the line and word highlighting behavior and add file input and display modes as needed. |
+| Regex Tester | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools) (MIT) | **Direct reference.** Port the tester workflow using a native regex engine. Document engine differences and verify capture groups and replacement previews. |
+| Clean Links | [ClearURLs](https://github.com/ClearURLs/Addon) (LGPL-3.0) | **Direct reference.** Browser-extension reference for stripping tracking parameters and handling redirects. Confirm the rules dataset's license separately before distributing rules, and build a native URL input workflow. |
+| Coordinate Picker | [GeographicLib JS](https://github.com/geographiclib/geographiclib-js) (MIT) | **Building block.** Building block for geodesic distance and bearings. Add the map, search/geocoding, coordinate formats, and list handling. Apple Maps is a separate platform dependency if selected. |
+| Unicode Inspector | [ICU](https://github.com/unicode-org/icu) (Unicode-3.0) | **Building block.** Building block for code-point names, categories, whitespace, and Unicode spoof/confusable checks. Add a scalar viewer with visible markers for invisible characters. |
+| Lorem Ipsum | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools/tree/main/src/DevToys.Tools/Tools/Generators/LoremIpsum) (MIT) | **Direct reference.** Port the generator workflow. Add or verify selection by word, sentence, or paragraph and output in text, HTML, and Markdown. |
+| Password Generator | [DevToys.Tools](https://github.com/DevToys-app/DevToys.Tools/tree/main/src/DevToys.Tools/Tools/Generators/Password) (MIT) and [zxcvbn](https://github.com/dropbox/zxcvbn) (MIT) | **Building blocks.** Generation workflow reference plus a strength-estimation engine. Use system cryptographic randomness and verify the license of the word list used for passphrases. |
+| CSV ↔ JSON | [CodableCSV](https://github.com/dehesa/CodableCSV) (MIT) | **Building block.** Swift CSV reader/writer. Define JSON types, column ordering, null handling, and escaped Markdown table output in the app. |
