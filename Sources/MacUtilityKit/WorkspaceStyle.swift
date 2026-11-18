@@ -80,6 +80,7 @@ extension Tool {
         case .redactImage: "eye.slash.fill"
         case .removeBackground: "person.crop.square"
         case .colorPicker: "eyedropper"
+        case .watermark: "seal"
         case .screenshot: "camera.viewfinder"
         case .annotateScreenshot: "pencil.tip.crop.circle"
         case .compressImages: "arrow.down.right.and.arrow.up.left"
@@ -136,6 +137,7 @@ extension Tool {
         case .redactImage: "Hide selected areas and export a flattened image."
         case .removeBackground: "Isolate a subject and refine which parts of the image to keep."
         case .colorPicker: "Sample screen colors and copy HEX, RGB, or HSL."
+        case .watermark: "Place a text or logo watermark on images, PDFs, or videos."
         case .screenshot: "Capture a display, window, region, or scrolling sequence."
         case .annotateScreenshot: "Mark up an image with arrows, shapes, text, and callouts."
         case .compressImages: "Reduce image file size and compare the result."
@@ -186,6 +188,7 @@ extension Tool {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .removeBackground: "or drop images anywhere in this pane"
         case .mergePDFs: "or drop PDFs and images anywhere in this pane"
+        case .watermark: "or drop images, PDFs, and videos anywhere in this pane"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "or drop one PDF anywhere in this pane"
         case .imagesToPDF: "or drop images anywhere in this pane"
         case .extractText: "or drop images and PDFs anywhere in this pane"
@@ -202,6 +205,7 @@ extension Tool {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .removeBackground: "Drop images here"
         case .mergePDFs: "Drop PDFs or images here"
+        case .watermark: "Drop images, PDFs, or videos here"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "Drop one PDF here"
         case .imagesToPDF: "Drop images here"
         case .extractText: "Drop images or PDFs here"

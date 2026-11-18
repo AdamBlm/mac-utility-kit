@@ -136,6 +136,7 @@ public enum ToolRunner {
                     case .beautifyScreenshot: options.beautify.format.fileExtension
                     case .blurFaces, .redactImage: "png"
                     case .removeBackground: options.removeBackground.format.fileExtension
+                    case .watermark: try Watermark.outputExtension(input)
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
@@ -238,6 +239,11 @@ public enum ToolRunner {
                         summaries.append(try ImageRedact.export(input, to: output, options: options.redactImage))
                     case .removeBackground:
                         summaries.append(try await RemoveBackground.export(input, to: output, options: options.removeBackground))
+                    case .watermark:
+                        let summary = try await Watermark.export(input, to: output, options: options.watermark) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
                     case .convertImages:
                         summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
                     case .compressImages:

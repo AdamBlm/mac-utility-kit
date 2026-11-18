@@ -82,6 +82,10 @@ struct ToolWorkspace: View {
             draft.options.audioCleanup.executable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        case .watermark:
+            draft.options.watermark.content == .logo
+                ? draft.options.watermark.logo == nil
+                : draft.options.watermark.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         case .blurFaces:
             draft.inputs.contains { !draft.options.blurFaces.isReviewed($0) }
         case .redactImage:
@@ -131,6 +135,8 @@ struct ToolWorkspace: View {
                             ImageRedactControls(inputs: draft.inputs, options: $draft.options.redactImage)
                         case .removeBackground:
                             RemoveBackgroundControls(inputs: draft.inputs, options: $draft.options.removeBackground)
+                        case .watermark:
+                            WatermarkControls(inputs: draft.inputs, options: $draft.options.watermark)
                         case .compressImages:
                             imageCompressionControls()
                         case .removeMetadata:

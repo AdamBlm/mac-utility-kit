@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 51 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 52 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -58,6 +58,7 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 ### Image tools
 
+- **Watermark** adds text or a logo to images, selected PDF pages, and video time ranges. Set placement, tiling, opacity, scale, margin, and rotation. Video uses a selected FFmpeg executable. Marked PDF pages retain visible content and selectable source text where supported, with interactive objects flattened.
 - **Color Picker** uses the macOS magnified sampler and shows sRGB HEX, RGB, and HSL. Choose a precision, copy a value, or revisit recent session swatches.
 - **Annotate Screenshot** adds ordered arrows, lines, shapes, text, and numbered callouts. Open an image or hand off a capture from Screenshot, then copy or export a flattened PNG or JPEG.
 - **Remove Background** detects foreground subjects locally, supports rectangular Keep and Remove refinements, and exports transparent PNG or a solid-background PNG or JPEG.

@@ -89,6 +89,7 @@ public struct ToolOptions: Sendable {
     public var blurFaces = BlurFacesOptions()
     public var redactImage = ImageRedactOptions()
     public var removeBackground = RemoveBackgroundOptions()
+    public var watermark = WatermarkOptions()
     public var imageCompression = ImageCompressionOptions()
     public var imageMetadata = ImageMetadataOptions()
     public var imageMagickExecutable: URL?
