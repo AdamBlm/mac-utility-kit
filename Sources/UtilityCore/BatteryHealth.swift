@@ -32,13 +32,19 @@ public enum BatteryHealth {
     public static func snapshot() async throws -> BatteryHealthSnapshot {
         let native = nativePower()
         let registry = registryBattery()
-        let profile = try await systemProfile()
+        async let profile = commandOutput("/usr/sbin/system_profiler", name: "System Profiler",
+            arguments: ["-json", "-timeout", "8", "SPPowerDataType", "SPBluetoothDataType"])
+        async let accessories = accessoryPower()
+        let (profileResult, accessoryResult) = try await (profile, accessories)
         try Task.checkCancellation()
-        return assemble(power: native.source, internalSource: native.battery, registry: registry, profile: profile)
+        return assemble(power: native.source, internalSource: native.battery, registry: registry,
+                        profile: profileResult.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] },
+                        accessoryPower: accessoryResult)
     }
 
     static func assemble(
-        power: String?, internalSource: [String: Any]?, registry: [String: Any]?, profile: [String: Any]?
+        power: String?, internalSource: [String: Any]?, registry: [String: Any]?, profile: [String: Any]?,
+        accessoryPower: [AccessoryPower]? = nil
     ) -> BatteryHealthSnapshot {
         let powerEntries = profile?["SPPowerDataType"] as? [[String: Any]] ?? []
         let health = powerEntries.compactMap { $0["sppower_battery_health_info"] as? [String: Any] }.first
@@ -76,6 +82,7 @@ public enum BatteryHealth {
         }
         let wireless = profile?["SPBluetoothDataType"] as? [[String: Any]]
         var accessories: [BatteryHealthSnapshot.Accessory] = []
+        let nativeByName = Dictionary(grouping: accessoryPower ?? [], by: \.name)
         for controller in wireless ?? [] {
             for item in controller["device_connected"] as? [[String: [String: Any]]] ?? [] {
                 for (name, details) in item.sorted(by: { $0.key < $1.key }) {
@@ -87,7 +94,20 @@ public enum BatteryHealth {
                 }
             }
         }
-        return .init(powerSource: power, battery: battery, accessories: accessories, accessoryReadAvailable: wireless != nil)
+        let profilerByName = Dictionary(grouping: accessories, by: \.name)
+        accessories = accessories.map { listed in
+            let readings = nativeByName[listed.name] ?? []
+            guard profilerByName[listed.name]?.count == 1, readings.count == 1 else { return listed }
+            return .init(id: listed.id, name: listed.name, battery: listed.battery ?? readings[0].charge,
+                         left: listed.left, right: listed.right, caseCharge: listed.caseCharge)
+        }
+        for reading in accessoryPower ?? [] {
+            if profilerByName[reading.name]?.count == 1, nativeByName[reading.name]?.count == 1 { continue }
+            accessories.append(.init(id: accessories.count, name: reading.name, battery: reading.charge,
+                                     left: nil, right: nil, caseCharge: nil))
+        }
+        return .init(powerSource: power, battery: battery, accessories: accessories,
+                     accessoryReadAvailable: wireless != nil || accessoryPower != nil)
     }
 
     private static func integer(_ value: Any?) -> Int? {
@@ -130,21 +150,49 @@ public enum BatteryHealth {
         return values
     }
 
-    private static func systemProfile() async throws -> [String: Any]? {
+    struct AccessoryPower: Equatable, Sendable {
+        let name: String
+        let charge: Int?
+    }
+
+    static func parseAccessoryPower(_ data: Data) -> [AccessoryPower]? {
+        // pmset's upstream implementation writes names using MacRoman.
+        guard let output = String(data: data, encoding: .macOSRoman),
+              output.hasPrefix("Now drawing from ") else { return nil }
+        return output.split(whereSeparator: \.isNewline).compactMap { line in
+            let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
+            guard fields.count == 2, fields[0].hasPrefix(" -"),
+                  fields[1].hasSuffix(" present: true") else { return nil }
+            let label = fields[0].dropFirst(2)
+            let name = label[..<(label.range(of: #" \(id=-?[0-9]+\)$"#, options: .regularExpression)?.lowerBound ?? label.endIndex)]
+                .trimmingCharacters(in: .whitespaces)
+            guard !name.isEmpty, name.range(of: #"^InternalBattery-[0-9]+$"#, options: .regularExpression) == nil
+            else { return nil }
+            let value = fields[1].prefix(while: { $0.isASCII && $0.isNumber })
+            let level = fields[1].dropFirst(value.count).hasPrefix("%;") ? percent(String(value)) : nil
+            return AccessoryPower(name: name, charge: level)
+        }
+    }
+
+    private static func accessoryPower() async throws -> [AccessoryPower]? {
+        try await commandOutput("/usr/bin/pmset", name: "Power Management", arguments: ["-g", "accps"])
+            .flatMap(parseAccessoryPower)
+    }
+
+    private static func commandOutput(_ path: String, name: String, arguments: [String]) async throws -> Data? {
         let folder = FileManager.default.temporaryDirectory.appending(path: ".MacUtilityKit-Battery-\(UUID().uuidString)")
         do {
             try Task.checkCancellation()
             try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
                                                     attributes: [.posixPermissions: 0o700])
             defer { try? FileManager.default.removeItem(at: folder) }
-            let output = folder.appending(path: "power.json")
+            let output = folder.appending(path: "report")
             try Data().write(to: output)
             let handle = try FileHandle(forWritingTo: output)
             defer { try? handle.close() }
-            try await ExternalTool.run(URL(fileURLWithPath: "/usr/sbin/system_profiler"), name: "System Profiler",
-                                       arguments: ["-json", "-timeout", "8", "SPPowerDataType", "SPBluetoothDataType"],
+            try await ExternalTool.run(URL(fileURLWithPath: path), name: name, arguments: arguments,
                                        directory: folder, standardOutput: handle)
-            return try JSONSerialization.jsonObject(with: Data(contentsOf: output)) as? [String: Any]
+            return try Data(contentsOf: output)
         } catch {
             try Task.checkCancellation()
             return nil

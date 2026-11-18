@@ -35,7 +35,7 @@ struct BatteryHealthView: View {
                 }
                 WorkspaceSection("Connected accessories", palette: palette) {
                     if snapshot.accessories.isEmpty {
-                        Text(snapshot.accessoryReadAvailable ? "No connected Bluetooth accessories." : "Accessory information is unavailable.")
+                        Text(snapshot.accessoryReadAvailable ? "No connected accessories." : "Accessory information is unavailable.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     ForEach(snapshot.accessories) { accessory in

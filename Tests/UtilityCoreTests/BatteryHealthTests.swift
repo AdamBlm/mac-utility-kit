@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 @testable import UtilityCore
 
@@ -30,6 +31,45 @@ struct BatteryHealthTests {
             profile: ["SPBluetoothDataType": [["device_not_connected": [["Headphones": ["device_batteryLevelLeft": "55%"]]]]]])
         #expect(afterDisconnect.accessories.isEmpty)
         #expect(afterDisconnect.accessoryReadAvailable)
+    }
+
+    @Test func readsNativeAccessoryPowerAndRetainsProfilerDetails() throws {
+        let output = """
+        Now drawing from 'AC Power'
+         -InternalBattery-0 (id=100)\t80%; AC attached; not charging present: true
+         -Boîtier (id=101)\t73%; charging; 0:00 remaining present: true
+         -Headphones (id=102)\t96%; charging; 0:00 remaining present: true
+         -Old keyboard (id=103)\t99%; discharging; 0:00 remaining present: false
+         -Trackpad (id=104)\tcharged present: true
+         -Keyboard (id=custom)\t67%; discharging present: true
+         -Mouse (id=-105)\t84%; discharging present: true
+        """
+        let encoded = try #require(output.data(using: .macOSRoman))
+        let readings = try #require(BatteryHealth.parseAccessoryPower(encoded))
+        #expect(readings.map(\.name) == ["Boîtier", "Headphones", "Trackpad", "Keyboard (id=custom)", "Mouse"])
+        let profile: [String: Any] = ["SPBluetoothDataType": [["device_connected": [
+            ["Headphones": ["device_batteryLevelMain": "91%", "device_batteryLevelLeft": "90%"]],
+            ["Mouse": ["device_batteryLevelRight": "82%"]]
+        ]]]]
+        let first = BatteryHealth.assemble(power: nil, internalSource: nil, registry: nil, profile: profile,
+                                           accessoryPower: readings)
+        #expect(first.accessoryReadAvailable)
+        #expect(first.battery == nil)
+        #expect(first.accessories.count == 5)
+        #expect(first.accessories.first { $0.name == "Headphones" }?.battery == 91)
+        #expect(first.accessories.first { $0.name == "Headphones" }?.left == 90)
+        #expect(first.accessories.first { $0.name == "Boîtier" }?.battery == 73)
+        #expect(first.accessories.first { $0.name == "Trackpad" }?.battery == nil)
+
+        #expect(first.accessories.first { $0.name == "Mouse" }?.battery == 84)
+        #expect(first.accessories.first { $0.name == "Keyboard (id=custom)" }?.battery == 67)
+
+        let empty = BatteryHealth.parseAccessoryPower(Data("Now drawing from 'AC Power'".utf8))
+        let refreshed = BatteryHealth.assemble(power: nil, internalSource: nil, registry: nil, profile: nil,
+                                               accessoryPower: empty)
+        #expect(refreshed.accessoryReadAvailable)
+        #expect(refreshed.accessories.isEmpty)
+        #expect(BatteryHealth.parseAccessoryPower(Data("unexpected report".utf8)) == nil)
     }
 
     @Test func distinguishesMissingBatteryAndUnreportedFields() throws {
