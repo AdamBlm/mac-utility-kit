@@ -86,6 +86,7 @@ extension Tool {
         case .signPDF: "signature"
         case .extractText: "text.viewfinder"
         case .wordCounter: "number"
+        case .transcribe: "waveform.bubble"
         case .qrCode: "qrcode"
         case .batchRename: "rectangle.and.pencil.and.ellipsis"
         case .keepAwake: "moon.zzz"
@@ -107,6 +108,7 @@ extension Tool {
         case .mediaInfo: "info.circle"
         case .extractAudio: "waveform"
         case .trimAudio: "waveform.path"
+        case .convertAudio: "arrow.triangle.2.circlepath"
         }
     }
 
@@ -126,6 +128,7 @@ extension Tool {
         case .signPDF: "Place a visible signature on a PDF copy."
         case .extractText: "Turn text in images and PDFs into editable text."
         case .wordCounter: "Count words, characters, and reading time as you type."
+        case .transcribe: "Create and edit a timestamped transcript with a local Whisper model."
         case .qrCode: "Generate and scan QR codes."
         case .batchRename: "Preview and apply filename rules in batches."
         case .keepAwake: "Keep your Mac awake for a session."
@@ -147,6 +150,7 @@ extension Tool {
         case .mediaInfo: "Inspect the streams and properties of a media file."
         case .extractAudio: "Save a selected audio track from a video."
         case .trimAudio: "Trim an audio selection, preview it on a loop, and add fades."
+        case .convertAudio: "Convert audio files and choose their sample rate and channels."
         }
     }
 
@@ -158,11 +162,11 @@ extension Tool {
         case .imagesToPDF: "or drop images anywhere in this pane"
         case .extractText: "or drop images and PDFs anywhere in this pane"
         case .wordCounter: "or drop a text file anywhere in this pane"
-        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: ""
+        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe: ""
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
         case .mediaInfo: "or drop audio or video anywhere in this pane"
-        case .trimAudio: "or drop audio files anywhere in this pane"
+        case .trimAudio, .convertAudio: "or drop audio files anywhere in this pane"
         }
     }
 
@@ -174,11 +178,11 @@ extension Tool {
         case .imagesToPDF: "Drop images here"
         case .extractText: "Drop images or PDFs here"
         case .wordCounter: "Drop a text file here"
-        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: ""
+        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe: ""
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"
         case .mediaInfo: "Drop media files here"
-        case .trimAudio: "Drop audio files here"
+        case .trimAudio, .convertAudio: "Drop audio files here"
         }
     }
 }

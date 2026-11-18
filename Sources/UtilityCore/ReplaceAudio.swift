@@ -221,8 +221,9 @@ public enum ReplaceAudio {
         reader.timeRange = range
         guard reader.startReading() else { throw reader.error ?? ToolError.invalid("Could not measure the preview audio level.") }
         defer { if reader.status == .reading { reader.cancelReading() } }
+        let readerSamples = AsyncAssetReaderSamples(reader: reader, output: output)
         var peak: Float = 0
-        while let buffer = output.copyNextSampleBuffer() {
+        while let buffer = try await readerSamples.next() {
             try Task.checkCancellation()
             guard let data = buffer.dataBuffer else { continue }
             var samples = [Float](repeating: 0, count: CMBlockBufferGetDataLength(data) / MemoryLayout<Float>.size)

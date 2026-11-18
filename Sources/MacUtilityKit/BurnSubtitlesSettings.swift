@@ -6,6 +6,7 @@ import UtilityCore
 struct BurnSubtitlesSettings: View {
     let input: URL?
     @Binding var options: BurnSubtitlesOptions
+    var onTranscribe: ((URL) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
     @State private var duration: Double?
     @State private var loadedInput: URL?
@@ -32,6 +33,10 @@ struct BurnSubtitlesSettings: View {
         HStack {
             Button("Import SRT…", systemImage: "folder", action: importSRT)
                 .disabled(importing)
+            if let input, let onTranscribe {
+                Button("Generate Captions…", systemImage: "waveform") { onTranscribe(input) }
+                    .disabled(importing)
+            }
             if importing { ProgressView().controlSize(.small) }
         }
         .task(id: input) { await load(input) }

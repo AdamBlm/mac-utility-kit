@@ -8,6 +8,8 @@ struct ToolWorkspace: View {
     let session: WorkspaceSession
     let keepAwakeController: KeepAwakeController
     let openOutput: (URL) -> Void
+    let openTranscription: (URL) -> Void
+    let openCaptionBurn: (URL, String) -> Void
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
@@ -42,6 +44,7 @@ struct ToolWorkspace: View {
         case .jsonFormatter: JSONFormatterView(draft: $draft.jsonFormatter)
         case .base64: Base64ToolView(draft: $draft.base64)
         case .hashGenerator: HashGeneratorView(draft: $draft.hashGenerator)
+        case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         default: EmptyView()
         }
     }
@@ -61,6 +64,8 @@ struct ToolWorkspace: View {
             draft.options.replaceAudio.source == nil
         case .burnSubtitles:
             draft.options.burnSubtitles.ffmpegExecutable == nil || draft.options.burnSubtitles.srt.isEmpty
+        case .convertAudio:
+            draft.options.audioConvert.format.requiresFFmpeg && draft.options.audioConvert.ffmpegExecutable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .convertImages:
@@ -125,13 +130,15 @@ struct ToolWorkspace: View {
                         case .replaceAudio:
                             ReplaceAudioControls(inputs: draft.inputs, options: $draft.options.replaceAudio)
                         case .burnSubtitles:
-                            BurnSubtitlesSettings(input: draft.inputs.first, options: $draft.options.burnSubtitles)
+                            BurnSubtitlesSettings(input: draft.inputs.first, options: $draft.options.burnSubtitles, onTranscribe: openTranscription)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:
                             extractionControls()
                         case .trimAudio:
                             AudioTrimControls(inputs: draft.inputs, options: $draft.options.audioTrim)
+                        case .convertAudio:
+                            AudioConvertControls(inputs: draft.inputs, options: $draft.options.audioConvert)
                         case .imagesToPDF:
                             ImagesToPDFSettings(inputs: draft.inputs, options: $draft.options.imagesToPDF)
                         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages:
@@ -147,7 +154,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

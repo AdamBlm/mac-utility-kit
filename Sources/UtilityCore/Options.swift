@@ -81,6 +81,7 @@ public struct ToolOptions: Sendable {
     public var inspection = MediaInspectionOptions()
     public var extraction = AudioExtractionOptions()
     public var audioTrim = AudioTrimOptions()
+    public var audioConvert = AudioConvertOptions()
     public var imageConversion = ImageConversionOptions()
     public var imageCompression = ImageCompressionOptions()
     public var imageMetadata = ImageMetadataOptions()

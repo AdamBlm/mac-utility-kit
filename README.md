@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 35 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 37 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -48,6 +48,8 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 - **Trim Audio** selects a sample-accurate range with a waveform, time fields, and a looping preview. Export WAV, AIFF, or M4A with optional fades, or preserve PCM samples in matching WAV or AIFF output.
 
+- **Convert Audio** converts to M4A, WAV, AIFF, MP3, or FLAC with sample rate, channel, and format-specific options. MP3 and FLAC require a selected FFmpeg executable. Metadata transfer depends on the output format.
+
 ### Image tools
 
 - **Convert Images** exports the primary image to JPEG, PNG, HEIC, or TIFF using Image I/O. A user-selected ImageMagick executable adds WebP. The tool applies orientation and can preserve supported metadata or flatten transparency against a chosen color.
@@ -75,6 +77,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 
 - **Sign PDF** places a typed or drawn visual signature and optional date label on selected pages of a new PDF copy. It uses PDF annotations for the visual mark. Certificate-based signatures are a different operation.
 - **Extract Text** uses embedded PDF text when available and Apple Vision for images, scanned pages, and selected regions. Choose a recognition language or use automatic detection. Turn off embedded text to run OCR across mixed-content pages. Copy or export the result as editable plain text.
+- **Transcribe** runs whisper.cpp locally using a selected executable and model. Transcribe a time range, edit the timestamped text, export TXT, SRT, or VTT, or send video captions to Burn In Subtitles.
 - **Word Counter** uses Apple Natural Language to count words, sentences, and nonblank paragraph tokens. Character counts use Unicode grapheme clusters, and reading time uses your reading speed. The draft stays in memory when switching tools.
 
 

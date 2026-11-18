@@ -89,6 +89,7 @@ enum AVFoundationEncoding {
             throw reader.error ?? ToolError.invalid("Could not read video samples.")
         }
         writer.startSession(atSourceTime: .zero)
+        let readers = streams.map { AsyncAssetReaderSamples(reader: reader, output: $0.reader) }
         var active = Array(streams.indices)
         var lastProgress = 0.0
         while !active.isEmpty {
@@ -98,7 +99,7 @@ enum AVFoundationEncoding {
             for index in active.reversed() where streams[index].writer.isReadyForMoreMediaData {
                 madeProgress = true
                 let stream = streams[index]
-                if let buffer = stream.reader.copyNextSampleBuffer() {
+                if let buffer = try await readers[index].next() {
                     guard stream.writer.append(buffer) else {
                         throw writer.error ?? ToolError.invalid("Could not encode a media sample.")
                     }

@@ -1,14 +1,22 @@
 import AVFoundation
 
+struct NativeAudioEncodingSettings {
+    var sampleRate: Double?
+    var channels: Int?
+    var bitrate: Int?
+    var preservesMetadata = false
+}
+
 enum AVFoundationAudioExtraction {
     static func export(
         _ asset: AVURLAsset, track: AVAssetTrack, to output: URL, options: AudioExtractionOptions,
-        preview: Bool, progress: @Sendable (Double) async -> Void
+        preview: Bool, encoding: NativeAudioEncodingSettings = .init(),
+        progress: @Sendable (Double) async -> Void
     ) async throws {
         let format = try await track.load(.formatDescriptions).first
         let source = format.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }
-        let channels = Int(source?.mChannelsPerFrame ?? 2)
-        let sampleRate = source?.mSampleRate ?? 48_000
+        let channels = encoding.channels ?? Int(source?.mChannelsPerFrame ?? 2)
+        let sampleRate = encoding.sampleRate ?? source?.mSampleRate ?? 48_000
         guard channels > 0, sampleRate.isFinite, sampleRate > 0 else {
             throw ToolError.invalid("Could not read the audio channel count or sample rate.")
         }
@@ -20,7 +28,7 @@ enum AVFoundationAudioExtraction {
             type = .m4a
             settings = options.passthrough ? nil : [
                 AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: sampleRate,
-                AVNumberOfChannelsKey: channels, AVEncoderBitRateKey: options.quality.bitrate
+                AVNumberOfChannelsKey: channels, AVEncoderBitRateKey: encoding.bitrate ?? options.quality.bitrate
             ]
         case .wav, .aiff:
             type = options.format == .wav ? .wav : .aiff
@@ -41,6 +49,18 @@ enum AVFoundationAudioExtraction {
         }
         let reader = try AVAssetReader(asset: asset)
         let writer = try AVAssetWriter(outputURL: output, fileType: type)
+        if encoding.preservesMetadata, type == .m4a {
+            var converted: [AVMetadataItem] = []
+            for item in try await asset.load(.commonMetadata) {
+                try Task.checkCancellation()
+                guard let key = item.commonKey, let value = try await item.load(.value) else { continue }
+                let tag = AVMutableMetadataItem()
+                tag.identifier = AVMetadataIdentifier(rawValue: "common/" + key.rawValue)
+                tag.value = value
+                converted.append(tag)
+            }
+            writer.metadata = converted
+        }
         let sourceSettings: [String: Any]? = options.passthrough ? nil : [
             AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 32,
             AVLinearPCMIsFloatKey: true, AVLinearPCMIsBigEndianKey: false,
@@ -51,7 +71,8 @@ enum AVFoundationAudioExtraction {
         guard writer.canApply(outputSettings: settings, forMediaType: .audio) else {
             throw ToolError.invalid("The selected format cannot encode this audio track.")
         }
-        let trackInput = AVAssetWriterInput(mediaType: .audio, outputSettings: settings, sourceFormatHint: format)
+        let trackInput = AVAssetWriterInput(mediaType: .audio, outputSettings: settings,
+                                           sourceFormatHint: options.passthrough ? format : nil)
         if type == .m4a {
             trackInput.languageCode = try await track.load(.languageCode)
             trackInput.extendedLanguageTag = try await track.load(.extendedLanguageTag)
@@ -88,6 +109,7 @@ enum AVFoundationAudioExtraction {
         reader: AVAssetReader, writer: AVAssetWriter, range: CMTimeRange,
         progress: @Sendable (Double) async -> Void
     ) async throws {
+        let samples = AsyncAssetReaderSamples(reader: reader, output: output)
         var wroteSample = false
         var lastProgress = 0.0
         while true {
@@ -97,7 +119,7 @@ enum AVFoundationAudioExtraction {
                 try await Task.sleep(for: .milliseconds(4))
                 continue
             }
-            guard let buffer = output.copyNextSampleBuffer() else { break }
+            guard let buffer = try await samples.next() else { break }
             guard input.append(buffer) else {
                 throw writer.error ?? ToolError.invalid("Could not write an audio sample.")
             }

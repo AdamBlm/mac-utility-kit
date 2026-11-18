@@ -23,11 +23,11 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
-    case trimAudio
+    case trimAudio, convertAudio, transcribe
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe: true
         default: false
         }
     }
@@ -56,6 +56,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .signPDF: "Sign PDF"
         case .extractText: "Extract Text"
         case .wordCounter: "Word Counter"
+        case .transcribe: "Transcribe"
         case .qrCode: "QR Code"
         case .batchRename: "Batch Rename"
         case .keepAwake: "Keep Awake"
@@ -77,6 +78,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .mediaInfo: "Media Info"
         case .extractAudio: "Extract Audio"
         case .trimAudio: "Trim Audio"
+        case .convertAudio: "Convert Audio"
         }
     }
 
@@ -86,12 +88,12 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
-        case .extractText, .wordCounter: .text
+        case .extractText, .wordCounter, .transcribe: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: .video
-        case .extractAudio, .trimAudio: .audio
+        case .extractAudio, .trimAudio, .convertAudio: .audio
         }
     }
 
@@ -106,8 +108,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .keepAwake: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
-        case .mediaInfo: [.movie, .audio]
-        case .trimAudio: [.audio]
+        case .mediaInfo, .transcribe: [.movie, .audio]
+        case .trimAudio, .convertAudio: [.audio]
         }
     }
 }

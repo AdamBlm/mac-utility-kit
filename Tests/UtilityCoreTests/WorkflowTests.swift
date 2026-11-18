@@ -352,6 +352,28 @@ private func writeToneFixture(to audio: URL) throws {
     #expect(try AudioTrim.source(source).frameCount == 48_000)
 }
 
+@Test func convertAudioPublishesSelectedFormatAndSampleRateThroughSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.wav")
+    try writeToneFixture(to: source)
+    var options = ToolOptions()
+    options.audioConvert.format = .aiff
+    options.audioConvert.sampleRate = 32_000
+    options.audioConvert.channels = .stereo
+    let report = try await ToolRunner.run(
+        .convertAudio, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    #expect(output.pathExtension == "aiff")
+    let result = try AVAudioFile(forReading: output)
+    #expect(result.fileFormat.channelCount == 2)
+    #expect(result.fileFormat.sampleRate == 32_000)
+    #expect(result.length == 32_000)
+    #expect(try AudioTrim.source(source).frameCount == 48_000)
+}
+
 @Test func balancedKeeps4KResolutionInExportAndSample() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

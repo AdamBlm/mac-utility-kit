@@ -118,7 +118,9 @@ struct Workspace: View {
                         ),
                         session: session,
                         keepAwakeController: keepAwakeController,
-                        openOutput: openOutput
+                        openOutput: openOutput,
+                        openTranscription: openTranscription,
+                        openCaptionBurn: openCaptionBurn
                     )
                     .id(selection)
                 }
@@ -162,6 +164,27 @@ struct Workspace: View {
         } else {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func openTranscription(_ input: URL) {
+        var draft = session.drafts[.transcribe, default: ToolDraft()]
+        if draft.transcribe.input != input {
+            draft.transcribe.input = input
+            draft.transcribe.cues = []
+            draft.transcribe.resultInput = nil
+            draft.transcribe.options.start = 0
+            draft.transcribe.options.end = nil
+        }
+        session.drafts[.transcribe] = draft
+        selection = .tool(.transcribe)
+    }
+
+    private func openCaptionBurn(_ input: URL, srt: String) {
+        var draft = session.drafts[.burnSubtitles, default: ToolDraft()]
+        draft.inputs = [input]
+        draft.options.burnSubtitles.srt = srt
+        session.drafts[.burnSubtitles] = draft
+        selection = .tool(.burnSubtitles)
     }
 
     private func handoffPDF(to tool: Tool, input: URL) {

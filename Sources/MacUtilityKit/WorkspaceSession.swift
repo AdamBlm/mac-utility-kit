@@ -16,6 +16,7 @@ struct ToolDraft {
     var jsonFormatter = JSONFormatterDraft()
     var base64 = Base64ToolDraft()
     var hashGenerator = HashGeneratorDraft()
+    var transcribe = TranscribeDraft()
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory
