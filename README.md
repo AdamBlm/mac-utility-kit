@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 82 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 85 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -138,3 +138,6 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Eject All Disks** groups eligible devices, unmounts individual volumes, and ejects selected devices with per-target outcomes and busy retries.
 - **Presentation Mode** can hide desktop items, hide the Dock, and keep the display awake for a timed or manual session. It restores settings it changed when the session ends.
 - **Summarize** makes brief or detailed summaries of pasted text, text files, RTF, or selected PDF pages using the available on-device Apple model on macOS 26 or newer.
+- **Case Converter** converts whole text or selected lines among prose and identifier cases, with locale-aware capitalization.
+- **JWT Decoder** shows token claims and can verify supported HMAC signatures locally with an entered key. Claim checks are shown separately from signature verification.
+- **Network Speed Test** uses macOS Network Quality to measure throughput and responsiveness over the active connection.
