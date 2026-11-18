@@ -192,7 +192,10 @@ struct QRToolsView: View {
                     panel.allowedContentTypes = [.image]
                     if panel.runModal() == .OK, let url = panel.url { scan(url) }
                 }
-                ClipboardFileButton(allowedTypes: [.image], onPasteFile: scan)
+                ClipboardFileButton(allowedTypes: [.image], onPasteImage: { image in
+                    let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Image.png")
+                    scan(attachment.url, attachment: attachment)
+                }, onPasteFile: { scan($0) })
                 Text(scannedName ?? "or drop an image here")
                     .font(.callout)
                     .foregroundStyle(.secondary)
@@ -243,14 +246,17 @@ struct QRToolsView: View {
         }
     }
 
-    private func scan(_ url: URL) {
+    private func scan(_ url: URL, attachment: CaptureTextAttachment? = nil) {
         scanTask?.cancel()
         scannedName = url.lastPathComponent
         detections = []
         scanMessage = nil
         scanning = true
         scanTask = Task {
-            defer { if !Task.isCancelled { scanning = false } }
+            defer {
+                if !Task.isCancelled { scanning = false }
+                withExtendedLifetime(attachment) {}
+            }
             do {
                 let result = try await Task.detached { try QRTools.detect(in: url) }.value
                 try Task.checkCancellation()

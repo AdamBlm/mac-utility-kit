@@ -541,8 +541,17 @@ struct ToolWorkspace: View {
     @ViewBuilder
     private func pasteFilesButton(for tool: Tool) -> some View {
         if tool.inputTypes.contains(where: { $0.conforms(to: .image) || $0.conforms(to: .pdf) }) {
-            ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF) {
-                _ = addDroppedFiles($0, to: tool)
+            if tool.inputTypes.contains(.image) {
+                ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF, onPasteImage: { image in
+                    let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Image.png")
+                    if addDroppedFiles([attachment.url], to: tool) {
+                        draft.captureAttachments.append(attachment)
+                    }
+                }) { _ = addDroppedFiles($0, to: tool) }
+            } else {
+                ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF) {
+                    _ = addDroppedFiles($0, to: tool)
+                }
             }
         }
     }

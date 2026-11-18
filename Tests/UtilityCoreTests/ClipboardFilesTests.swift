@@ -29,4 +29,23 @@ struct ClipboardFilesTests {
         #expect(board.setString(image.path, forType: .string))
         #expect(ClipboardFiles.read(from: board, allowedTypes: [.image]).isEmpty)
     }
+
+    @Test func decodesCopiedPNGAndTIFFWithoutAFileURL() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let representation = try #require(NSBitmapImageRep(
+            bitmapDataPlanes: nil, pixelsWide: 64, pixelsHigh: 32,
+            bitsPerSample: 8, samplesPerPixel: 4, hasAlpha: true, isPlanar: false,
+            colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0
+        ))
+        for (format, pasteType): (NSBitmapImageRep.FileType, NSPasteboard.PasteboardType) in [(.png, .png), (.tiff, .tiff)] {
+            let data = try #require(representation.representation(using: format, properties: [:]))
+            board.clearContents()
+            #expect(board.setData(data, forType: pasteType))
+            #expect(ClipboardFiles.read(from: board, allowedTypes: [.image]).isEmpty)
+            let image = try #require(try ClipboardFiles.readImage(from: board))
+            #expect(image.width == 64)
+            #expect(image.height == 32)
+        }
+    }
 }
