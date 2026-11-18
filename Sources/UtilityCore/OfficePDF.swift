@@ -35,6 +35,8 @@ public struct OfficePDFOptions: Equatable, Sendable {
     public var libreOfficeExecutable: URL?
     public var pageRange = ""
     public var includesHiddenSlides = false
+    public var slideLayout = OfficeSlideLayout.single
+    public var handoutPaper = PDFPrintPaper.letter
     public var singlePageSheets = false
 
     public init() {}
@@ -45,6 +47,8 @@ public enum OfficePDF {
         public let pdf: Data
         public let selectedPages: [Int]
         public let totalPages: Int
+        public let handoutPDF: Data?
+        public let handoutPages: Int
     }
 
     public static func optionIssue(_ input: URL, kind: OfficePDFKind, options: OfficePDFOptions) -> String? {
@@ -65,7 +69,16 @@ public enum OfficePDF {
         let document = try open(pdf)
         let selected = try selected(options, pageCount: document.pageCount)
         try Task.checkCancellation()
-        return Preview(pdf: try Data(contentsOf: pdf), selectedPages: selected.map { $0 + 1 }, totalPages: document.pageCount)
+        var handout: Data?
+        var handoutPages = 0
+        if kind == .powerPoint, options.slideLayout != .single {
+            let output = staging.appending(path: "Handout.pdf")
+            handoutPages = try OfficeSlideHandout.write(document, indices: selected, to: output,
+                                                       layout: options.slideLayout, paper: options.handoutPaper)
+            handout = try Data(contentsOf: output)
+        }
+        return Preview(pdf: try Data(contentsOf: pdf), selectedPages: selected.map { $0 + 1 },
+                       totalPages: document.pageCount, handoutPDF: handout, handoutPages: handoutPages)
     }
 
     public static func export(
@@ -84,17 +97,32 @@ public enum OfficePDF {
         let complete = try open(rendered)
         let pages = try selected(options, pageCount: complete.pageCount)
         let candidate: URL
-        if pages.count == complete.pageCount {
+        let handoutCount: Int?
+        if kind == .powerPoint, options.slideLayout != .single {
+            candidate = stage.appending(path: "Handout.pdf")
+            handoutCount = try OfficeSlideHandout.write(complete, indices: pages, to: candidate,
+                                                       layout: options.slideLayout, paper: options.handoutPaper)
+        } else if pages.count == complete.pageCount {
+            handoutCount = nil
             candidate = rendered
         } else {
-            candidate = try await compose(input, kind: kind, options: options, in: stage, pages: pages)
+            handoutCount = nil
+            if kind == .powerPoint, !options.includesHiddenSlides {
+                // Impress PageRange indexes the original deck, even when hidden
+                // slides are absent from the preview and export sequence.
+                candidate = stage.appending(path: "Selected visible slides.pdf")
+                try OfficeSlideHandout.writeSelection(complete, indices: pages, to: candidate)
+            } else {
+                candidate = try await compose(input, kind: kind, options: options, in: stage, pages: pages)
+            }
             try verify(try open(candidate), against: complete, selected: pages)
         }
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let unit = kind.rangeLabel
-        return "\(input.lastPathComponent) · \(pages.count) \(pages.count == 1 ? String(unit.dropLast()) : unit) · PDF"
+        let handoutSummary = handoutCount.map { " · \($0) handout page\($0 == 1 ? "" : "s")" } ?? ""
+        return "\(input.lastPathComponent) · \(pages.count) \(pages.count == 1 ? String(unit.dropLast()) : unit)\(handoutSummary) · PDF"
     }
 
     public struct PreviewPage: Sendable {
@@ -102,8 +130,8 @@ public enum OfficePDF {
         public let size: CGSize
     }
 
-    public static func renderedPage(_ preview: Preview, page index: Int) throws -> PreviewPage {
-        let document = try previewDocument(preview, page: index)
+    public static func renderedPage(_ preview: Preview, page index: Int, handout: Bool = false) throws -> PreviewPage {
+        let document = try previewDocument(preview, page: index, handout: handout)
         guard let page = document.page(at: index - 1), let pageRef = page.pageRef else {
             throw ToolError.invalid("Could not read the preview page.")
         }
@@ -127,8 +155,10 @@ public enum OfficePDF {
         return PreviewPage(image: image, size: size)
     }
 
-    private static func previewDocument(_ preview: Preview, page index: Int) throws -> PDFDocument {
-        guard (1...preview.totalPages).contains(index), let document = PDFDocument(data: preview.pdf) else {
+    private static func previewDocument(_ preview: Preview, page index: Int, handout: Bool) throws -> PDFDocument {
+        let data = handout ? preview.handoutPDF : preview.pdf
+        let pageCount = handout ? preview.handoutPages : preview.totalPages
+        guard pageCount > 0, (1...pageCount).contains(index), let data, let document = PDFDocument(data: data) else {
             throw ToolError.invalid("Choose a valid rendered page.")
         }
         return document

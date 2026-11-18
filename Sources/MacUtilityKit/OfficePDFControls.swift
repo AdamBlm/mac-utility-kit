@@ -11,6 +11,7 @@ struct OfficePDFControls: View {
     @State private var rendering: Request?
     @State private var preview: Completed?
     @State private var page: Int = 1
+    @State private var showsHandout = false
 
     private struct Request: Equatable {
         let id = UUID()
@@ -50,7 +51,21 @@ struct OfficePDFControls: View {
                     .font(.callout).foregroundStyle(.secondary)
             case .powerPoint:
                 Toggle("Include hidden slides", isOn: $options.includesHiddenSlides)
-                Text("Slides export as individual static pages. LibreOffice may substitute missing fonts.")
+                SettingRow("Layout") {
+                    Picker("Slide layout", selection: $options.slideLayout) {
+                        ForEach(OfficeSlideLayout.allCases) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                }
+                if options.slideLayout != .single {
+                    SettingRow("Handout paper") {
+                        Picker("Handout paper", selection: $options.handoutPaper) {
+                            ForEach(PDFPrintPaper.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .labelsHidden()
+                    }
+                }
+                Text("Slides export as static pages. LibreOffice may substitute missing fonts.")
                     .font(.callout).foregroundStyle(.secondary)
             case .excel:
                 Toggle("One page per sheet", isOn: $options.singlePageSheets)
@@ -67,6 +82,7 @@ struct OfficePDFControls: View {
             do {
                 let result = try await OfficePDF.preview(rendering.input, kind: kind, options: rendering.options)
                 try Task.checkCancellation()
+                showsHandout = false
                 page = result.selectedPages.first ?? 1
                 preview = Completed(request: rendering, result: .success(result))
             } catch {
@@ -141,20 +157,34 @@ struct OfficePDFControls: View {
 
     @ViewBuilder
     private func rendered(_ document: OfficePDF.Preview) -> some View {
+        let displayUnit = showsHandout ? "handout page" : unit
+        let displayCount = showsHandout ? document.handoutPages : document.totalPages
+        if document.handoutPages > 0 {
+            Picker("Preview layout", selection: $showsHandout) {
+                Text("Slides").tag(false)
+                Text("Handout").tag(true)
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .frame(maxWidth: 230)
+            .onChange(of: showsHandout) { page = showsHandout ? 1 : document.selectedPages.first ?? 1 }
+        }
         HStack {
-            Stepper("\(unit.capitalized) \(page) of \(document.totalPages)", value: $page, in: 1...document.totalPages)
+            Stepper("\(displayUnit.capitalized) \(page) of \(displayCount)", value: $page, in: 1...max(1, displayCount))
             Spacer(minLength: 10)
-            if document.selectedPages.contains(page) {
+            if showsHandout {
+                Text("\(document.selectedPages.count) slides")
+            } else if document.selectedPages.contains(page) {
                 Label("Included", systemImage: "checkmark.circle")
             } else {
                 Text("Outside selected range")
             }
         }
         .font(.callout)
-        if let rendered = try? OfficePDF.renderedPage(document, page: page) {
+        if let rendered = try? OfficePDF.renderedPage(document, page: page, handout: showsHandout) {
             Image(decorative: rendered.image, scale: 1)
                 .resizable().scaledToFit().frame(maxWidth: 420, maxHeight: 270)
-                .accessibilityLabel("Preview of \(unit) \(page)")
+                .accessibilityLabel("Preview of \(displayUnit) \(page)")
             Text("\(Double(rendered.size.width).formatted(.number.precision(.fractionLength(0...1)))) × \(Double(rendered.size.height).formatted(.number.precision(.fractionLength(0...1)))) pt")
                 .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
         }

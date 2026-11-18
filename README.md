@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 64 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 67 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -97,6 +97,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Web Page to PDF** previews an HTTP or HTTPS page and exports a continuous or paginated PDF. Paginated export supports paper, margins, and print backgrounds.
 - **Convert Documents** uses Pandoc and LibreOffice for supported conversion pairs, with text previews and batch filename templates. Plain-text export drops formatting and images.
 - **Word to PDF** uses LibreOffice to preview the source layout and export selected pages with searchable text and links. Page setup and font substitution follow LibreOffice.
+- **PowerPoint to PDF** previews selectable slides, including hidden slides when requested, and exports individual slides or 2-, 4-, or 6-slide handouts. Videos and animations export as static slides.
 - **Markdown to PDF** previews GFM Markdown and exports searchable, paginated PDF with theme, paper, margin, and source-folder image options.
 - **Add Password** encrypts a PDF copy with AES-256 and controls printing and copying permissions. **Remove Password** previews the PDF after unlocking it and saves a decrypted copy. Both use a selected qpdf executable.
 
@@ -114,9 +115,11 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 
 - **QR Code** generates codes for text, web links, and Wi-Fi networks, and reads codes from images.
 - **Batch Rename** previews changes from find and replace, case conversion, numbering, and date rules. Apply the preview in place and undo the last batch from the tool.
+- **Find Duplicates** compares exact file contents inside chosen folders and lets you review copies before moving them to the system Trash.
 - **Keep Awake** prevents idle sleep for a chosen duration or until stopped, with an option to keep the display awake.
 - **JSON Formatter** validates, formats, and minifies JSON, with configurable indentation, key sorting, and duplicate-key warnings.
 - **Base64** encodes and decodes text or files as Base64, Base64URL, hex, or binary. Decoded bytes can be exported directly.
 - **Hash Generator** calculates MD5, SHA-1, SHA-256, SHA-384, and SHA-512 digests for text and files and compares them with supplied checksums.
 - **UUID Generator** generates v4 and v7 identifiers in batches and inspects UUID variants, versions, and v7 timestamps.
+- **Timestamp Converter** converts Unix seconds, milliseconds, and microseconds and exposes both possible instants when a local clock repeats.
 - **Clean Links** previews the tracking parameters it removes and decodes supported redirects locally. It preserves unknown query fields, fragments, and recognized signed links.

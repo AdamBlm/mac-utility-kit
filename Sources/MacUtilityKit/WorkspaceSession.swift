@@ -18,6 +18,8 @@ struct ToolDraft {
     var hashGenerator = HashGeneratorDraft()
     var uuidGenerator = UUIDGeneratorDraft()
     var cleanLinks = CleanLinksDraft()
+    var timestampConverter = TimestampConverterDraft()
+    var findDuplicates = FindDuplicatesDraft()
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()
     var textToSpeech = TextToSpeechDraft()
