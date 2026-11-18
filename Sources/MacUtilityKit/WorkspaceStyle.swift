@@ -79,7 +79,7 @@ extension Tool {
         case .mergePDFs: "document.on.document"
         case .splitPDF: "scissors"
         case .organizePDF: "square.grid.2x2"
-        case .deletePDFPages: "document.badge.minus"
+        case .deletePDFPages: "rectangle.badge.minus"
         case .compressVideo: "film"
         case .convertVideo: "arrow.triangle.2.circlepath"
         case .mediaInfo: "info.circle"
