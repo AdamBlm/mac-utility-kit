@@ -110,6 +110,8 @@ struct ToolWorkspace: View {
                             imageConversionControls()
                         case .rotateImages:
                             ImageRotateControls(inputs: draft.inputs, options: $draft.options.rotation)
+                        case .beautifyScreenshot:
+                            BeautifyScreenshotSettings(input: draft.inputs.first, options: $draft.options.beautify)
                         case .compressImages:
                             imageCompressionControls()
                         case .removeMetadata:

@@ -85,6 +85,7 @@ public struct ToolOptions: Sendable {
     public var audioCleanup = AudioCleanupOptions()
     public var imageConversion = ImageConversionOptions()
     public var rotation = ImageRotateOptions()
+    public var beautify = BeautifyScreenshotOptions()
     public var imageCompression = ImageCompressionOptions()
     public var imageMetadata = ImageMetadataOptions()
     public var imageMagickExecutable: URL?

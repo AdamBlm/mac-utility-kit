@@ -133,6 +133,7 @@ public enum ToolRunner {
                     case .cleanUpAudio: options.audioCleanup.output.rawValue
                     case .convertImages: options.imageConversion.format.rawValue
                     case .rotateImages: try ImageRotate.outputExtension(input, options: options.rotation)
+                    case .beautifyScreenshot: options.beautify.format.fileExtension
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
@@ -224,6 +225,11 @@ public enum ToolRunner {
                         summaries.append(summary)
                     case .rotateImages:
                         summaries.append(try ImageRotate.export(input, to: output, options: options.rotation))
+                    case .beautifyScreenshot:
+                        let summary = try await BeautifyScreenshot.export(input, to: output, options: options.beautify) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
                     case .convertImages:
                         summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
                     case .compressImages:
