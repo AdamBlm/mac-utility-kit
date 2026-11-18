@@ -53,6 +53,9 @@ struct ToolWorkspace: View {
         case .timestampConverter: TimestampConverterView(draft: $draft.timestampConverter)
         case .loremIpsum: LoremIpsumView(draft: $draft.loremIpsum)
         case .unicodeInspector: UnicodeInspectorView(draft: $draft.unicodeInspector)
+        case .diffChecker: DiffCheckerView(draft: $draft.diffChecker)
+        case .passwordGenerator: PasswordGeneratorView()
+        case .batteryHealth: BatteryHealthView()
         case .findDuplicates: FindDuplicatesView(draft: $draft.findDuplicates)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
@@ -219,7 +222,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .findDuplicates, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .passwordGenerator, .batteryHealth, .findDuplicates, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

@@ -21,6 +21,7 @@ struct ToolDraft {
     var timestampConverter = TimestampConverterDraft()
     var loremIpsum = LoremIpsumDraft()
     var unicodeInspector = UnicodeInspectorDraft()
+    var diffChecker = DiffCheckerDraft()
     var findDuplicates = FindDuplicatesDraft()
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()

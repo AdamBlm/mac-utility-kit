@@ -9,6 +9,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_directory/MacUtilityKit" "$app/Contents/MacOS/"
 cp licenses/swift-cmark-COPYING.txt "$app/Contents/Resources/"
 cp licenses/Unicode-License-V3.txt Sources/UtilityCore/Resources/confusables.txt "$app/Contents/Resources/"
+cp licenses/EFF-Wordlist-Attribution.txt Sources/UtilityCore/Resources/eff_large_wordlist.txt "$app/Contents/Resources/"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">

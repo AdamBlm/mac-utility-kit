@@ -12,7 +12,7 @@ let package = Package(
         .target(name: "UtilityCore", dependencies: [
             .product(name: "cmark-gfm", package: "swift-cmark"),
             .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
-        ], resources: [.copy("Resources/confusables.txt")]),
+        ], resources: [.copy("Resources/confusables.txt"), .copy("Resources/eff_large_wordlist.txt")]),
         .executableTarget(name: "MacUtilityKit", dependencies: ["UtilityCore"]),
         .testTarget(name: "UtilityCoreTests", dependencies: ["UtilityCore"])
     ]

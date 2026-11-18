@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 70 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 73 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -126,3 +126,6 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Clean Links** previews the tracking parameters it removes and decodes supported redirects locally. It preserves unknown query fields, fragments, and recognized signed links.
 - **Lorem Ipsum** generates a specified number of words, sentences, or paragraphs and exports plain text, HTML, or Markdown.
 - **Unicode Inspector** shows graphemes, scalar names, invisible characters, and possible lookalikes from Unicode 18.0.0. NFC and NFD can be previewed before applying.
+- **Battery Health** reports available charge, power source, cycles, condition, capacity, and connected Bluetooth accessory readings.
+- **Diff Checker** compares two UTF-8 texts or files, with inline and side-by-side views, word changes, and navigation.
+- **Password Generator** generates random passwords or EFF-wordlist passphrases locally, with configurable rules and a randomness estimate. Generated secrets stay in the current view until copied or cleared.

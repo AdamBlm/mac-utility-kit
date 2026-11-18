@@ -1,0 +1,6 @@
+EFF Large Wordlist for Random Passphrases by Joseph Bonneau and the Electronic Frontier Foundation.
+Source: https://www.eff.org/files/2016/07/18/eff_large_wordlist.txt
+Article: https://www.eff.org/deeplinks/2016/07/new-wordlists-random-passphrases
+Distributed unchanged under Creative Commons Attribution 4.0 International.
+License: https://creativecommons.org/licenses/by/4.0/
+EFF copyright policy: https://www.eff.org/copyright
