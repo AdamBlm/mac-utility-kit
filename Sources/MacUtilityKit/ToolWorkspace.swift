@@ -397,11 +397,20 @@ struct ToolWorkspace: View {
                                 if tool == .mergePDFs || tool == .imagesToPDF {
                                     Button("Move up", systemImage: "arrow.up") {
                                         draft.moveInputUp(at: index)
-                                    }.labelStyle(.iconOnly).disabled(index == 0)
+                                    }
+                                    .labelStyle(.iconOnly)
+                                    .accessibilityLabel("Move \(input.lastPathComponent) up")
+                                    .accessibilityHint("Source \(index + 1) of \(draft.inputs.count)")
+                                    .help("Move source up")
+                                    .disabled(index == 0)
                                 }
                                 Button("Remove", systemImage: "minus.circle") {
                                     draft.removeInput(at: index)
-                                }.labelStyle(.iconOnly)
+                                }
+                                .labelStyle(.iconOnly)
+                                .accessibilityLabel("Remove \(input.lastPathComponent)")
+                                .accessibilityHint("Source \(index + 1) of \(draft.inputs.count)")
+                                .help("Remove source")
                             }
                             if tool == .mergePDFs {
                                 pageControls(input, index: index, tool: tool)
