@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 24 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 26 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -30,6 +30,9 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the external Media Info integration fixture.
 
 
+- **Change Speed** adjusts video timing with optional pitch preservation. Pitch-preserving export uses AVFoundation. Changing pitch along with speed requires a selected FFmpeg executable for clips with audio.
+- **Extract Frames** scrubs and previews source video, then exports selected timestamps or a fixed interval to PNG, JPEG, or HEIC. It uses the video formats supported by AVFoundation.
+
 ### Image tools
 
 - **Convert Images** exports the primary image to JPEG, PNG, HEIC, or TIFF using Image I/O. A user-selected ImageMagick executable adds WebP. The tool applies orientation and can preserve supported metadata or flatten transparency against a chosen color.
@@ -38,6 +41,10 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 Set `MAC_UTILITY_EXIFTOOL_TEST` to a local ExifTool executable to run its integration fixture.
 
+
+### PDF reader
+
+Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom, print, or send the source to a document tool. PDF output and merge previews can open directly in the reader.
 
 ### PDF page tools
 

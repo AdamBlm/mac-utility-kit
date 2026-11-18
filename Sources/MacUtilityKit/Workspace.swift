@@ -117,7 +117,8 @@ struct Workspace: View {
                             set: { session.drafts[selection] = $0 }
                         ),
                         session: session,
-                        keepAwakeController: keepAwakeController
+                        keepAwakeController: keepAwakeController,
+                        openOutput: openOutput
                     )
                     .id(selection)
                 }
@@ -144,7 +145,7 @@ struct Workspace: View {
             }
         }
         .onChange(of: session.previewURL) { _, url in
-            if let url { NSWorkspace.shared.open(url) }
+            if let url { openOutput(url) }
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(palette.accent)
@@ -152,6 +153,15 @@ struct Workspace: View {
 
     private var readerButton: some View {
         sidebarButton("PDF Reader", icon: "book", destination: .pdfReader)
+    }
+
+    private func openOutput(_ url: URL) {
+        if url.pathExtension.lowercased() == "pdf" {
+            readerSource = url
+            selection = .pdfReader
+        } else {
+            NSWorkspace.shared.open(url)
+        }
     }
 
     private func handoffPDF(to tool: Tool, input: URL) {

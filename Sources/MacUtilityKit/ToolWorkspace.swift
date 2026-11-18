@@ -7,6 +7,7 @@ struct ToolWorkspace: View {
     @Binding var draft: ToolDraft
     let session: WorkspaceSession
     let keepAwakeController: KeepAwakeController
+    let openOutput: (URL) -> Void
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var comparison: ImageComparisonResult?
@@ -93,6 +94,10 @@ struct ToolWorkspace: View {
                             videoControls()
                         case .convertVideo:
                             conversionControls()
+                        case .changeSpeed:
+                            ChangeSpeedControls(inputs: draft.inputs, options: $draft.options.speed)
+                        case .extractFrames:
+                            FrameExtractionSettings(input: draft.inputs.first, options: $draft.options.frames)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:
@@ -156,7 +161,7 @@ struct ToolWorkspace: View {
                                     if let pair = report.imageComparisons.first(where: { $0.output == output }) {
                                         Button("Compare") { comparison = pair }
                                     }
-                                    Button("Open") { NSWorkspace.shared.open(output) }
+                                    Button("Open") { openOutput(output) }
                                     Button("Reveal") {
                                         NSWorkspace.shared.activateFileViewerSelecting([output])
                                     }

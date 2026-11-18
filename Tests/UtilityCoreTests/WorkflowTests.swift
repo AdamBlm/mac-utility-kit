@@ -201,6 +201,29 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(report.summaries.count == 1)
 }
 
+@Test func frameExtractionPublishesNestedOutputsWithMixedBatchResults() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.mov")
+    try await writeVideoFixture(to: source)
+    let missing = folder.appendingPathComponent("missing.mov")
+    var options = ToolOptions()
+    options.frames.timestamps = [0, 0.25]
+    let report = try await ToolRunner.run(
+        .extractFrames, inputs: [missing, source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.hasPrefix("missing.mov") == true)
+    #expect(report.outputs.count == 2)
+    for output in report.outputs {
+        #expect(output.deletingLastPathComponent().lastPathComponent == "2 - source")
+        #expect(CGImageSourceCreateWithURL(output as CFURL, nil) != nil)
+    }
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+    #expect(!names.contains { $0.hasPrefix(".MacUtilityKit-") })
+}
+
 @Test func balancedKeeps4KResolutionInExportAndSample() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

@@ -96,10 +96,27 @@ public enum ToolRunner {
                 try Task.checkCancellation()
                 var stagedOutput: URL?
                 do {
+                    if tool == .extractFrames {
+                        let folder = staging.appendingPathComponent(
+                            "\(index + 1) - \(input.deletingPathExtension().lastPathComponent)", isDirectory: true
+                        )
+                        try manager.createDirectory(at: folder, withIntermediateDirectories: false)
+                        stagedOutput = folder
+                        let frames = try await FrameExtraction.export(input, into: folder, options: options.frames) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        outputs.append(contentsOf: frames.outputs)
+                        failures.append(contentsOf: frames.failures.map { "\(input.lastPathComponent) — \($0)" })
+                        if frames.outputs.isEmpty { try manager.removeItem(at: folder) }
+                        await progress(Double(index + 1) / Double(inputs.count))
+                        continue
+                    }
                     let ext = switch tool {
                     case .resizeImages: options.imageFormat.rawValue
                     case .compressVideo: options.videoFormat.rawValue
                     case .convertVideo: options.conversion.format.rawValue
+                    case .changeSpeed: "mp4"
+                    case .extractFrames: throw ToolError.invalid("Frame extraction requires an output directory.")
                     case .mediaInfo: "json"
                     case .extractAudio: options.extraction.format.rawValue
                     case .convertImages: options.imageConversion.format.rawValue
@@ -124,6 +141,11 @@ public enum ToolRunner {
                         summaries.append(summary)
                     case .convertVideo:
                         let summary = try await VideoConversion.convert(input, to: output, options: options.conversion) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .changeSpeed:
+                        let summary = try await ChangeSpeed.export(input, to: output, options: options.speed) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
@@ -168,7 +190,7 @@ public enum ToolRunner {
                         try Data(extracted.text.utf8).write(to: output)
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
-                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages,
+                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames,
                          .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator:
                         break
                     }
@@ -186,7 +208,11 @@ public enum ToolRunner {
         guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], textExtractions: [], inspections: [], imageComparisons: [], metadataResults: []) }
         try manager.moveItem(at: staging, to: result)
         return JobReport(
-            outputs: outputs.map { result.appendingPathComponent($0.lastPathComponent) },
+            outputs: outputs.map {
+                $0.pathComponents.dropFirst(staging.pathComponents.count).reduce(result) { directory, component in
+                    directory.appendingPathComponent(component)
+                }
+            },
             failures: failures, summaries: summaries, textExtractions: textExtractions, inspections: inspections,
             imageComparisons: comparisons, metadataResults: metadataResults
         )

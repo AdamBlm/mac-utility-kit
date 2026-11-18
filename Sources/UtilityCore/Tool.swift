@@ -22,6 +22,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
+    case changeSpeed, extractFrames
 
     public var usesInteractiveEditor: Bool {
         switch self {
@@ -60,6 +61,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .jsonFormatter: "JSON Formatter"
         case .base64: "Base64"
         case .hashGenerator: "Hash Generator"
+        case .changeSpeed: "Change Speed"
+        case .extractFrames: "Extract Frames"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
@@ -77,7 +80,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
-        case .compressVideo, .convertVideo, .mediaInfo: .video
+        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames: .video
         case .extractAudio: .audio
         }
     }
@@ -92,7 +95,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .jsonFormatter: [.json]
         case .keepAwake: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
-        case .compressVideo, .convertVideo, .extractAudio: [.movie]
+        case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames: [.movie]
         case .mediaInfo: [.movie, .audio]
         }
     }

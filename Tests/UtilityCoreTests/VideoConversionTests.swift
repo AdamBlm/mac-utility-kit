@@ -128,7 +128,7 @@ private func conversionFolder() throws -> URL {
     return folder
 }
 
-private func conversionFixture(in folder: URL) async throws -> URL {
+func conversionFixture(in folder: URL) async throws -> URL {
     let url = folder.appendingPathComponent("fixture.mov")
     let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
     let width = 128
