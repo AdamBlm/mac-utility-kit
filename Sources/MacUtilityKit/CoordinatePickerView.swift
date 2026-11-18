@@ -14,27 +14,28 @@ struct CoordinateMarker: Identifiable {
     let coordinate: MapCoordinate
 }
 
+private struct CoordinatePlaceResult: Identifiable, Sendable {
+    let id = UUID()
+    let label: String
+    let point: MapCoordinate
+}
+
+
 struct CoordinatePickerView: View {
     @Binding var draft: CoordinatePickerDraft
     @State private var camera = MapCameraPosition.automatic
     @State private var selectedMarker: UUID?
     @State private var issue: String?
     @State private var pendingSearch: String?
-    @State private var found: [SearchResult] = []
-    @State private var batchRequest: [String]?
-    @State private var batchResult: [BatchResult] = []
+    @State private var found: [CoordinatePlaceResult] = []
+    @State private var batchRequest: BatchRequest?
+    @State private var batchTask: Task<Void, Never>?
+    @State private var batchResult: [CoordinateBatchLookup.Row] = []
+    @State private var batchIssue: String?
 
-    private struct SearchResult: Identifiable {
+    private struct BatchRequest {
         let id = UUID()
-        let label: String
-        let point: MapCoordinate
-    }
-
-    private struct BatchResult: Identifiable {
-        let id: Int
-        let input: String
-        let point: MapCoordinate?
-        let issue: String?
+        let entries: [CoordinateBatchLookup.Entry]
     }
 
     var body: some View {
@@ -120,22 +121,31 @@ struct CoordinatePickerView: View {
                 TextEditor(text: $draft.batch)
                     .frame(minHeight: 72)
                     .accessibilityLabel("Coordinates or place names, one per line")
+                    .disabled(batchRequest != nil)
                 Button("Look Up List", systemImage: "list.bullet") { startBatch() }
                     .disabled(batchRequest != nil)
                 if batchRequest != nil {
-                    Button("Cancel Lookup") { batchRequest = nil }
+                    Button("Cancel Lookup") { batchTask?.cancel() }
+                        .disabled(batchTask?.isCancelled == true)
                 }
+                if let batchIssue { Text(batchIssue).font(.callout).foregroundStyle(.secondary) }
                 ForEach(batchResult) { row in
                     HStack {
                         VStack(alignment: .leading) {
-                            Text(row.input)
-                            Text(row.point?.decimal ?? row.issue ?? "No matching place")
-                                .font(.callout).foregroundStyle(.secondary)
+                            Text("Line \(row.line) · \(row.input)").lineLimit(2)
+                            switch row.outcome {
+                            case .accepted(let point):
+                                Text(point.decimal).font(.callout).foregroundStyle(.secondary)
+                            case .rejected(let reason):
+                                Text(reason.rawValue).font(.callout).foregroundStyle(.secondary)
+                            }
                         }
                         Spacer()
-                        if let point = row.point {
-                            Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(point.decimal) }
-                                .labelStyle(.iconOnly)
+                        if case .accepted(let point) = row.outcome {
+                            Button("Copy coordinates on line \(row.line)", systemImage: "doc.on.doc") {
+                                DeveloperToolFiles.copy(point.decimal)
+                            }
+                            .labelStyle(.iconOnly)
                         }
                     }
                 }
@@ -145,9 +155,9 @@ struct CoordinatePickerView: View {
             guard let term = pendingSearch else { return }
             await runSearch(term)
         }
-        .task(id: batchRequest) {
-            guard let batchRequest else { return }
-            await runBatch(batchRequest)
+        .onChange(of: draft.batch) {
+            batchResult.removeAll()
+            batchIssue = nil
         }
         .onChange(of: draft.search) {
             pendingSearch = nil
@@ -155,7 +165,7 @@ struct CoordinatePickerView: View {
         }
         .onDisappear {
             pendingSearch = nil
-            batchRequest = nil
+            batchTask?.cancel()
         }
     }
 
@@ -233,51 +243,93 @@ struct CoordinatePickerView: View {
     }
 
     private func startBatch() {
-        let lines = draft.batch.split(whereSeparator: \.isNewline).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard !lines.isEmpty, lines.count <= 20, lines.allSatisfy({ $0.utf8.count <= 512 }) else {
-            issue = "Enter up to 20 coordinates or place names, one per line."
-            return
-        }
-        issue = nil
+        guard batchTask == nil else { return }
         batchResult = []
-        batchRequest = lines
-    }
-
-    private func runBatch(_ request: [String]) async {
-        for (index, line) in request.enumerated() {
-            guard !Task.isCancelled, batchRequest == request else { return }
-            let row: BatchResult
-            if let coordinate = try? MapCoordinate.parse(line) {
-                row = BatchResult(id: index, input: line, point: coordinate, issue: nil)
-            } else if line.contains("°") || line.wholeMatch(of: /[+−\-]?[0-9.]+\s*[,; ]\s*[+−\-]?[0-9.]+/) != nil {
-                row = BatchResult(id: index, input: line, point: nil, issue: "Invalid latitude or longitude")
-            } else {
-                do {
-                    let matches = try await lookup(line)
-                    row = BatchResult(id: index, input: line, point: matches.first?.point, issue: nil)
-                } catch {
-                    row = BatchResult(id: index, input: line, point: nil, issue: "Map search unavailable")
-                }
-            }
-            guard !Task.isCancelled, batchRequest == request else { return }
-            batchResult.append(row)
+        batchIssue = nil
+        do {
+            let request = BatchRequest(entries: try CoordinateBatchLookup.prepare(draft.batch))
+            batchRequest = request
+            batchTask = Task { await runBatch(request) }
+        } catch {
+            batchIssue = error.localizedDescription
         }
-        if batchRequest == request { batchRequest = nil }
     }
 
-    private func lookup(_ term: String) async throws -> [SearchResult] {
+    private func runBatch(_ request: BatchRequest) async {
+        defer {
+            if batchRequest?.id == request.id {
+                batchRequest = nil
+                batchTask = nil
+            }
+        }
+        for entry in request.entries {
+            guard batchRequest?.id == request.id, !Task.isCancelled else { return }
+            do {
+                let row = try await CoordinateBatchLookup.resolve(entry) { term in
+                    do {
+                        return try await lookup(term).first?.point
+                    } catch let error as MKError where error.code == .placemarkNotFound {
+                        return nil
+                    }
+                }
+                guard batchRequest?.id == request.id, !Task.isCancelled else { return }
+                batchResult.append(row)
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func lookup(_ term: String) async throws -> [CoordinatePlaceResult] {
         let request = MKLocalSearch.Request()
         request.naturalLanguageQuery = term
-        let lookup = MKLocalSearch(request: request)
-        let response = try await lookup.start()
-        try Task.checkCancellation()
-        return response.mapItems.prefix(8).compactMap { item in
-            let coordinate: CLLocationCoordinate2D
-            if #available(macOS 26.0, *) { coordinate = item.location.coordinate }
-            else { coordinate = item.placemark.coordinate }
-            guard let point = try? MapCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude) else { return nil }
-            return SearchResult(label: item.name ?? point.decimal, point: point)
+        let lookup = NativeMapSearch(request: request)
+        let response = try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            return try await lookup.start()
+        } onCancel: {
+            Task { @MainActor in lookup.cancel() }
         }
+        try Task.checkCancellation()
+        return response
+    }
+}
+
+@MainActor
+private final class NativeMapSearch {
+    private let search: MKLocalSearch
+    private var pending: CheckedContinuation<[CoordinatePlaceResult], any Error>?
+
+    init(request: MKLocalSearch.Request) {
+        search = MKLocalSearch(request: request)
+    }
+
+    func start() async throws -> [CoordinatePlaceResult] {
+        try await withCheckedThrowingContinuation { continuation in
+            pending = continuation
+            search.start { [weak self] response, error in
+                guard let self, let pending else { return }
+                self.pending = nil
+                if let response {
+                    let results: [CoordinatePlaceResult] = response.mapItems.prefix(8).compactMap { item in
+                        let coordinate: CLLocationCoordinate2D
+                        if #available(macOS 26.0, *) { coordinate = item.location.coordinate }
+                        else { coordinate = item.placemark.coordinate }
+                        guard let point = try? MapCoordinate(latitude: coordinate.latitude, longitude: coordinate.longitude) else { return nil }
+                        return CoordinatePlaceResult(label: item.name ?? point.decimal, point: point)
+                    }
+                    pending.resume(returning: results)
+                } else {
+                    pending.resume(throwing: error ?? ToolError.invalid("No search response was returned."))
+                }
+            }
+        }
+    }
+
+    func cancel() {
+        let continuation = pending
+        pending = nil
+        search.cancel()
+        continuation?.resume(throwing: CancellationError())
     }
 }
