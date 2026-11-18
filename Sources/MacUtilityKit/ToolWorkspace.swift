@@ -55,6 +55,8 @@ struct ToolWorkspace: View {
                 || trimReview?.permitsExport != true
         case .videoToGIF:
             draft.options.videoGIF.ffmpegExecutable == nil
+        case .mergeVideos:
+            draft.inputs.count < 2
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .convertImages:
@@ -114,6 +116,8 @@ struct ToolWorkspace: View {
                             VideoGIFSettings(input: draft.inputs.first, options: $draft.options.videoGIF)
                         case .cropRotateVideo:
                             VideoCropControls(inputs: draft.inputs, options: $draft.options.crop)
+                        case .mergeVideos:
+                            VideoMergeControls(inputs: $draft.inputs, options: $draft.options.videoMerge)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:

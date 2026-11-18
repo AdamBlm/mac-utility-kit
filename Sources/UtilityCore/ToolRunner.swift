@@ -83,6 +83,11 @@ public enum ToolRunner {
             let output = staging.appendingPathComponent(name.lowercased().hasSuffix(".pdf") ? name : name + ".pdf")
             try await PDFOperations.merge(inputs, ranges: options.pageRanges, passwords: options.pdfPasswords, into: output, progress: progress)
             outputs.append(output)
+        } else if tool == .mergeVideos {
+            let output = staging.appendingPathComponent("Merged.\(options.videoMerge.format.rawValue)")
+            let summary = try await VideoMerge.export(inputs, to: output, options: options.videoMerge, progress: progress)
+            outputs = [output]
+            summaries = [summary]
         } else if tool == .splitPDF {
             outputs = try await PDFPageEditing.split(inputs[0], into: staging, options: options.pdfSplit, progress: progress)
         } else if tool == .imagesToPDF {
@@ -117,6 +122,7 @@ public enum ToolRunner {
                     case .convertVideo: options.conversion.format.rawValue
                     case .changeSpeed, .resizeVideo, .cropRotateVideo: "mp4"
                     case .videoToGIF: "gif"
+                    case .mergeVideos: options.videoMerge.format.rawValue
                     case .trimVideo: options.trim.fileExtension
                     case .muteVideo: try MuteVideo.outputExtension(input, options: options.mute)
                     case .extractFrames: throw ToolError.invalid("Frame extraction requires an output directory.")
@@ -218,7 +224,7 @@ public enum ToolRunner {
                         try Data(extracted.text.utf8).write(to: output)
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
-                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames,
+                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames, .mergeVideos,
                          .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator:
                         break
                     }

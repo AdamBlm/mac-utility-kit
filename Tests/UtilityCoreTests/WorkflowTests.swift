@@ -272,6 +272,32 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(FileManager.default.fileExists(atPath: source.path))
 }
 
+@Test func mergeVideosPublishesOneOutputAndRejectsABrokenSequence() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appendingPathComponent("first.mov")
+    let second = folder.appendingPathComponent("second.mov")
+    try await writeVideoFixture(to: first, frames: 12)
+    try await writeVideoFixture(to: second, width: 320, height: 240, frames: 18)
+    let report = try await ToolRunner.run(
+        .mergeVideos, inputs: [first, second], destination: folder, imageSize: 0
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    #expect(report.outputs.count == 1)
+    let output = try #require(report.outputs.first)
+    let asset = AVURLAsset(url: output)
+    #expect(try await asset.load(.isPlayable))
+    let expected = try await VideoMerge.plan([first, second], options: VideoMergeOptions()).duration
+    #expect(abs(try await asset.load(.duration).seconds - expected) < 0.075)
+
+    let names = try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
+    let missing = folder.appendingPathComponent("missing.mov")
+    await #expect(throws: (any Error).self) {
+        try await ToolRunner.run(.mergeVideos, inputs: [first, missing], destination: folder, imageSize: 0) { _ in }
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == names)
+}
+
 @Test func balancedKeeps4KResolutionInExportAndSample() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

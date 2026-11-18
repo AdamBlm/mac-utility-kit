@@ -99,6 +99,7 @@ extension Tool {
         case .resizeVideo: "arrow.up.left.and.arrow.down.right"
         case .videoToGIF: "photo.stack"
         case .cropRotateVideo: "crop.rotate"
+        case .mergeVideos: "film.stack"
         case .compressVideo: "film"
         case .convertVideo: "arrow.triangle.2.circlepath"
         case .mediaInfo: "info.circle"
@@ -135,6 +136,7 @@ extension Tool {
         case .resizeVideo: "Resize a video and preview how it fits the new frame."
         case .videoToGIF: "Turn a selected video segment into an animated GIF."
         case .cropRotateVideo: "Crop, rotate, and mirror video with a framing preview."
+        case .mergeVideos: "Join video clips in the order you choose."
         case .compressVideo: "Make videos smaller while keeping their resolution."
         case .convertVideo: "Save a video in another format."
         case .mediaInfo: "Inspect the streams and properties of a media file."
@@ -151,7 +153,7 @@ extension Tool {
         case .extractText: "or drop images and PDFs anywhere in this pane"
         case .wordCounter: "or drop a text file anywhere in this pane"
         case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: ""
-        case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo: "or drop videos anywhere in this pane"
+        case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
         case .mediaInfo: "or drop audio or video anywhere in this pane"
         }
@@ -166,7 +168,7 @@ extension Tool {
         case .extractText: "Drop images or PDFs here"
         case .wordCounter: "Drop a text file here"
         case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: ""
-        case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo: "Drop videos here"
+        case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"
         case .mediaInfo: "Drop media files here"
         }
