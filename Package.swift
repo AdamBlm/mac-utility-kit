@@ -9,7 +9,11 @@ let package = Package(
         .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.7.0"),
     ],
     targets: [
+        .target(name: "CSystemArchive", linkerSettings: [.linkedLibrary("archive")]),
+        .target(name: "CSystemRegex", linkerSettings: [.linkedLibrary("icucore")]),
         .target(name: "UtilityCore", dependencies: [
+            "CSystemRegex",
+            "CSystemArchive",
             .product(name: "cmark-gfm", package: "swift-cmark"),
             .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
         ], resources: [.copy("Resources/confusables.txt"), .copy("Resources/eff_large_wordlist.txt")]),

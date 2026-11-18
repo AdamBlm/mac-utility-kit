@@ -31,6 +31,11 @@ public enum JSONIndentation: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum JSONFormatter {
+    static func parsedValue(_ text: String) throws -> JSONNode {
+        var parser = Parser(bytes: Array(text.utf8))
+        return try parser.parse()
+    }
+
     public static func format(
         _ text: String, indentation: JSONIndentation = .twoSpaces, sortKeys: Bool = false
     ) throws -> JSONFormatResult {
@@ -42,18 +47,18 @@ public enum JSONFormatter {
     }
 }
 
-private struct Member {
+struct JSONMember {
     let rawKey: String
     let key: [UInt8]
-    let value: Node
+    let value: JSONNode
 }
 
-private enum Node {
+enum JSONNode {
     case token(String)
-    case array([Node])
-    case object([Member])
+    case array([JSONNode])
+    case object([JSONMember])
 
-    func write(to output: inout String, indentation: String?, sortKeys: Bool, depth: Int) throws {
+    fileprivate func write(to output: inout String, indentation: String?, sortKeys: Bool, depth: Int) throws {
         try Task.checkCancellation()
         switch self {
         case .token(let raw): output += raw
@@ -95,14 +100,14 @@ private struct Parser {
 
     private var current: UInt8? { offset < bytes.count ? bytes[offset] : nil }
 
-    mutating func parse() throws -> Node {
+    mutating func parse() throws -> JSONNode {
         let root = try value(depth: 0)
         skipWhitespace()
         guard current == nil else { throw error("Unexpected content after the JSON value") }
         return root
     }
 
-    private mutating func value(depth: Int) throws -> Node {
+    private mutating func value(depth: Int) throws -> JSONNode {
         try Task.checkCancellation()
         guard depth <= 256 else { throw error("JSON exceeds the supported nesting depth of 256") }
         skipWhitespace()
@@ -118,11 +123,11 @@ private struct Parser {
         }
     }
 
-    private mutating func object(depth: Int) throws -> Node {
+    private mutating func object(depth: Int) throws -> JSONNode {
         offset += 1
         skipWhitespace()
         if consume(125) { return .object([]) }
-        var members = [Member]()
+        var members = [JSONMember]()
         var seen = Set<[UInt8]>()
         repeat {
             skipWhitespace()
@@ -132,18 +137,18 @@ private struct Parser {
             if !seen.insert(key).inserted { duplicateKeys.append(decoded) }
             skipWhitespace()
             guard consume(58) else { throw error("Expected a colon after the object key") }
-            members.append(Member(rawKey: raw, key: key, value: try value(depth: depth + 1)))
+            members.append(JSONMember(rawKey: raw, key: key, value: try value(depth: depth + 1)))
             skipWhitespace()
         } while consume(44)
         guard consume(125) else { throw error("Expected a comma or closing brace") }
         return .object(members)
     }
 
-    private mutating func array(depth: Int) throws -> Node {
+    private mutating func array(depth: Int) throws -> JSONNode {
         offset += 1
         skipWhitespace()
         if consume(93) { return .array([]) }
-        var elements = [Node]()
+        var elements = [JSONNode]()
         repeat {
             elements.append(try value(depth: depth + 1))
             skipWhitespace()
@@ -186,7 +191,7 @@ private struct Parser {
         throw error("Unterminated string")
     }
 
-    private mutating func literal(_ word: String) throws -> Node {
+    private mutating func literal(_ word: String) throws -> JSONNode {
         for byte in word.utf8 {
             guard consume(byte) else { throw error("Expected \(word)") }
         }

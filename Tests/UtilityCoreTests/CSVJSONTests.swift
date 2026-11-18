@@ -1,0 +1,64 @@
+import Foundation
+import Testing
+import UtilityCore
+
+struct CSVJSONTests {
+    @Test func csvDecodesAndRoundTripsQuotedUnicodeAndEmptyFields() throws {
+        let input = "\u{FEFF}code,note,tail\r\n001,\"é,\"\"🙂\"\"\r\npart\","
+        let json = try CSVJSON.convert(input, direction: .csvToJSON)
+        #expect(json.columns == ["code", "note", "tail"])
+        #expect(json.rows == [["001", "é,\"🙂\"\r\npart", ""]])
+        let decoded = try JSONDecoder().decode([[String: String]].self, from: Data(json.output.utf8))
+        #expect(decoded.first?["code"] == "001")
+        #expect(decoded.first?["tail"] == "")
+        let csv = try CSVJSON.convert(json.output, direction: .jsonToCSV)
+        #expect(csv.output == "code,note,tail\r\n001,\"é,\"\"🙂\"\"\r\npart\",\"\"\r\n")
+    }
+
+    @Test func preservesSingleEmptyRecordAndValidatesWidths() throws {
+        let json = try CSVJSON.convert("\"\"", direction: .csvToJSON, includesHeader: false)
+        #expect(json.rows == [[""]])
+        let csv = try CSVJSON.convert(json.output, direction: .jsonToCSV, includesHeader: false)
+        #expect(csv.output == "\"\"\r\n")
+        #expect(try CSVJSON.convert("a,b\n1,", direction: .csvToJSON).rows == [["1", ""]])
+        #expect(try CSVJSON.convert("a\n\nb", direction: .csvToJSON, includesHeader: false).rows == [["a"], [""], ["b"]])
+        expectIssue("a,b\none", direction: .csvToJSON, contains: "Row 2 has 1 fields")
+        expectIssue("a,b\none,\"unfinished", direction: .csvToJSON, contains: "row 2, field 2")
+        expectIssue("a,b\none,\"closed\"oops", direction: .csvToJSON, contains: "row 2, field 2")
+        expectIssue("a,a\n1,2", direction: .csvToJSON, contains: "Duplicate header")
+    }
+
+    @Test func supportsCustomDelimitersAndGFMCellEscapes() throws {
+        let input = "first;second\n\"a|b\";\"<x>&*z*\nrow\""
+        let markdown = try CSVJSON.convert(input, direction: .csvToMarkdown, delimiter: .semicolon)
+        #expect(markdown.output == "| first | second |\n| --- | --- |\n| a&#124;b | &#60;x&#62;&#38;&#42;z&#42;&#10;row |\n")
+        let markedPipe = try CSVJSON.convert("label\n|\u{301}", direction: .csvToMarkdown)
+        #expect(markedPipe.output.contains("&#124;\u{301}"))
+        let tabular = try CSVJSON.convert("x\t\"a\tb\"", direction: .csvToJSON, delimiter: .tab, includesHeader: false)
+        #expect(tabular.rows == [["x", "a\tb"]])
+        #expect(try CSVJSON.convert(tabular.output, direction: .jsonToCSV, delimiter: .pipe,
+                                    includesHeader: false).output == "x|a\tb\r\n")
+    }
+
+    @Test func jsonPreservesNumberLexemesAndHeaderOrder() throws {
+        let input = """
+        [{"z":1234567890123456789012345678901234567890,"a":null},
+         {"a":true,"z":1e-1234}]
+        """
+        let result = try CSVJSON.convert(input, direction: .jsonToCSV)
+        #expect(result.output == "z,a\r\n1234567890123456789012345678901234567890,\"\"\r\n1e-1234,true\r\n")
+        expectIssue("[{\"col\":1},{\"col\":{}}]", direction: .jsonToCSV, contains: "row 2, field \"col\"")
+        expectIssue("[{\"col\":1,\"col\":2}]", direction: .jsonToCSV, contains: "Duplicate field")
+        expectIssue("[{\"col\":1},{}]", direction: .jsonToCSV, contains: "row 2 is missing field")
+        expectIssue("[[1,2],[3]]", direction: .jsonToCSV, contains: "Row 2 has 1 fields")
+    }
+
+    private func expectIssue(_ input: String, direction: CSVJSON.Direction, contains text: String) {
+        do {
+            _ = try CSVJSON.convert(input, direction: direction)
+            Issue.record("Expected conversion to fail with \(text)")
+        } catch {
+            #expect(error.localizedDescription.contains(text), "\(error.localizedDescription)")
+        }
+    }
+}

@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 73 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 77 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -129,3 +129,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Battery Health** reports available charge, power source, cycles, condition, capacity, and connected Bluetooth accessory readings.
 - **Diff Checker** compares two UTF-8 texts or files, with inline and side-by-side views, word changes, and navigation.
 - **Password Generator** generates random passwords or EFF-wordlist passphrases locally, with configurable rules and a randomness estimate. Generated secrets stay in the current view until copied or cleared.
+- **Disk Speed Test** measures sequential reads and writes on a chosen volume in one or three passes, using temporary storage.
+- **Zip & Unzip** creates standard or AES-256 ZIPs and extracts selected items from ZIP, RAR, 7z, and TAR. Encrypted format support varies with macOS libarchive.
+- **Regex Tester** shows numbered and named ICU regex captures and previews replacements with bounded matching.
+- **CSV ↔ JSON** converts CSV to JSON or Markdown and flat JSON rows to CSV. CSV fields remain strings, and malformed records show their location.
