@@ -60,7 +60,7 @@ public enum DiffChecker {
 
         let beforeKeys = before.map { key($0, options: options) }
         let afterKeys = after.map { key($0, options: options) }
-        let lineChanges = changes(beforeKeys, afterKeys, maximumWork: 1_000_000)
+        let lineChanges = try lineChanges(beforeKeys, afterKeys)
         var rows: [Row] = []
         var changeStarts: [Int] = []
         var left = 0
@@ -116,6 +116,172 @@ public enum DiffChecker {
             options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX")
         ) : whitespaceAdjusted
         return Data(adjusted.utf8)
+    }
+
+    private struct LineSpan {
+        var left: Range<Int>
+        var right: Range<Int>
+        let depth: Int
+    }
+
+    private struct LineAnchor {
+        let left: Int
+        let right: Int
+        let unique: Bool
+    }
+
+    private struct AnchorChain {
+        let end: Int
+        let length: Int
+        let unique: Int
+
+        func precedes(_ other: Self) -> Bool {
+            length < other.length || (length == other.length && unique < other.unique)
+        }
+    }
+
+    // Like Git's patience diff, anchor shared lines in increasing order.
+    // Include repeated occurrences so a rare moved line cannot mask a long match.
+    private static func lineChanges(
+        _ lhs: [Data], _ rhs: [Data]
+    ) throws -> (removals: Set<Int>, insertions: Set<Int>, coarse: Bool) {
+        var pending = [LineSpan(left: lhs.indices, right: rhs.indices, depth: 0)]
+        var budget = 1_000_000
+        var removals: Set<Int> = []
+        var insertions: Set<Int> = []
+        var coarse = false
+        while var span = pending.popLast() {
+            try Task.checkCancellation()
+            while !span.left.isEmpty, !span.right.isEmpty,
+                  lhs[span.left.lowerBound] == rhs[span.right.lowerBound] {
+                span.left = span.left.dropFirst()
+                span.right = span.right.dropFirst()
+            }
+            while !span.left.isEmpty, !span.right.isEmpty,
+                  lhs[span.left.upperBound - 1] == rhs[span.right.upperBound - 1] {
+                span.left = span.left.dropLast()
+                span.right = span.right.dropLast()
+            }
+            if span.left.isEmpty || span.right.isEmpty {
+                removals.formUnion(span.left)
+                insertions.formUnion(span.right)
+                continue
+            }
+            if span.left.count == 1 {
+                let match = try firstMatch(lhs[span.left.lowerBound], in: rhs, range: span.right)
+                if match == nil { removals.formUnion(span.left) }
+                insertions.formUnion(span.right.lazy.filter { $0 != match })
+                continue
+            }
+            if span.right.count == 1 {
+                let match = try firstMatch(rhs[span.right.lowerBound], in: lhs, range: span.left)
+                if match == nil { insertions.formUnion(span.right) }
+                removals.formUnion(span.left.lazy.filter { $0 != match })
+                continue
+            }
+            let work = span.left.count * span.right.count
+            if work <= budget {
+                budget -= work
+                let diff = rhs[span.right].difference(from: lhs[span.left])
+                for case .remove(let index, _, _) in diff.removals {
+                    removals.insert(span.left.lowerBound + index)
+                }
+                for case .insert(let index, _, _) in diff.insertions {
+                    insertions.insert(span.right.lowerBound + index)
+                }
+                continue
+            }
+            let anchors = span.depth < 16 ? try sharedAnchors(lhs, rhs, span: span) : []
+            guard !anchors.isEmpty else {
+                removals.formUnion(span.left)
+                insertions.formUnion(span.right)
+                coarse = true
+                continue
+            }
+            var left = span.left.lowerBound
+            var right = span.right.lowerBound
+            var gaps: [LineSpan] = []
+            for anchor in anchors {
+                if left < anchor.left || right < anchor.right {
+                    gaps.append(LineSpan(left: left..<anchor.left, right: right..<anchor.right, depth: span.depth + 1))
+                }
+                left = anchor.left + 1
+                right = anchor.right + 1
+            }
+            if left < span.left.upperBound || right < span.right.upperBound {
+                gaps.append(LineSpan(left: left..<span.left.upperBound, right: right..<span.right.upperBound, depth: span.depth + 1))
+            }
+            pending.append(contentsOf: gaps.reversed())
+        }
+        return (removals, insertions, coarse)
+    }
+
+    private static func firstMatch(_ line: Data, in lines: [Data], range: Range<Int>) throws -> Int? {
+        for index in range {
+            if index.isMultiple(of: 512) { try Task.checkCancellation() }
+            if lines[index] == line { return index }
+        }
+        return nil
+    }
+
+    private static func sharedAnchors(_ lhs: [Data], _ rhs: [Data], span: LineSpan) throws -> [LineAnchor] {
+        var left: [Data: [Int]] = [:]
+        var right: [Data: [Int]] = [:]
+        for index in span.left {
+            if index.isMultiple(of: 512) { try Task.checkCancellation() }
+            left[lhs[index], default: []].append(index)
+        }
+        for index in span.right {
+            if index.isMultiple(of: 512) { try Task.checkCancellation() }
+            right[rhs[index], default: []].append(index)
+        }
+
+        // Pair repeated lines by occurrence order instead of building every
+        // possible pair. A moved unique line must not outrank a longer run.
+        var candidates: [LineAnchor] = []
+        for (key, indices) in left {
+            guard let matches = right[key] else { continue }
+            let unique = indices.count == 1 && matches.count == 1
+            for (left, right) in zip(indices, matches) {
+                candidates.append(LineAnchor(left: left, right: right, unique: unique))
+            }
+        }
+        return try increasingAnchors(candidates.sorted { $0.left < $1.left }, rightSpan: span.right)
+    }
+
+    private static func increasingAnchors(_ candidates: [LineAnchor], rightSpan: Range<Int>) throws -> [LineAnchor] {
+        guard !candidates.isEmpty else { return [] }
+        let empty = AnchorChain(end: -1, length: 0, unique: 0)
+        // A Fenwick tree stores the best increasing chain ending below each
+        // right-side index. Prefer more unique anchors only for equal lengths.
+        var chains = Array(repeating: empty, count: rightSpan.count + 1)
+        var best = empty
+        var previous = Array(repeating: -1, count: candidates.count)
+        for (index, anchor) in candidates.enumerated() {
+            if index.isMultiple(of: 512) { try Task.checkCancellation() }
+            let coordinate = anchor.right - rightSpan.lowerBound + 1
+            var prefix = coordinate - 1
+            var prior = empty
+            while prefix > 0 {
+                if prior.precedes(chains[prefix]) { prior = chains[prefix] }
+                prefix -= prefix & -prefix
+            }
+            previous[index] = prior.end
+            let chain = AnchorChain(end: index, length: prior.length + 1, unique: prior.unique + (anchor.unique ? 1 : 0))
+            if best.precedes(chain) { best = chain }
+            var position = coordinate
+            while position < chains.count {
+                if chains[position].precedes(chain) { chains[position] = chain }
+                position += position & -position
+            }
+        }
+        var result: [LineAnchor] = []
+        var index = best.end
+        while index >= 0 {
+            result.append(candidates[index])
+            index = previous[index]
+        }
+        return result.reversed()
     }
 
     private static func changes(

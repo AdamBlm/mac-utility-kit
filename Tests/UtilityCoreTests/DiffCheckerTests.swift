@@ -46,4 +46,62 @@ struct DiffCheckerTests {
         #expect(result.rows.first?.changed == false)
         #expect(result.rows.last?.changed == false)
     }
+
+    @Test func retainsDistantChangesAcrossLongSharedInterior() throws {
+        let middle = (1...1_998).map { "unchanged line \($0)" }
+        let original = (["original head"] + middle + ["original tail"]).joined(separator: "\n")
+        let modified = (["modified head"] + middle + ["modified tail"]).joined(separator: "\n")
+        let result = try DiffChecker.compare(original, modified)
+        #expect(!result.usedCoarseAlignment)
+        #expect(result.changeStarts == [0, 1_999])
+        #expect(result.rows.filter(\.changed).count == 2)
+        #expect(result.rows[1_200].original?.number == 1_201)
+        #expect(result.rows[1_200].modified?.number == 1_201)
+    }
+
+    @Test func anchorsRepeatedLinesAndHandlesUnequalGaps() throws {
+        let repeated = Array(repeating: "same line", count: 2_000)
+        let original = (["original head"] + repeated + ["original tail"]).joined(separator: "\n")
+        let modified = (["modified head", "added line"] + repeated + ["modified tail"]).joined(separator: "\n")
+        let result = try DiffChecker.compare(original, modified)
+        #expect(!result.usedCoarseAlignment)
+        #expect(result.changeStarts == [0, 2_002])
+        #expect(result.rows.filter(\.changed).count == 3)
+        #expect(result.rows[2].original?.number == 2)
+        #expect(result.rows[2].modified?.number == 3)
+    }
+
+    @Test func anchorsRepeatingInteriorWhenAnOccurrenceIsAdded() throws {
+        let repeated = Array(repeating: "same line", count: 2_000)
+        let original = (["original head"] + repeated + ["original tail"]).joined(separator: "\n")
+        let modified = (["modified head"] + repeated + ["same line", "modified tail"]).joined(separator: "\n")
+        let result = try DiffChecker.compare(original, modified)
+        #expect(!result.usedCoarseAlignment)
+        #expect(result.changeStarts == [0, 2_001])
+        #expect(result.rows.filter(\.changed).count == 3)
+    }
+
+    @Test func movedUniqueLineDoesNotHideLongerRepeatedMatch() throws {
+        let repeated = Array(repeating: "same line", count: 1_500)
+        let original = (["old head"] + repeated + ["marker", "old tail"]).joined(separator: "\n")
+        let modified = (["new head", "marker"] + repeated + ["new tail"]).joined(separator: "\n")
+        let result = try DiffChecker.compare(original, modified)
+        #expect(!result.usedCoarseAlignment)
+        #expect(result.changeStarts == [0, 1_502])
+        #expect(result.rows.filter { !$0.changed }.count == 1_500)
+    }
+
+    @Test func alignsSingletonAgainstMaximumLengthInputBothWays() throws {
+        var lines = Array(repeating: "other", count: DiffChecker.maximumLines)
+        lines[12_500] = "match"
+        let full = lines.joined(separator: "\n")
+        for (original, modified) in [("match", full), (full, "match")] {
+            let result = try DiffChecker.compare(original, modified)
+            #expect(!result.usedCoarseAlignment)
+            #expect(result.changeStarts == [0, 12_501])
+            #expect(result.rows[12_500].original?.text == "match")
+            #expect(result.rows[12_500].modified?.text == "match")
+            #expect(result.rows.count == DiffChecker.maximumLines)
+        }
+    }
 }
