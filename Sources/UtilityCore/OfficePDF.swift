@@ -38,6 +38,7 @@ public struct OfficePDFOptions: Equatable, Sendable {
     public var slideLayout = OfficeSlideLayout.single
     public var handoutPaper = PDFPrintPaper.letter
     public var singlePageSheets = false
+    public var spreadsheetPrint = OfficeCalcPrintOptions()
 
     public init() {}
 }
@@ -65,7 +66,8 @@ public enum OfficePDF {
     public static func preview(_ input: URL, kind: OfficePDFKind, options: OfficePDFOptions) async throws -> Preview {
         let staging = try makeStaging(in: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: staging) }
-        let pdf = try await compose(input, kind: kind, options: options, in: staging)
+        let prepared = try await prepare(input, kind: kind, options: options, in: staging)
+        let pdf = try await compose(prepared, kind: kind, options: options, in: staging)
         let document = try open(pdf)
         let selected = try selected(options, pageCount: document.pageCount)
         try Task.checkCancellation()
@@ -92,7 +94,8 @@ public enum OfficePDF {
         }
         let stage = try makeStaging(in: output.deletingLastPathComponent())
         defer { try? manager.removeItem(at: stage) }
-        let rendered = try await compose(input, kind: kind, options: options, in: stage)
+        let prepared = try await prepare(input, kind: kind, options: options, in: stage)
+        let rendered = try await compose(prepared, kind: kind, options: options, in: stage)
         await progress(0.75)
         let complete = try open(rendered)
         let pages = try selected(options, pageCount: complete.pageCount)
@@ -107,20 +110,20 @@ public enum OfficePDF {
             candidate = rendered
         } else {
             handoutCount = nil
-            if kind == .powerPoint, !options.includesHiddenSlides {
-                // Impress PageRange indexes the original deck, even when hidden
-                // slides are absent from the preview and export sequence.
-                candidate = stage.appending(path: "Selected visible slides.pdf")
+            if (kind == .powerPoint && !options.includesHiddenSlides) || (kind == .excel && options.singlePageSheets) {
+                // Impress indexes hidden slides even when excluded. Calc’s
+                // whole-sheet mode ignores PageRange entirely.
+                candidate = stage.appending(path: "Selected pages.pdf")
                 try OfficeSlideHandout.writeSelection(complete, indices: pages, to: candidate)
             } else {
-                candidate = try await compose(input, kind: kind, options: options, in: stage, pages: pages)
+                candidate = try await compose(prepared, kind: kind, options: options, in: stage, pages: pages)
             }
             try verify(try open(candidate), against: complete, selected: pages)
         }
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
-        let unit = kind.rangeLabel
+        let unit = kind == .excel && options.singlePageSheets ? "sheets" : kind.rangeLabel
         let handoutSummary = handoutCount.map { " · \($0) handout page\($0 == 1 ? "" : "s")" } ?? ""
         return "\(input.lastPathComponent) · \(pages.count) \(pages.count == 1 ? String(unit.dropLast()) : unit)\(handoutSummary) · PDF"
     }
@@ -164,9 +167,15 @@ public enum OfficePDF {
         return document
     }
 
-    private static func compose(
-        _ input: URL, kind: OfficePDFKind, options: OfficePDFOptions, in staging: URL, pages: [Int]? = nil
-    ) async throws -> URL {
+    private struct PreparedInput {
+        let file: URL
+        let executable: URL
+        let inputFilter: String?
+    }
+
+    private static func prepare(
+        _ input: URL, kind: OfficePDFKind, options: OfficePDFOptions, in staging: URL
+    ) async throws -> PreparedInput {
         if let issue = optionIssue(input, kind: kind, options: options) { throw ToolError.invalid(issue) }
         let values = try input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
         guard values.isRegularFile == true, let bytes = values.fileSize, bytes <= 256 * 1024 * 1024,
@@ -181,9 +190,21 @@ public enum OfficePDF {
             if !FileManager.default.fileExists(atPath: prepared.path) { try Data(text.utf8).write(to: prepared) }
             inputFilter = "Text (encoded):UTF8,LF"
         }
+        if kind == .excel, !options.singlePageSheets, options.spreadsheetPrint.requiresPreparation {
+            prepared = try await OfficeCalcPreparation.prepare(input, options: options.spreadsheetPrint,
+                                                               executable: executable, in: staging)
+            inputFilter = OfficeCalcPreparation.flatFilter
+        }
+        return PreparedInput(file: prepared, executable: executable, inputFilter: inputFilter)
+    }
+
+    private static func compose(
+        _ prepared: PreparedInput, kind: OfficePDFKind, options: OfficePDFOptions, in staging: URL, pages: [Int]? = nil
+    ) async throws -> URL {
         let filter = try renderFilter(kind, options: options, pages: pages)
-        return try await LibreOfficeHeadless.convert(prepared, filter: filter, fileExtension: "pdf",
-                                                      executable: executable, in: staging, inputFilter: inputFilter)
+        return try await LibreOfficeHeadless.convert(prepared.file, filter: filter, fileExtension: "pdf",
+                                                      executable: prepared.executable, in: staging,
+                                                      inputFilter: prepared.inputFilter)
     }
 
     private static func renderFilter(_ kind: OfficePDFKind, options: OfficePDFOptions, pages: [Int]?) throws -> String {

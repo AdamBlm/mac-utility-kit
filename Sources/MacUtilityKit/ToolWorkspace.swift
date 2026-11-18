@@ -51,6 +51,8 @@ struct ToolWorkspace: View {
         case .uuidGenerator: UUIDGeneratorView(draft: $draft.uuidGenerator)
         case .cleanLinks: CleanLinksView(draft: $draft.cleanLinks)
         case .timestampConverter: TimestampConverterView(draft: $draft.timestampConverter)
+        case .loremIpsum: LoremIpsumView(draft: $draft.loremIpsum)
+        case .unicodeInspector: UnicodeInspectorView(draft: $draft.unicodeInspector)
         case .findDuplicates: FindDuplicatesView(draft: $draft.findDuplicates)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
@@ -92,7 +94,7 @@ struct ToolWorkspace: View {
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .compressPDF:
             draft.options.pdfCompression.validationIssue != nil
-        case .wordToPDF, .powerPointToPDF:
+        case .wordToPDF, .powerPointToPDF, .excelToPDF:
             tool.officePDFKind.map { kind in
                 draft.inputs.allSatisfy { OfficePDF.optionIssue($0, kind: kind, options: draft.options.officePDF) != nil }
             } ?? true
@@ -204,7 +206,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .makePDFSearchable:
                             SearchablePDFControls(inputs: draft.inputs, options: $draft.options.searchablePDF)
-                        case .wordToPDF, .powerPointToPDF:
+                        case .wordToPDF, .powerPointToPDF, .excelToPDF:
                             if let kind = tool.officePDFKind {
                                 OfficePDFControls(inputs: draft.inputs, options: $draft.options.officePDF, kind: kind)
                             }
@@ -217,7 +219,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .findDuplicates, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .findDuplicates, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

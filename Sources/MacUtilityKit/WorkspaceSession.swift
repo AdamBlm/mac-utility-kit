@@ -19,6 +19,8 @@ struct ToolDraft {
     var uuidGenerator = UUIDGeneratorDraft()
     var cleanLinks = CleanLinksDraft()
     var timestampConverter = TimestampConverterDraft()
+    var loremIpsum = LoremIpsumDraft()
+    var unicodeInspector = UnicodeInspectorDraft()
     var findDuplicates = FindDuplicatesDraft()
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()

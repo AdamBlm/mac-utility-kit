@@ -69,10 +69,12 @@ struct OfficePDFControls: View {
                     .font(.callout).foregroundStyle(.secondary)
             case .excel:
                 Toggle("One page per sheet", isOn: $options.singlePageSheets)
-                Text(options.singlePageSheets
-                     ? "Includes hidden sheets and uses each entire sheet. Saved print areas and paper sizes are ignored."
-                     : "Uses saved print areas, orientation, paper size, and scaling.")
-                    .font(.callout).foregroundStyle(.secondary)
+                if options.singlePageSheets {
+                    Text("Includes hidden sheets and uses each entire sheet. Saved print areas and paper sizes are ignored.")
+                        .font(.callout).foregroundStyle(.secondary)
+                } else {
+                    OfficeCalcPrintControls(options: $options.spreadsheetPrint)
+                }
             }
             availability
             previewPanel
