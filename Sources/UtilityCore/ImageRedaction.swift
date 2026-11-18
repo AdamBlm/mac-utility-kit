@@ -24,9 +24,24 @@ public struct ImageMaskRegion: Identifiable, Equatable, Sendable {
 }
 
 public enum ImageRedaction {
+    public struct Metadata: Sendable {
+        fileprivate let title: String?
+        fileprivate let author: String?
+        fileprivate let copyright: String?
+
+        fileprivate var PNGProperties: [CFString: String] {
+            [
+                kCGImagePropertyPNGTitle: title,
+                kCGImagePropertyPNGAuthor: author,
+                kCGImagePropertyPNGCopyright: copyright
+            ].compactMapValues { $0 }
+        }
+    }
+
     public struct Source: Sendable {
         public let image: CGImage
         public let digest: String
+        public let metadata: Metadata
     }
 
     private static let context = CIContext(options: [.cacheIntermediates: false])
@@ -63,7 +78,21 @@ public enum ImageRedaction {
         guard let raster else { throw ToolError.invalid("Could not decode the upright image.") }
         try Task.checkCancellation()
         let digest = SHA256.hash(data: data).description
-        return Source(image: raster, digest: digest)
+        let png = properties[kCGImagePropertyPNGDictionary] as? [CFString: Any] ?? [:]
+        let tiff = properties[kCGImagePropertyTIFFDictionary] as? [CFString: Any] ?? [:]
+        func text(_ first: CFString, _ second: CFString) -> String? {
+            for candidate in [png[first], tiff[second]] {
+                if let string = candidate as? String, !string.isEmpty, string.utf8.count <= 512,
+                   string.unicodeScalars.allSatisfy({ !CharacterSet.controlCharacters.contains($0) }) {
+                    return string
+                }
+            }
+            return nil
+        }
+        let metadata = Metadata(title: text(kCGImagePropertyPNGTitle, kCGImagePropertyTIFFImageDescription),
+                                author: text(kCGImagePropertyPNGAuthor, kCGImagePropertyTIFFArtist),
+                                copyright: text(kCGImagePropertyPNGCopyright, kCGImagePropertyTIFFCopyright))
+        return Source(image: raster, digest: digest, metadata: metadata)
     }
 
     public static func pixelBounds(_ region: CGRect, width: Int, height: Int) throws -> CGRect {
@@ -76,6 +105,7 @@ public enum ImageRedaction {
         let right = min(CGFloat(width), ceil(region.maxX * CGFloat(width)))
         let top = floor(region.minY * CGFloat(height))
         let bottom = min(CGFloat(height), ceil(region.maxY * CGFloat(height)))
+        guard right > left, bottom > top else { throw ToolError.invalid("A mask is empty or outside the image.") }
         return CGRect(x: left, y: top, width: right - left, height: bottom - top)
     }
 
@@ -127,7 +157,7 @@ public enum ImageRedaction {
         return rendered
     }
 
-    public static func writePNG(_ raster: CGImage, to output: URL) throws {
+    public static func writePNG(_ raster: CGImage, to output: URL, preserving metadata: Metadata? = nil) throws {
         guard output.isFileURL, !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local PNG file.")
         }
@@ -140,7 +170,8 @@ public enum ImageRedaction {
         guard let writer = CGImageDestinationCreateWithURL(candidate as CFURL, UTType.png.identifier as CFString, 1, nil) else {
             throw ToolError.invalid("Could not create the PNG output.")
         }
-        CGImageDestinationAddImage(writer, raster, nil)
+        let tags = metadata.map { [kCGImagePropertyPNGDictionary: $0.PNGProperties] as CFDictionary }
+        CGImageDestinationAddImage(writer, raster, tags)
         guard CGImageDestinationFinalize(writer),
               let outputSource = CGImageSourceCreateWithURL(candidate as CFURL, nil),
               CGImageSourceGetCount(outputSource) == 1,

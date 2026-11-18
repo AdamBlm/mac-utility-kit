@@ -77,6 +77,7 @@ extension Tool {
         case .rotateImages: "rotate.right"
         case .beautifyScreenshot: "photo.artframe"
         case .blurFaces: "person.crop.rectangle"
+        case .redactImage: "eye.slash.fill"
         case .screenshot: "camera.viewfinder"
         case .compressImages: "arrow.down.right.and.arrow.up.left"
         case .removeMetadata: "eye.slash"
@@ -127,6 +128,7 @@ extension Tool {
         case .rotateImages: "Rotate and flip images with a before-and-after preview."
         case .beautifyScreenshot: "Frame an image with a background, padding, and shadow."
         case .blurFaces: "Suggest face masks and review coverage before exporting."
+        case .redactImage: "Hide selected areas and export a flattened image."
         case .screenshot: "Capture a display, window, region, or scrolling sequence."
         case .compressImages: "Reduce image file size and compare the result."
         case .removeMetadata: "Inspect and remove private details from image copies."
@@ -172,7 +174,7 @@ extension Tool {
 
     var dropHint: String {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces: "or drop images anywhere in this pane"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage: "or drop images anywhere in this pane"
         case .mergePDFs: "or drop PDFs and images anywhere in this pane"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "or drop one PDF anywhere in this pane"
         case .imagesToPDF: "or drop images anywhere in this pane"
@@ -188,7 +190,7 @@ extension Tool {
 
     var dropTitle: String {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces: "Drop images here"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage: "Drop images here"
         case .mergePDFs: "Drop PDFs or images here"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "Drop one PDF here"
         case .imagesToPDF: "Drop images here"

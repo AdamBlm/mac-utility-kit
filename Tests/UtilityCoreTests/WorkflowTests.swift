@@ -84,6 +84,27 @@ private func imageFixture(in folder: URL) throws -> URL {
     #expect(try Data(contentsOf: reviewed) == Data(contentsOf: unreviewed))
 }
 
+@Test func redactImagePublishesFlattenedCopyThroughSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let input = try imageFixture(in: folder)
+    let original = try Data(contentsOf: input)
+    let source = try ImageRedaction.load(input)
+    var options = ToolOptions()
+    var masks = ImageRedactEdit()
+    masks.regions = [ImageMaskRegion(rect: CGRect(x: 0.1, y: 0.2, width: 0.4, height: 0.5))]
+    options.redactImage.apply(masks, to: input, source: source)
+    let report = try await ToolRunner.run(
+        .redactImage, inputs: [input], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    #expect(CGImageSourceGetCount(decoded) == 1)
+    #expect(try Data(contentsOf: output) != original)
+    #expect(try Data(contentsOf: input) == original)
+}
+
 @Test func compressWritesSmallerPlayableMP4() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

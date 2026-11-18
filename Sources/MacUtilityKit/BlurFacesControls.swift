@@ -4,7 +4,6 @@ import UtilityCore
 struct BlurFacesControls: View {
     let inputs: [URL]
     @Binding var options: BlurFacesOptions
-    @Environment(\.displayScale) private var displayScale
 
     @State private var chosenInput: URL?
     @State private var document: Document?
@@ -161,7 +160,7 @@ struct BlurFacesControls: View {
             if let rendered, rendered.request == request {
                 switch rendered.result {
                 case .success(let image):
-                    imageViewport(image) { size in
+                    ImageMaskViewport(image: image, actualPixels: actualPixels) { size in
                         Image(decorative: image, scale: 1)
                             .resizable().interpolation(.none)
                             .frame(width: size.width, height: size.height)
@@ -174,30 +173,13 @@ struct BlurFacesControls: View {
                 ProgressView("Rendering masked preview…").controlSize(.small)
             }
         } else {
-            imageViewport(document.source.image) { size in
+            ImageMaskViewport(image: document.source.image, actualPixels: actualPixels) { size in
                 ImageMaskCanvas(image: document.source.image, masks: request.masks, selected: $selectedMask,
                                 drawing: $drawing) { replaceMasks($0, for: document.url) }
                     .id(document.url)
                     .frame(width: size.width, height: size.height)
             }
         }
-    }
-
-    private func imageViewport<Content: View>(_ image: CGImage, @ViewBuilder content: @escaping (CGSize) -> Content) -> some View {
-        GeometryReader { geometry in
-            let fit = min(geometry.size.width / CGFloat(image.width), geometry.size.height / CGFloat(image.height), 1)
-            let scale = actualPixels ? 1 / displayScale : fit
-            let size = CGSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
-            if actualPixels {
-                ScrollView([.horizontal, .vertical]) {
-                    content(size).padding(4)
-                }
-            } else {
-                content(size).frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
-        }
-        .frame(height: 340)
-        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
@@ -233,7 +215,7 @@ struct BlurFacesControls: View {
         failure = nil
         guard let input else { return }
         do {
-            let source = try await work { try ImageRedaction.load(input) }
+            let source = try await runImageMaskWork { try ImageRedaction.load(input) }
             try Task.checkCancellation()
             document = Document(url: input, source: source)
             if options.isReviewed(input), !options.reviewMatchesSource(input, source: source) {
@@ -251,7 +233,7 @@ struct BlurFacesControls: View {
     private func detect(_ request: Detection, document: Document) async {
         failure = nil
         do {
-            let suggested = try await work { try BlurFaces.suggest(in: document.source) }
+            let suggested = try await runImageMaskWork { try BlurFaces.suggest(in: document.source) }
             try Task.checkCancellation()
             guard detection == request else { return }
             let existing = options.regions[document.url, default: []]
@@ -276,7 +258,7 @@ struct BlurFacesControls: View {
     private func render(_ document: Document, request: RenderRequest) async {
         do {
             try await Task.sleep(for: .milliseconds(150))
-            let output = try await work {
+            let output = try await runImageMaskWork {
                 try ImageRedaction.render(document.source.image, regions: request.masks,
                                           effect: request.effect, strength: request.strength)
             }
@@ -287,8 +269,4 @@ struct BlurFacesControls: View {
         }
     }
 
-    private func work<T: Sendable>(_ operation: @escaping @Sendable () throws -> T) async throws -> T {
-        let task = Task.detached(priority: .userInitiated, operation: operation)
-        return try await withTaskCancellationHandler { try await task.value } onCancel: { task.cancel() }
-    }
 }

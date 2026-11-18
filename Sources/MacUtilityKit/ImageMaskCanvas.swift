@@ -10,6 +10,7 @@ struct ImageMaskCanvas: View {
 
     @State private var temporary: CGRect?
     @State private var original: CGRect?
+    @State private var adjusting: [ImageMaskRegion]?
 
     private let coordinate = "ImageMaskCanvas"
 
@@ -27,7 +28,7 @@ struct ImageMaskCanvas: View {
                     .resizable()
                     .interpolation(.none)
                     .frame(width: size.width, height: size.height)
-                ForEach(masks) { mask in
+                ForEach(adjusting ?? masks) { mask in
                     overlay(mask, size: size)
                         .zIndex(selected == mask.id ? 1 : 0)
                 }
@@ -118,9 +119,15 @@ struct ImageMaskCanvas: View {
                                   y: max(0, min(1 - start.height, start.minY + dy)),
                                   width: start.width, height: start.height)
                 }
-                onChange(masks.map { $0.id == mask.id ? ImageMaskRegion(id: $0.id, rect: rect) : $0 })
+                adjusting = masks.map { $0.id == mask.id ? ImageMaskRegion(id: $0.id, rect: rect) : $0 }
             }
-            .onEnded { _ in original = nil }
+            .onEnded { _ in
+                defer {
+                    original = nil
+                    adjusting = nil
+                }
+                if let adjusting, adjusting != masks { onChange(adjusting) }
+            }
     }
 
     private func frame(for normalized: CGRect, size: CGSize) -> CGRect {

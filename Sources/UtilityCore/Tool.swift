@@ -16,7 +16,7 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
-    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces, screenshot
+    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces, screenshot, redactImage
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
@@ -47,6 +47,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .rotateImages: "Rotate Images"
         case .beautifyScreenshot: "Beautify Screenshot"
         case .blurFaces: "Blur Faces"
+        case .redactImage: "Redact Image"
         case .screenshot: "Screenshot"
         case .compressImages: "Compress Images"
         case .removeMetadata: "Remove Metadata"
@@ -94,7 +95,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var group: ToolCategory {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot: .images
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
@@ -107,7 +108,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var inputTypes: [UTType] {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .imagesToPDF: [.image]
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .wordCounter: [.plainText]
         case .textToSpeech: [.plainText, .rtf, .pdf]

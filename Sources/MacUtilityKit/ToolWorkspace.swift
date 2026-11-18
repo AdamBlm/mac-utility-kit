@@ -78,6 +78,8 @@ struct ToolWorkspace: View {
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .blurFaces:
             draft.inputs.contains { !draft.options.blurFaces.isReviewed($0) }
+        case .redactImage:
+            draft.inputs.contains { !draft.options.redactImage.hasMasks($0) }
         case .convertImages:
             draft.options.imageConversion.format.requiresImageMagick && draft.options.imageConversion.imageMagickExecutable == nil
         case .compressImages:
@@ -119,6 +121,8 @@ struct ToolWorkspace: View {
                             BeautifyScreenshotSettings(input: draft.inputs.first, options: $draft.options.beautify)
                         case .blurFaces:
                             BlurFacesControls(inputs: draft.inputs, options: $draft.options.blurFaces)
+                        case .redactImage:
+                            ImageRedactControls(inputs: draft.inputs, options: $draft.options.redactImage)
                         case .compressImages:
                             imageCompressionControls()
                         case .removeMetadata:
