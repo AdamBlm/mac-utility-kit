@@ -25,6 +25,8 @@ struct ToolDraft {
     var regexTester = RegexTesterDraft()
     var csvJSON = CSVJSONDraft()
     var coordinatePicker = CoordinatePickerDraft()
+    var summarize = SummarizeDraft()
+    var ejectDisks = EjectDisksDraft()
     var findDuplicates = FindDuplicatesDraft()
     var archiveTools = ArchiveToolsDraft()
     var transcribe = TranscribeDraft()

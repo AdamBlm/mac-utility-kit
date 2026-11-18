@@ -7,6 +7,7 @@ struct ToolWorkspace: View {
     @Binding var draft: ToolDraft
     let session: WorkspaceSession
     let keepAwakeController: KeepAwakeController
+    let presentationModeController: PresentationModeController
     let audioRecordingController: AudioRecordingController
     let screenRecordingController: ScreenRecordingController
     let openOutput: (URL) -> Void
@@ -45,6 +46,7 @@ struct ToolWorkspace: View {
         case .qrCode: QRToolsView(draft: $draft.qrTools)
         case .batchRename: BatchRenameView(draft: $draft.batchRename)
         case .keepAwake: KeepAwakeView(controller: keepAwakeController)
+        case .presentationMode: PresentationModeView(controller: presentationModeController)
         case .jsonFormatter: JSONFormatterView(draft: $draft.jsonFormatter)
         case .base64: Base64ToolView(draft: $draft.base64)
         case .hashGenerator: HashGeneratorView(draft: $draft.hashGenerator)
@@ -57,10 +59,12 @@ struct ToolWorkspace: View {
         case .regexTester: RegexTesterView(draft: $draft.regexTester)
         case .csvJSON: CSVJSONView(draft: $draft.csvJSON)
         case .coordinatePicker: CoordinatePickerView(draft: $draft.coordinatePicker)
+        case .summarize: SummarizeView(draft: $draft.summarize)
         case .passwordGenerator: PasswordGeneratorView()
         case .batteryHealth: BatteryHealthView()
         case .diskSpeedTest: DiskSpeedView()
         case .deadPixelTest: DeadPixelTestView()
+        case .ejectAllDisks: EjectDisksView(draft: $draft.ejectDisks)
         case .zipUnzip: ArchiveToolsView(draft: $draft.archiveTools)
         case .findDuplicates: FindDuplicatesView(draft: $draft.findDuplicates)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
@@ -228,7 +232,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .findDuplicates, .zipUnzip, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .findDuplicates, .zipUnzip, .summarize, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

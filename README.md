@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 79 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 82 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -135,3 +135,6 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **CSV ↔ JSON** converts CSV to JSON or Markdown and flat JSON rows to CSV. CSV fields remain strings, and malformed records show their location.
 - **Coordinate Picker** places or moves two map points, converts decimal and DMS coordinates, measures distance, and looks up a pasted list.
 - **Dead Pixel Test** displays five full-screen solid colors on the selected display, with manual or timed cycling.
+- **Eject All Disks** groups eligible devices, unmounts individual volumes, and ejects selected devices with per-target outcomes and busy retries.
+- **Presentation Mode** can hide desktop items, hide the Dock, and keep the display awake for a timed or manual session. It restores settings it changed when the session ends.
+- **Summarize** makes brief or detailed summaries of pasted text, text files, RTF, or selected PDF pages using the available on-device Apple model on macOS 26 or newer.

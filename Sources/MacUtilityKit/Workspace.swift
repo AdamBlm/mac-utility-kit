@@ -4,6 +4,7 @@ import UtilityCore
 
 struct Workspace: View {
     let keepAwakeController: KeepAwakeController
+    let presentationModeController: PresentationModeController
     let audioRecordingController: AudioRecordingController
     let screenRecordingController: ScreenRecordingController
     @State private var selection = Destination.tool(.resizeImages)
@@ -121,6 +122,7 @@ struct Workspace: View {
                         ),
                         session: session,
                         keepAwakeController: keepAwakeController,
+                        presentationModeController: presentationModeController,
                         audioRecordingController: audioRecordingController,
                         screenRecordingController: screenRecordingController,
                         openOutput: openOutput,
