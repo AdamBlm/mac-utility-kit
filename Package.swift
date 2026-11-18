@@ -4,9 +4,14 @@ import PackageDescription
 let package = Package(
     name: "MacUtilityKit",
     platforms: [.macOS(.v15)],
-    products: [.executable(name: "MacUtilityKit", targets: ["MacUtilityKit"])],
+    products: [
+        .executable(name: "MacUtilityKit", targets: ["MacUtilityKit"]),
+        .executable(name: "muk", targets: ["MacUtilityCLI"]),
+    ],
     dependencies: [
         .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.7.0"),
+        .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
+        .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
     ],
     targets: [
         .target(name: "CSystemArchive", linkerSettings: [.linkedLibrary("archive")]),
@@ -18,6 +23,10 @@ let package = Package(
             .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
         ], resources: [.copy("Resources/confusables.txt"), .copy("Resources/eff_large_wordlist.txt")]),
         .executableTarget(name: "MacUtilityKit", dependencies: ["UtilityCore"]),
+        .executableTarget(name: "MacUtilityCLI", dependencies: [
+            "UtilityCore", .product(name: "ArgumentParser", package: "swift-argument-parser"),
+            .product(name: "MCP", package: "swift-sdk"),
+        ]),
         .testTarget(name: "UtilityCoreTests", dependencies: ["UtilityCore"])
     ]
 )

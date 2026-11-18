@@ -5,6 +5,7 @@ import UtilityCore
 struct Workspace: View {
     let keepAwakeController: KeepAwakeController
     let presentationModeController: PresentationModeController
+    let clipboardHistoryController: ClipboardHistoryController
     let audioRecordingController: AudioRecordingController
     let screenRecordingController: ScreenRecordingController
     @State private var selection = Destination.tool(.resizeImages)
@@ -123,6 +124,7 @@ struct Workspace: View {
                         session: session,
                         keepAwakeController: keepAwakeController,
                         presentationModeController: presentationModeController,
+                        clipboardHistoryController: clipboardHistoryController,
                         audioRecordingController: audioRecordingController,
                         screenRecordingController: screenRecordingController,
                         openOutput: openOutput,

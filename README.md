@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 85 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 88 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -141,3 +141,19 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Case Converter** converts whole text or selected lines among prose and identifier cases, with locale-aware capitalization.
 - **JWT Decoder** shows token claims and can verify supported HMAC signatures locally with an entered key. Claim checks are shown separately from signature verification.
 - **Network Speed Test** uses macOS Network Quality to measure throughput and responsiveness over the active connection.
+- **Storage Explorer** scans folder and file sizes, distinguishes apparent and allocated bytes, and rechecks selected items before moving them to Trash.
+- **Clipboard History** records supported text and images only after opt-in. It supports session retention, pinning, exclusions, and copy-back.
+- **Translate** uses Apple’s on-device language packs for text, SRT, and VTT. Translated subtitle files retain cue timing.
+
+
+### Terminal and local MCP
+
+The app bundle includes the `muk` executable in `Contents/MacOS`. In a source checkout, run `swift run muk --help`. The CLI reuses the app’s image resize, PDF merge, media inspection, file hashing, and JSON formatting operations. File-producing commands print a JSON report with output paths and per-input failures.
+
+To enable specific MCP operations in a local client, set its command to the app bundle’s absolute `Contents/MacOS/muk` path and give it these arguments:
+
+```json
+["mcp", "--allow", "format-json", "--allow", "word-count"]
+```
+
+The optional `clean-link` tool is also available. The server uses the client process’s standard input and output and operates on supplied text. It opens no network listener.

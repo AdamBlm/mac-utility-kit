@@ -6,7 +6,20 @@ binary_directory="$(swift build -c release --show-bin-path)"
 app="build/Mac Utility Kit.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 ./scripts/build-icon.sh assets/branding/mac-utility-kit.svg "$app/Contents/Resources/AppIcon.icns"
-cp "$binary_directory/MacUtilityKit" "$app/Contents/MacOS/"
+cp "$binary_directory/MacUtilityKit" "$binary_directory/muk" "$app/Contents/MacOS/"
+mkdir -p "$app/Contents/Resources/CLI-Licenses"
+for dependency in eventsource swift-argument-parser swift-atomics swift-collections swift-log swift-nio swift-sdk swift-system; do
+    case "$dependency" in
+        eventsource) license="LICENSE.md" ;;
+        swift-sdk) license="LICENSE" ;;
+        *) license="LICENSE.txt" ;;
+    esac
+    checkout=".build/checkouts/$dependency"
+    cp "$checkout/$license" "$app/Contents/Resources/CLI-Licenses/$dependency-LICENSE.txt"
+    if [[ -f "$checkout/NOTICE.txt" ]]; then
+        cp "$checkout/NOTICE.txt" "$app/Contents/Resources/CLI-Licenses/$dependency-NOTICE.txt"
+    fi
+done
 cp licenses/swift-cmark-COPYING.txt "$app/Contents/Resources/"
 cp licenses/Unicode-License-V3.txt Sources/UtilityCore/Resources/confusables.txt "$app/Contents/Resources/"
 cp licenses/EFF-Wordlist-Attribution.txt Sources/UtilityCore/Resources/eff_large_wordlist.txt "$app/Contents/Resources/"
@@ -28,6 +41,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
 </dict>
 </plist>
 PLIST
+codesign --force --sign - "$app/Contents/MacOS/muk"
 codesign --force --sign - "$app"
 # Refresh the icon when a local build replaces an already registered app in place.
 touch "$app"
