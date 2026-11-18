@@ -9,7 +9,7 @@ mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 cp "$binary_directory/MacUtilityKit" "$binary_directory/muk" "$app/Contents/MacOS/"
 ditto "$binary_directory/KeyboardShortcuts_KeyboardShortcuts.bundle" \
     "$app/Contents/Resources/KeyboardShortcuts_KeyboardShortcuts.bundle"
-cp .build/checkouts/KeyboardShortcuts/license "$app/Contents/Resources/KeyboardShortcuts-LICENSE.txt"
+/usr/bin/install -m 0644 .build/checkouts/KeyboardShortcuts/license "$app/Contents/Resources/KeyboardShortcuts-LICENSE.txt"
 mkdir -p "$app/Contents/Resources/CLI-Licenses"
 for dependency in eventsource swift-argument-parser swift-atomics swift-collections swift-log swift-nio swift-sdk swift-system; do
     case "$dependency" in
@@ -18,9 +18,9 @@ for dependency in eventsource swift-argument-parser swift-atomics swift-collecti
         *) license="LICENSE.txt" ;;
     esac
     checkout=".build/checkouts/$dependency"
-    cp "$checkout/$license" "$app/Contents/Resources/CLI-Licenses/$dependency-LICENSE.txt"
+    /usr/bin/install -m 0644 "$checkout/$license" "$app/Contents/Resources/CLI-Licenses/$dependency-LICENSE.txt"
     if [[ -f "$checkout/NOTICE.txt" ]]; then
-        cp "$checkout/NOTICE.txt" "$app/Contents/Resources/CLI-Licenses/$dependency-NOTICE.txt"
+        /usr/bin/install -m 0644 "$checkout/NOTICE.txt" "$app/Contents/Resources/CLI-Licenses/$dependency-NOTICE.txt"
     fi
 done
 cp licenses/swift-cmark-COPYING.txt "$app/Contents/Resources/"
