@@ -81,4 +81,58 @@ struct OfficeCalcPDFTests {
         #expect(wholeSheet.string?.contains("Right edge marker") == true)
         #expect(wholeSheet.string?.contains("Omitted marker") == false)
     }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func repeatedPrintTitlesSurviveDefaultAndCustomXLSXPrintRanges() async throws {
+        let executable = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"]))
+        let staging = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: staging) }
+
+        let title = "TITLE42"
+        let rows = [title] + (1...240).map { "ROW\($0)" }
+        let csv = staging.appending(path: "Rows.csv")
+        try Data(rows.joined(separator: "\n").utf8).write(to: csv)
+        let flat = try await LibreOfficeHeadless.convert(csv, filter: "fods:" + OfficeCalcPreparation.flatFilter,
+                                                          fileExtension: "fods", executable: executable, in: staging)
+        let xml = try XMLDocument(contentsOf: flat, options: [.nodeLoadExternalEntitiesNever])
+        let sheet = try #require(xml.nodes(forXPath: "//office:spreadsheet/table:table").first as? XMLElement)
+        let firstRow = try #require(sheet.nodes(forXPath: "table:table-row").first)
+        let header = XMLElement(name: "table:table-header-rows")
+        let rowIndex = firstRow.index
+        firstRow.detach()
+        header.addChild(firstRow)
+        sheet.insertChild(header, at: rowIndex)
+        let flatSource = staging.appending(path: "Print Titles.fods")
+        try xml.xmlData(options: []).write(to: flatSource)
+        let xlsx = try await LibreOfficeHeadless.convert(flatSource, filter: "xlsx:Calc MS Excel 2007 XML",
+                                                          fileExtension: "xlsx", executable: executable,
+                                                          in: staging, inputFilter: OfficeCalcPreparation.flatFilter)
+        let original = try Data(contentsOf: xlsx)
+
+        var options = OfficePDFOptions()
+        options.libreOfficeExecutable = executable
+        let defaultOutput = staging.appending(path: "Default.pdf")
+        _ = try await OfficePDF.export(xlsx, to: defaultOutput, kind: .excel, options: options) { _ in }
+        let defaultPDF = try #require(PDFDocument(url: defaultOutput))
+        try verifyRepeatingTitle(title, in: defaultPDF)
+        #expect(defaultPDF.string?.contains("ROW240") == true)
+
+        options.spreadsheetPrint.cellRange = "A2:B200"
+        let customOutput = staging.appending(path: "Custom.pdf")
+        _ = try await OfficePDF.export(xlsx, to: customOutput, kind: .excel, options: options) { _ in }
+        let customPDF = try #require(PDFDocument(url: customOutput))
+        try verifyRepeatingTitle(title, in: customPDF)
+        #expect(customPDF.string?.contains("ROW199") == true)
+        #expect(customPDF.string?.contains("ROW240") == false)
+        #expect(try Data(contentsOf: xlsx) == original)
+    }
+
+    private func verifyRepeatingTitle(_ title: String, in document: PDFDocument) throws {
+        try #require(document.pageCount > 1)
+        for index in 0..<document.pageCount {
+            let text = try #require(document.page(at: index)?.string)
+            #expect(text.contains(title), "Print title missing on page \(index + 1)")
+        }
+    }
 }
