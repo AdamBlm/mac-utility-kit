@@ -7,7 +7,7 @@ import UtilityCore
 struct MacUtilityKitApp: App {
     var body: some Scene {
         WindowGroup("Mac Utility Kit") { Workspace() }
-            .windowToolbarStyle(.unified(showsTitle: true))
+            .windowToolbarStyle(.unified(showsTitle: false))
             .defaultSize(width: 940, height: 690)
     }
 }
@@ -107,29 +107,43 @@ private struct Workspace: View {
             .padding(.top, 12)
             .navigationSplitViewColumnWidth(min: 170, ideal: 184, max: 220)
         } detail: {
-            if let selection {
-                let draft = drafts[selection, default: Draft()]
-                if draft.inputs.isEmpty, reports[selection] == nil, errors[selection] == nil, runningTool != selection {
-                    emptyWorkspace(for: selection)
+            VStack(spacing: 0) {
+                workspaceHeader
+                Divider()
+                if let selection {
+                    let draft = drafts[selection, default: Draft()]
+                    if draft.inputs.isEmpty, reports[selection] == nil,
+                       errors[selection] == nil, runningTool != selection {
+                        emptyWorkspace(for: selection)
+                    } else {
+                        editor(for: selection)
+                    }
                 } else {
-                    editor(for: selection)
+                    ContentUnavailableView("Choose a tool", systemImage: "wrench.and.screwdriver")
                 }
-            } else {
-                ContentUnavailableView("Choose a tool", systemImage: "wrench.and.screwdriver")
             }
         }
         .tint(palette.accent)
-        .toolbar {
+    }
+
+    private var workspaceHeader: some View {
+        HStack(spacing: 12) {
+            Text("Mac Utility Kit")
+                .font(.system(size: 13, weight: .semibold))
+                .lineLimit(1)
+            Spacer(minLength: 8)
             if let runningTool {
-                ToolbarItem {
-                    HStack {
-                        Text(runningTool.title)
-                        ProgressView(value: progress).frame(width: 90)
-                        Button("Cancel") { job?.cancel() }
-                    }
-                }
+                Text(runningTool.title)
+                    .lineLimit(1)
+                    .foregroundStyle(.secondary)
+                    .layoutPriority(-1)
+                ProgressView(value: progress).frame(width: 70)
+                Button("Cancel") { job?.cancel() }
             }
         }
+        .padding(.horizontal, 20)
+        .frame(height: 38)
+        .background(palette.canvas)
     }
 
     private func editor(for tool: Tool) -> some View {
