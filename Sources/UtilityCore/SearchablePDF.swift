@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import PDFKit
+import NaturalLanguage
 import Vision
 
 public struct SearchablePDFOptions: Equatable, Sendable {
@@ -164,44 +165,168 @@ public enum SearchablePDF {
         request.usesLanguageCorrection = true
         if let language = options.language { request.recognitionLanguages = [language] }
         else { request.automaticallyDetectsLanguage = true }
-        try Task.checkCancellation()
-        try VNImageRequestHandler(cgImage: raster.image, options: [:]).perform([request])
-        try Task.checkCancellation()
-        let recognized = (request.results ?? []).compactMap { observation -> SearchablePDFTextLayer.Line? in
-            guard let text = observation.topCandidates(1).first?.string, !text.isEmpty else { return nil }
-            return SearchablePDFTextLayer.Line(text: text, bounds: observation.boundingBox)
-        }
-        let lines = recognized.filter { line in
-            guard let existing else { return true }
-            return !hasExistingText(line, page: page, raster: raster, existing: existing)
-        }
+        // OCR the unmasked image. PDFKit text geometry alone cannot distinguish
+        // visible text from a stale invisible layer over unrelated scan text.
+        let recognized = try observations(in: raster.image, using: request)
+        let nativeLines = existing == nil ? [] : SearchablePDFTextLayer.embeddedLines(on: page, raster: raster)
+        let native = existing == nil ? nil : EmbeddedWords(page: page, raster: raster, lines: nativeLines)
+        let lines = try SearchablePDFTextLayer.readingOrder(recognized.flatMap { observation in
+            try Task.checkCancellation()
+            return native.map { observation.additions(excluding: $0) } ?? [observation.line]
+        })
         let status: SearchablePDFPageResult.Status
         if !lines.isEmpty { status = .addedText }
         else if existing != nil { status = .alreadySearchable }
         else { status = .noText }
-        let previewText = recognized.isEmpty ? existing ?? "" : recognized.map(\.text).joined(separator: "\n")
+        let previewLines = SearchablePDFTextLayer.readingOrder(nativeLines + lines).map(\.text)
+        let previewText = ((nativeLines.isEmpty ? [existing].compactMap { $0 } : []) + previewLines).joined(separator: "\n")
         return (lines, makeResult(index, text: previewText, status: status))
     }
 
-    private static func hasExistingText(
-        _ line: SearchablePDFTextLayer.Line, page: PDFPage, raster: SearchablePDFTextLayer.Raster, existing: String
-    ) -> Bool {
-        let wordBox = raster.pageBounds(for: line.bounds)
-        let text = (page.string ?? existing) as NSString
-        var remaining = NSRange(location: 0, length: text.length)
-        while remaining.length > 0 {
-            let match = text.range(of: line.text, options: [.caseInsensitive, .diacriticInsensitive], range: remaining)
-            guard match.location != NSNotFound, match.length > 0 else { return false }
-            if let selection = page.selection(for: match) {
+    private struct OCRObservation {
+        let candidate: VNRecognizedText
+        let line: SearchablePDFTextLayer.Line
+
+        func additions(excluding embedded: EmbeddedWords) -> [SearchablePDFTextLayer.Line] {
+            let text = candidate.string
+            if embedded.matchesCompleteObservation(line) { return [] }
+            let ranges = Self.wordRanges(in: text)
+            var keepStart: String.Index?
+            var keepBounds = CGRect.null
+            var parts: [SearchablePDFTextLayer.Line] = []
+            var removed = false
+            var unmatched: [CGRect] = []
+
+            func endRun(at end: String.Index) {
+                guard let start = keepStart else { return }
+                var trimmedEnd = end
+                while trimmedEnd > start, text[text.index(before: trimmedEnd)].isWhitespace {
+                    trimmedEnd = text.index(before: trimmedEnd)
+                }
+                let range = start..<trimmedEnd
+                let bounds = (try? candidate.boundingBox(for: range))?.boundingBox ?? keepBounds
+                if !range.isEmpty, !bounds.isEmpty {
+                    parts.append(.init(text: String(text[range]), bounds: bounds))
+                }
+                keepStart = nil
+                keepBounds = .null
+            }
+
+            for (index, range) in ranges.enumerated() {
+                let word = String(text[range])
+                let bounds = (try? candidate.boundingBox(for: range))?.boundingBox
+                if let bounds, embedded.matches(word, bounds: bounds) {
+                    removed = true
+                    endRun(at: range.lowerBound)
+                } else {
+                    if keepStart == nil { keepStart = index == 0 ? text.startIndex : range.lowerBound }
+                    if let bounds {
+                        keepBounds = keepBounds.union(bounds)
+                        unmatched.append(bounds)
+                    }
+                }
+            }
+            // Conflicting text at the same location may be an old OCR layer.
+            // Keep the whole phrase searchable, including words shared by both layers.
+            if !removed || embedded.hasPositionalDisagreement(in: line.bounds, unmatched: unmatched) { return [line] }
+            endRun(at: text.endIndex)
+            return parts
+        }
+
+        static func wordRanges(in text: String) -> [Range<String.Index>] {
+            let tokenizer = NLTokenizer(unit: .word)
+            tokenizer.string = text
+            var ranges: [Range<String.Index>] = []
+            tokenizer.enumerateTokens(in: text.startIndex..<text.endIndex) { range, _ in
+                ranges.append(range)
+                return true
+            }
+            return ranges
+        }
+    }
+
+    private struct EmbeddedWords {
+        let page: PDFPage
+        let text: String
+        let raster: SearchablePDFTextLayer.Raster
+        let words: [String: [NSRange]]
+        let lines: [SearchablePDFTextLayer.Line]
+
+        init(page: PDFPage, raster: SearchablePDFTextLayer.Raster, lines: [SearchablePDFTextLayer.Line]) {
+            self.page = page
+            self.raster = raster
+            self.lines = lines
+            let text = page.string ?? ""
+            self.text = text
+            var words: [String: [NSRange]] = [:]
+            for range in OCRObservation.wordRanges(in: text) {
+                words[Self.key(String(text[range])), default: []].append(NSRange(range, in: text))
+            }
+            self.words = words
+        }
+
+        func matchesCompleteObservation(_ line: SearchablePDFTextLayer.Line) -> Bool {
+            // PDFKit can join overlapping content streams without a separating space.
+            // A whole multiword observation can still map to the same physical line.
+            guard OCRObservation.wordRanges(in: line.text).count > 1 else { return false }
+            let expected = raster.pageBounds(for: line.bounds)
+            var start = text.startIndex
+            while let range = text.range(of: line.text, options: .caseInsensitive, range: start..<text.endIndex) {
+                let selection = page.selection(for: NSRange(range, in: text))
+                if let actual = selection?.bounds(for: page) {
+                    let overlap = actual.intersection(expected)
+                    if !overlap.isEmpty,
+                       overlap.width * overlap.height >= expected.width * expected.height * 0.6,
+                       overlap.width * overlap.height >= actual.width * actual.height * 0.6 {
+                        return true
+                    }
+                }
+                start = range.upperBound
+            }
+            return false
+        }
+
+        func hasPositionalDisagreement(in bounds: CGRect, unmatched: [CGRect]) -> Bool {
+            guard !unmatched.isEmpty else { return false }
+            return lines.contains { line in
+                let actual = line.bounds
+                let overlap = actual.intersection(bounds)
+                guard !overlap.isEmpty, overlap.width * overlap.height >= bounds.width * bounds.height * 0.6 else {
+                    return false
+                }
+                return unmatched.allSatisfy { word in
+                    let intersection = word.intersection(actual)
+                    return !intersection.isEmpty && intersection.width * intersection.height >= word.width * word.height * 0.6
+                }
+            }
+        }
+
+        func matches(_ word: String, bounds: CGRect) -> Bool {
+            guard !bounds.isEmpty, let ranges = words[Self.key(word)] else { return false }
+            let wordBox = raster.pageBounds(for: bounds)
+            for range in ranges {
+                guard let selection = page.selection(for: range) else { continue }
                 let overlap = selection.bounds(for: page).intersection(wordBox)
                 if !overlap.isEmpty, overlap.width * overlap.height >= wordBox.width * wordBox.height * 0.25 {
                     return true
                 }
             }
-            let end = NSMaxRange(match)
-            remaining = NSRange(location: end, length: text.length - end)
+            return false
         }
-        return false
+
+        private static func key(_ word: String) -> String {
+            word.precomposedStringWithCanonicalMapping.lowercased()
+        }
+    }
+
+    private static func observations(in image: CGImage, using request: VNRecognizeTextRequest) throws -> [OCRObservation] {
+        try Task.checkCancellation()
+        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
+        try Task.checkCancellation()
+        return (request.results ?? []).compactMap { observation in
+            guard let candidate = observation.topCandidates(1).first, !candidate.string.isEmpty else { return nil }
+            return OCRObservation(candidate: candidate, line: .init(text: candidate.string, bounds: observation.boundingBox))
+        }
     }
 
     private static func makeResult(

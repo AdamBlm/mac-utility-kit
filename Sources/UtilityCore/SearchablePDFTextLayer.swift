@@ -22,6 +22,11 @@ enum SearchablePDFTextLayer {
         func pageBounds(for recognition: CGRect) -> CGRect {
             pixelBounds(for: recognition).applying(rasterToPage)
         }
+
+        func recognitionBounds(for pixels: CGRect) -> CGRect {
+            CGRect(x: pixels.minX / bounds.width, y: pixels.minY / bounds.height,
+                   width: pixels.width / bounds.width, height: pixels.height / bounds.height)
+        }
     }
 
     static func rasterize(_ page: PDFPage, limit: Int) throws -> Raster {
@@ -52,6 +57,35 @@ enum SearchablePDFTextLayer {
         context.drawPDFPage(reference)
         guard let image = context.makeImage() else { throw ToolError.invalid("Could not rasterize this page.") }
         return Raster(image: image, bounds: bounds, rasterToPage: transform.inverted())
+    }
+
+    static func embeddedLines(on page: PDFPage, raster: Raster) -> [Line] {
+        guard let text = page.string as NSString?,
+              let content = page.selection(for: NSRange(location: 0, length: text.length)) else { return [] }
+        let pixelsFromPage = raster.rasterToPage.inverted()
+        return content.selectionsByLine().compactMap { selection in
+            guard let text = selection.string?.trimmingCharacters(in: .whitespacesAndNewlines),
+                  !text.isEmpty else { return nil }
+            let pixels = selection.bounds(for: page).applying(pixelsFromPage).intersection(raster.bounds)
+            guard !pixels.isEmpty else { return nil }
+            return Line(text: text, bounds: raster.recognitionBounds(for: pixels))
+        }
+    }
+
+    static func readingOrder(_ lines: [Line]) -> [Line] {
+        let topFirst = lines.sorted {
+            $0.bounds.midY == $1.bounds.midY ? $0.bounds.minX < $1.bounds.minX : $0.bounds.midY > $1.bounds.midY
+        }
+        var rows: [[Line]] = []
+        for line in topFirst {
+            if let previous = rows.last?.first,
+               previous.bounds.midY - line.bounds.midY <= min(previous.bounds.height, line.bounds.height) * 0.45 {
+                rows[rows.count - 1].append(line)
+            } else {
+                rows.append([line])
+            }
+        }
+        return rows.flatMap { $0.sorted { $0.bounds.minX < $1.bounds.minX } }
     }
 
     static func thumbnail(_ image: CGImage) -> CGImage {

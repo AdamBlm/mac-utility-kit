@@ -104,6 +104,122 @@ struct SearchablePDFTests {
         #expect(urlAction?.url?.absoluteString == "https://example.com")
     }
 
+    @Test(arguments: [0, 90])
+    func deduplicatesEmbeddedTextSharingABaselineWithScannedTextAndRerunsIdempotently(rotation: Int) async throws {
+        let folder = try Self.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "Mixed.pdf")
+        let searchable = folder.appending(path: "Searchable.pdf")
+        let repeated = folder.appending(path: "Repeated.pdf")
+        try Self.makeSameLineScan(to: source, rotation: rotation)
+        let document = try #require(PDFDocument(url: source))
+        #expect(document.findString("Native label").count == 1)
+        #expect(document.findString("Scanned 7429").isEmpty)
+
+        var options = SearchablePDFOptions()
+        options.skipsSearchablePages = false
+        options.language = "en-US"
+        let preview = try await SearchablePDF.preview(source, pageNumber: 1, options: options)
+        #expect(preview.result.text.components(separatedBy: "Native label").count == 2)
+        #expect(preview.result.text.components(separatedBy: "Scanned 7429").count == 2)
+        let scanned = try #require(preview.result.text.range(of: "Scanned 7429"))
+        let footer = try #require(preview.result.text.range(of: "NATIVE FOOTER"))
+        #expect(scanned.lowerBound < footer.lowerBound)
+        let report = try await SearchablePDF.export(source, to: searchable, options: options) { _ in }
+        #expect(report.pages.first?.status == .addedText)
+        let second = try await SearchablePDF.export(searchable, to: repeated, options: options) { _ in }
+        #expect(second.pages.first?.status == .alreadySearchable)
+        #expect(try Data(contentsOf: searchable) == Data(contentsOf: repeated))
+
+        let originalPage = try #require(document.page(at: 0))
+        let originalRaster = try SearchablePDFTextLayer.rasterize(originalPage, limit: 600)
+        let expectedPixels = try Self.bytes(originalRaster.image)
+        for output in [searchable, repeated] {
+            let result = try #require(PDFDocument(url: output))
+            #expect(result.findString("Native label").count == 1)
+            #expect(result.findString("Scanned 7429").count == 1)
+            let page = try #require(result.page(at: 0))
+            #expect(page.rotation == rotation)
+            #expect(page.bounds(for: .cropBox).size == originalPage.bounds(for: .cropBox).size)
+            let pixels = try SearchablePDFTextLayer.rasterize(page, limit: 600)
+            #expect(try Self.bytes(pixels.image) == expectedPixels)
+        }
+    }
+
+    @Test(arguments: ["Incorrect archive 0000", "Searchable archive 0000"])
+    func recognizesVisibleScanTextUnderADifferentInvisibleTextLayer(staleText: String) async throws {
+        let folder = try Self.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let original = folder.appending(path: "Original.pdf")
+        let stale = folder.appending(path: "Stale.pdf")
+        let corrected = folder.appending(path: "Corrected.pdf")
+        let repeated = folder.appending(path: "Repeated.pdf")
+        try Self.makeScan(to: original, rotation: 90)
+        let source = try #require(PDFDocument(url: original))
+        let page = try #require(source.page(at: 0))
+        let raster = try SearchablePDFTextLayer.rasterize(page, limit: 600)
+        let layer = try SearchablePDFTextLayer.pageWithText(page, raster: raster, lines: [
+            .init(text: staleText, bounds: CGRect(x: 0.13, y: 0.61, width: 0.83, height: 0.08))
+        ])
+        let staleDocument = PDFDocument()
+        staleDocument.insert(layer, at: 0)
+        try #require(staleDocument.write(to: stale))
+        let reopened = try #require(PDFDocument(url: stale))
+        #expect(reopened.findString(staleText).count == 1)
+        #expect(reopened.findString("Searchable sample 7429").isEmpty)
+
+        var options = SearchablePDFOptions()
+        options.skipsSearchablePages = false
+        options.language = "en-US"
+        let report = try await SearchablePDF.export(stale, to: corrected, options: options) { _ in }
+        #expect(report.pages.first?.status == .addedText)
+        let verified = try #require(PDFDocument(url: corrected))
+        #expect(verified.findString("Searchable sample 7429").count == 1)
+        #expect(verified.findString(staleText).count == 1)
+        let result = try #require(verified.page(at: 0))
+        #expect(try Self.bytes(SearchablePDFTextLayer.rasterize(result, limit: 600).image) == Self.bytes(raster.image))
+
+        let repeatReport = try await SearchablePDF.export(corrected, to: repeated, options: options) { _ in }
+        #expect(repeatReport.pages.first?.status == .alreadySearchable)
+        #expect(try Data(contentsOf: corrected) == Data(contentsOf: repeated))
+    }
+
+    private static func makeSameLineScan(to url: URL, rotation: Int) throws {
+        let template = try #require(PDFDocument(data: pdf { _ in }))
+        let emptyPage = try #require(template.page(at: 0))
+        emptyPage.rotation = rotation
+        let data = try #require(template.dataRepresentation())
+        let provider = try #require(CGDataProvider(data: data as CFData))
+        let pageRef = try #require(CGPDFDocument(provider)?.page(at: 1))
+        let canvas = CGRect(x: 0, y: 0, width: rotation == 90 ? crop.height : crop.width,
+                            height: rotation == 90 ? crop.width : crop.height)
+        let transform = pageRef.getDrawingTransform(.cropBox, rect: canvas, rotate: 0, preserveAspectRatio: true)
+        let bitmap = try #require(CGContext(data: nil, width: 720, height: 180, bitsPerComponent: 8, bytesPerRow: 0,
+                                            space: CGColorSpaceCreateDeviceRGB(),
+                                            bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        bitmap.setFillColor(.white)
+        bitmap.fill(CGRect(x: 0, y: 0, width: 720, height: 180))
+        bitmap.scaleBy(x: 4, y: 4)
+        Self.draw("Scanned 7429", in: bitmap, at: CGPoint(x: 0, y: 14), size: 24)
+        let image = try #require(bitmap.makeImage())
+        let font = CTFontCreateWithName("Helvetica" as CFString, 24, nil)
+        let line = CTLineCreateWithAttributedString(NSAttributedString(string: "Native label", attributes: [
+            NSAttributedString.Key(kCTFontAttributeName as String): font
+        ]))
+        let width = CTLineGetTypographicBounds(line, nil, nil, nil)
+        let x: CGFloat = 36
+        let y: CGFloat = 210
+        let source = try #require(PDFDocument(data: pdf { page in
+            page.concatenate(transform.inverted())
+            Self.draw("Native label", in: page, at: CGPoint(x: x, y: y), size: 24)
+            page.draw(image, in: CGRect(x: x + width + 4, y: y - 14, width: 180, height: 45))
+            Self.draw("NATIVE FOOTER", in: page, at: CGPoint(x: x, y: 45), size: 19)
+        }))
+        let page = try #require(source.page(at: 0))
+        page.rotation = rotation
+        try #require(source.write(to: url))
+    }
+
     private static let media = CGRect(x: 10, y: 15, width: 490, height: 400)
     private static let crop = CGRect(x: 50, y: 45, width: 420, height: 340)
 
