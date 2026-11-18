@@ -21,7 +21,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter
-    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, passwordGenerator, batteryHealth, diskSpeedTest, findDuplicates, zipUnzip
+    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, findDuplicates, zipUnzip
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
     case makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
     case recordScreen, downloadVideo
@@ -38,7 +38,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .passwordGenerator, .batteryHealth, .diskSpeedTest, .findDuplicates, .zipUnzip, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .findDuplicates, .zipUnzip, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
         default: false
         }
     }
@@ -108,9 +108,11 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .diffChecker: "Diff Checker"
         case .regexTester: "Regex Tester"
         case .csvJSON: "CSV ↔ JSON"
+        case .coordinatePicker: "Coordinate Picker"
         case .passwordGenerator: "Password Generator"
         case .batteryHealth: "Battery Health"
         case .diskSpeedTest: "Disk Speed Test"
+        case .deadPixelTest: "Dead Pixel Test"
         case .zipUnzip: "Zip & Unzip"
         case .findDuplicates: "Find Duplicates"
         case .changeSpeed: "Change Speed"
@@ -141,8 +143,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF, .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename, .findDuplicates, .zipUnzip: .files
-        case .keepAwake, .batteryHealth, .diskSpeedTest: .mac
-        case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .passwordGenerator: .developer
+        case .keepAwake, .batteryHealth, .diskSpeedTest, .deadPixelTest: .mac
+        case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .passwordGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
         case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
         }
@@ -164,7 +166,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .convertDocuments:
             [.rtf, .html, .plainText] + ["doc", "docx", "odt", "md", "markdown"].compactMap { UTType(filenameExtension: $0) }
         case .markdownToPDF: [.plainText]
-        case .webPageToPDF, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .passwordGenerator, .batteryHealth, .diskSpeedTest: []
+        case .webPageToPDF, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest: []
         case .findDuplicates: [.directory]
         case .zipUnzip: [.data, .directory]
         case .qrCode: [.image]

@@ -56,9 +56,11 @@ struct ToolWorkspace: View {
         case .diffChecker: DiffCheckerView(draft: $draft.diffChecker)
         case .regexTester: RegexTesterView(draft: $draft.regexTester)
         case .csvJSON: CSVJSONView(draft: $draft.csvJSON)
+        case .coordinatePicker: CoordinatePickerView(draft: $draft.coordinatePicker)
         case .passwordGenerator: PasswordGeneratorView()
         case .batteryHealth: BatteryHealthView()
         case .diskSpeedTest: DiskSpeedView()
+        case .deadPixelTest: DeadPixelTestView()
         case .zipUnzip: ArchiveToolsView(draft: $draft.archiveTools)
         case .findDuplicates: FindDuplicatesView(draft: $draft.findDuplicates)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
@@ -226,7 +228,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .passwordGenerator, .batteryHealth, .diskSpeedTest, .findDuplicates, .zipUnzip, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .findDuplicates, .zipUnzip, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

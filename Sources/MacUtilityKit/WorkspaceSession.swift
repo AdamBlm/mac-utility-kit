@@ -24,6 +24,7 @@ struct ToolDraft {
     var diffChecker = DiffCheckerDraft()
     var regexTester = RegexTesterDraft()
     var csvJSON = CSVJSONDraft()
+    var coordinatePicker = CoordinatePickerDraft()
     var findDuplicates = FindDuplicatesDraft()
     var archiveTools = ArchiveToolsDraft()
     var transcribe = TranscribeDraft()
