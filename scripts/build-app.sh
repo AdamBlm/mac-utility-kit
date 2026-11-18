@@ -20,6 +20,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleShortVersionString</key><string>0.0.1</string>
     <key>CFBundleVersion</key><string>2</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>NSMicrophoneUsageDescription</key><string>Record audio with the microphone you select.</string>
 </dict>
 </plist>
 PLIST

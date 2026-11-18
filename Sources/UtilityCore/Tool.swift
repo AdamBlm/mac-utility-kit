@@ -16,18 +16,18 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
-    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces
+    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces, screenshot
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
-    case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech
+    case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot: true
         default: false
         }
     }
@@ -47,6 +47,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .rotateImages: "Rotate Images"
         case .beautifyScreenshot: "Beautify Screenshot"
         case .blurFaces: "Blur Faces"
+        case .screenshot: "Screenshot"
         case .compressImages: "Compress Images"
         case .removeMetadata: "Remove Metadata"
         case .mergePDFs: "Merge PDFs"
@@ -62,6 +63,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .transcribe: "Transcribe"
         case .captureText: "Capture Text"
         case .textToSpeech: "Text to Speech"
+        case .recordAudio: "Record Audio"
         case .qrCode: "QR Code"
         case .batchRename: "Batch Rename"
         case .keepAwake: "Keep Awake"
@@ -92,14 +94,14 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var group: ToolCategory {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces: .images
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: .video
-        case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio: .audio
+        case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
         }
     }
 
@@ -112,7 +114,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]
         case .jsonFormatter: [.json]
-        case .keepAwake, .captureText: []
+        case .keepAwake, .captureText, .recordAudio, .screenshot: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo, .transcribe, .cleanUpAudio: [.movie, .audio]

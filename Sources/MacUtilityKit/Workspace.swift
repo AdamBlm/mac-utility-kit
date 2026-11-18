@@ -4,6 +4,7 @@ import UtilityCore
 
 struct Workspace: View {
     let keepAwakeController: KeepAwakeController
+    let audioRecordingController: AudioRecordingController
     @State private var selection = Destination.tool(.resizeImages)
     @State private var readerSource: URL?
     @State private var captureHandoffError: String?
@@ -119,6 +120,7 @@ struct Workspace: View {
                         ),
                         session: session,
                         keepAwakeController: keepAwakeController,
+                        audioRecordingController: audioRecordingController,
                         openOutput: openOutput,
                         openTranscription: openTranscription,
                         openCaptionBurn: openCaptionBurn,

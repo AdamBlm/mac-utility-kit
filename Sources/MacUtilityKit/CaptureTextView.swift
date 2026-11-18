@@ -51,9 +51,7 @@ struct CaptureTextView: View {
                     Text("Allow Mac Utility Kit in System Settings → Privacy & Security → Screen & System Audio Recording. Reopen the app if macOS asks.")
                         .font(.callout).foregroundStyle(.secondary)
                     Button("Open System Settings", systemImage: "gear") {
-                        if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_ScreenCapture") {
-                            NSWorkspace.shared.open(url)
-                        }
+                        ScreenCapturePermission.openSettings()
                     }
                 }
                 if let status { Text(status).font(.callout).foregroundStyle(.secondary) }
@@ -111,7 +109,7 @@ struct CaptureTextView: View {
         permissionNeeded = false
         status = nil
         // Request access only as a result of the user pressing Select or Capture Again.
-        if !CGPreflightScreenCaptureAccess(), !CGRequestScreenCaptureAccess() {
+        if !ScreenCapturePermission.request() {
             permissionNeeded = true
             return
         }
@@ -122,7 +120,7 @@ struct CaptureTextView: View {
             guard let selection = await selector.select() else { return }
             do {
                 try await Task.sleep(for: .milliseconds(120))
-                let image = try await ScreenTextCapture.capture(region: selection.region, displays: selection.displays)
+                let image = try await ScreenImageCapture.capture(region: selection.region, displays: selection.displays)
                 let text = try await TextExtraction.recognizeImage(image, language: language)
                 try Task.checkCancellation()
                 draft.image = image

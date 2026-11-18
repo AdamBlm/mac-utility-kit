@@ -19,6 +19,7 @@ struct ToolDraft {
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()
     var textToSpeech = TextToSpeechDraft()
+    var screenshot = ScreenshotDraft()
     var captureAttachments: [CaptureTextAttachment] = []
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()

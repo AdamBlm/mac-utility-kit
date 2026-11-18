@@ -2,8 +2,11 @@ import AppKit
 import ScreenCaptureKit
 import UtilityCore
 
-enum ScreenTextCapture {
-    static func capture(region: CGRect, displays: [ScreenRegionSelector.Display]) async throws -> CGImage {
+enum ScreenImageCapture {
+    static func capture(
+        region: CGRect, displays: [ScreenRegionSelector.Display], maximumEdge: CGFloat? = 4096,
+        showsCursor: Bool = false, prefersNativeMultiDisplayCapture: Bool = true
+    ) async throws -> CGImage {
         guard CGPreflightScreenCaptureAccess() else {
             throw ToolError.invalid("Allow Screen & System Audio Recording in System Settings, then try again.")
         }
@@ -11,24 +14,28 @@ enum ScreenTextCapture {
               global.width >= 2, global.height >= 2 else {
             throw ToolError.invalid("Select a larger screen region.")
         }
-        if #available(macOS 15.2, *) {
-            return try capped(await SCScreenshotManager.captureImage(in: global))
+        if #available(macOS 15.2, *), prefersNativeMultiDisplayCapture, !showsCursor {
+            let image = try await SCScreenshotManager.captureImage(in: global)
+            return try maximumEdge.map { try capped(image, maximumEdge: $0) } ?? image
         }
-        return try await captureParts(region: region, displays: displays)
+        return try await captureParts(region: region, displays: displays, maximumEdge: maximumEdge, showsCursor: showsCursor)
     }
 
-    private static let maximumPixels: CGFloat = 4096
-
-    private static func captureParts(region: CGRect, displays: [ScreenRegionSelector.Display]) async throws -> CGImage {
+    private static func captureParts(
+        region: CGRect, displays: [ScreenRegionSelector.Display], maximumEdge: CGFloat?, showsCursor: Bool
+    ) async throws -> CGImage {
         let content = try await SCShareableContent.excludingDesktopWindows(false, onScreenWindowsOnly: true)
         let requested = displays.compactMap { display -> (ScreenRegionSelector.Display, CGRect)? in
             CaptureRegionGeometry.croppedRect(region, on: display.frame).map { (display, $0) }
         }
         guard !requested.isEmpty else { throw ToolError.invalid("No display contains the selected region.") }
         let backingScale = requested.map { $0.0.scale }.max() ?? 1
-        let scale = min(backingScale, maximumPixels / max(region.width, region.height))
+        let scale = maximumEdge.map { min(backingScale, $0 / max(region.width, region.height)) } ?? backingScale
         let width = max(1, Int((region.width * scale).rounded(.up)))
         let height = max(1, Int((region.height * scale).rounded(.up)))
+        guard width <= 16_000, height <= 16_000, width * height <= 64_000_000 else {
+            throw ToolError.invalid("Choose a smaller region to capture at full resolution.")
+        }
         let canvas = try bitmap(width: width, height: height)
         canvas.setFillColor(CGColor(gray: 0, alpha: 1))
         canvas.fill(CGRect(x: 0, y: 0, width: width, height: height))
@@ -42,7 +49,7 @@ enum ScreenTextCapture {
             configuration.sourceRect = crop
             configuration.width = max(1, Int((crop.width * scale).rounded(.up)))
             configuration.height = max(1, Int((crop.height * scale).rounded(.up)))
-            configuration.showsCursor = false
+            configuration.showsCursor = showsCursor
             let image = try await SCScreenshotManager.captureImage(contentFilter: filter, configuration: configuration)
             let destination = region.intersection(display.frame)
             canvas.draw(image, in: CGRect(x: (destination.minX - region.minX) * scale,
@@ -53,8 +60,8 @@ enum ScreenTextCapture {
         return image
     }
 
-    private static func capped(_ image: CGImage) throws -> CGImage {
-        let factor = maximumPixels / CGFloat(max(image.width, image.height))
+    private static func capped(_ image: CGImage, maximumEdge: CGFloat) throws -> CGImage {
+        let factor = maximumEdge / CGFloat(max(image.width, image.height))
         guard factor < 1 else { return image }
         let width = max(1, Int((CGFloat(image.width) * factor).rounded(.down)))
         let height = max(1, Int((CGFloat(image.height) * factor).rounded(.down)))

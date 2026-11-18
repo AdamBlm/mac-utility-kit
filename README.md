@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 43 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 45 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -50,10 +50,12 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 - **Convert Audio** converts to M4A, WAV, AIFF, MP3, or FLAC with sample rate, channel, and format-specific options. MP3 and FLAC require a selected FFmpeg executable. Metadata transfer depends on the output format.
 
+- **Record Audio** records from a selected microphone with a live meter and pause/resume. Save M4A, or save and send the recording to Transcribe.
 - **Clean Up Audio** reduces noise and 50/60 Hz hum with a selected FFmpeg executable. Compare a level-matched sample, then export WAV or copy the video stream into an MKV with cleaned audio.
 
 ### Image tools
 
+- **Screenshot** captures a display, a window, a region, or a manually scrolled sequence. Review the image or stitching seams before copying or exporting PNG or JPEG.
 - **Blur Faces** suggests face masks with Apple Vision. Add or adjust coverage, review the flattened preview, and export PNG with solid cover, blur, or pixelation.
 - **Beautify Screenshot** adds a solid or gradient background, padding, rounded corners, and shadow. Choose a canvas aspect ratio, preview the full-resolution composition, and export PNG or JPEG.
 - **Rotate Images** previews quarter-turns and horizontal or vertical flips. Export a PNG or keep a supported original format with normalized orientation metadata.

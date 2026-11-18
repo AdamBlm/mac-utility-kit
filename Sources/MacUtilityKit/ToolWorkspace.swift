@@ -7,6 +7,7 @@ struct ToolWorkspace: View {
     @Binding var draft: ToolDraft
     let session: WorkspaceSession
     let keepAwakeController: KeepAwakeController
+    let audioRecordingController: AudioRecordingController
     let openOutput: (URL) -> Void
     let openTranscription: (URL) -> Void
     let openCaptionBurn: (URL, String) -> Void
@@ -48,6 +49,8 @@ struct ToolWorkspace: View {
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
         case .textToSpeech: TextToSpeechView(draft: $draft.textToSpeech)
+        case .recordAudio: RecordAudioView(controller: audioRecordingController, onTranscribe: openTranscription)
+        case .screenshot: ScreenshotView(draft: $draft.screenshot)
         default: EmptyView()
         }
     }
@@ -169,7 +172,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {
