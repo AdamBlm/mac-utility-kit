@@ -28,7 +28,8 @@ import UtilityCore
 
         ![A remote pixel](https://example.test/a.png)
         """)
-        #expect(document.html.contains("<h1>Heading — café</h1>"))
+        #expect(document.html.contains("<h1 id=\"heading--café\">"))
+        #expect(document.html.contains("Heading — café"))
         #expect(document.html.contains("https://example.test/guide"))
         #expect(document.html.contains("<table>"))
         #expect(document.html.contains("print(&quot;&lt;tag&gt;&quot;)"))
@@ -103,6 +104,33 @@ import UtilityCore
         #expect(pages.flatMap(\.annotations).contains { annotation in
             (annotation.action as? PDFActionURL)?.url?.absoluteString == "https://example.test/guide"
         })
+    }
+
+    @MainActor
+    @Test func duplicateAndUnicodeHeadingLinksReachTheirPrintedPages() async throws {
+        var source = "[Duplicate heading](#details-2) · [Unicode heading](#caf%C3%A9) · [Unsafe](javascript:alert%281%29)\n\n# Details\n\nFIRST DETAIL MARKER\n\n# Details-1\n\nLITERAL SUFFIX MARKER"
+        let filler = (1...80).map { "Paragraph \($0). " + String(repeating: "Read the printed material. ", count: 8) }
+            .joined(separator: "\n\n")
+        source += "\n\n" + filler + "\n\n# Details\n\nSECOND DETAIL MARKER\n\n" + filler + "\n\n# Café\n\nUNICODE TARGET MARKER"
+        let document = try await MarkdownPDF.prepare(source)
+        #expect(document.html.contains("id=\"details\""))
+        #expect(document.html.contains("id=\"details-1\""))
+        #expect(document.html.contains("id=\"details-2\""))
+        #expect(document.html.contains("id=\"café\""))
+        #expect(!document.html.contains("javascript:"))
+        let printed = try await MarkdownPDFPrint.render(document)
+        let pdf = try #require(PDFDocument(data: printed))
+        let first = try #require(pdf.page(at: 0))
+        let duplicateTarget = try #require(pdf.findString("SECOND DETAIL MARKER").first?.pages.first)
+        let unicodeTarget = try #require(pdf.findString("UNICODE TARGET MARKER").first?.pages.first)
+        let destinationIndexes = first.annotations.sorted { $0.bounds.minX < $1.bounds.minX }.compactMap { annotation in
+            (annotation.destination ?? (annotation.action as? PDFActionGoTo)?.destination)?.page
+        }.map { pdf.index(for: $0) }
+        let duplicate = pdf.index(for: duplicateTarget)
+        let unicode = pdf.index(for: unicodeTarget)
+        #expect(duplicate > 0 && unicode > duplicate)
+        #expect(destinationIndexes == [duplicate, unicode])
+        #expect(first.annotations.allSatisfy { $0.url == nil })
     }
 
     private func createPNG(_ url: URL, width: Int = 24) throws {

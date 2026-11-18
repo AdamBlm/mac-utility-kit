@@ -63,6 +63,7 @@ public enum MarkdownPDF {
         }
         defer { cmark_node_free(document) }
 
+        let headingIDs = try MarkdownHeadingAnchors.assign(in: document)
         var images = MarkdownLocalImages(folder: imageFolder)
         for node in resourceNodes(document).reversed() {
             try Task.checkCancellation()
@@ -83,6 +84,9 @@ public enum MarkdownPDF {
                         }
                     }
                 }
+            } else if target.hasPrefix("#"), let id = String(target.dropFirst()).removingPercentEncoding,
+                      headingIDs.contains(id.precomposedStringWithCanonicalMapping) {
+                cmark_node_set_url(node, "#" + MarkdownHeadingAnchors.printableID(id.precomposedStringWithCanonicalMapping))
             } else if !safeLink(target) {
                 cmark_node_set_url(node, "")
             }

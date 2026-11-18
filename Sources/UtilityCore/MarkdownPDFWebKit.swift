@@ -40,8 +40,14 @@ public final class MarkdownPDFWebPage: NSObject, WKNavigationDelegate {
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                         decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
-        let initial = navigationAction.navigationType == .other && navigationAction.request.url?.absoluteString == "about:blank"
-        decisionHandler(initial ? .allow : .cancel)
+        let url = navigationAction.request.url
+        let initial = navigationAction.navigationType == .other && url?.absoluteString == "about:blank"
+        var components = url.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+        let hasFragment = components?.fragment?.isEmpty == false
+        components?.fragment = nil
+        let headingLink = navigationAction.navigationType == .linkActivated && hasFragment
+            && components?.string == "about:blank" && navigationAction.targetFrame?.isMainFrame == true
+        decisionHandler(initial || headingLink ? .allow : .cancel)
     }
 
     public func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
