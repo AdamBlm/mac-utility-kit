@@ -54,6 +54,7 @@ public struct ToolOptions: Sendable {
     public var pdfOutputName = "Merged"
     public var pdfPasswords: [String] = []
     public var pageRanges: [String] = []
+    public var ffmpegExecutable: URL?
     public var videoFormat: VideoFormat = .mp4
     public var videoCodec: VideoCodec = .automatic
     public var videoQuality: VideoQuality = .balanced

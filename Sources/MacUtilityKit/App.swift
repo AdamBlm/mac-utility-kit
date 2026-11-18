@@ -148,7 +148,23 @@ private struct Workspace: View {
                     Picker("Compression quality", selection: option(tool, \.videoQuality)) {
                         ForEach(VideoQuality.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    Text("Quality adjusts the encoding bitrate. Exports keep the source resolution.")
+                    HStack {
+                        if draft.options.ffmpegExecutable != nil {
+                            Text("FFmpeg · Constant quality")
+                            Button("Use macOS encoder") { drafts[tool, default: Draft()].options.ffmpegExecutable = nil }
+                        } else {
+                            Text("macOS encoder")
+                        }
+                        Button("Choose FFmpeg…") {
+                            let panel = NSOpenPanel()
+                            if panel.runModal() == .OK {
+                                drafts[tool, default: Draft()].options.ffmpegExecutable = panel.url
+                            }
+                        }
+                    }
+                    Text(draft.options.ffmpegExecutable == nil
+                         ? "Quality sets a target bitrate. Exports keep the source resolution."
+                         : "Quality sets a constant-quality target. Requires FFmpeg with libx264 or libx265.")
                         .font(.caption).foregroundStyle(.secondary)
                     Toggle("Keep exports that are not smaller", isOn: option(tool, \.keepLargerVideos))
                     HStack {

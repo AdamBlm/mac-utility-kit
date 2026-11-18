@@ -239,3 +239,31 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(output.pathExtension == "m4v")
     #expect(try await AVURLAsset(url: output).load(.isPlayable))
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+func ffmpegConstantQualityKeeps4KAndOrientation() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("4k.mov")
+    let rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 2160, ty: 0)
+    try await writeVideoFixture(to: source, width: 3840, height: 2160, frames: 8, transform: rotation)
+
+    var options = ToolOptions()
+    options.ffmpegExecutable = URL(fileURLWithPath: executable)
+    for codec in [VideoCodec.automatic, .hevc] {
+        options.videoCodec = codec
+        let result = try await ToolRunner.run(
+            .compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+        ) { _ in }
+        #expect(result.failures.isEmpty)
+        let export = try #require(result.outputs.first)
+        let sample = try await ToolRunner.sampleVideo(source, destination: folder, options: options)
+        for url in [export, sample.url] {
+            let tracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .video)
+            let track = try #require(tracks.first)
+            #expect(try await track.load(.naturalSize) == CGSize(width: 3840, height: 2160))
+            #expect(try await track.load(.preferredTransform) == rotation)
+        }
+    }
+}

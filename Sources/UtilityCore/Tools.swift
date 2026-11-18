@@ -285,7 +285,19 @@ public enum ToolRunner {
         _ input: URL, output: URL, options: ToolOptions, sample: Bool = false, progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
         let asset = AVURLAsset(url: input)
-        try await VideoEncoding.export(asset, to: output, options: options, sample: sample, progress: progress)
+        if let executable = options.ffmpegExecutable {
+            try await FFmpegEncoding.export(input, to: output, using: executable, options: options, sample: sample)
+            let outputAsset = AVURLAsset(url: output)
+            guard let source = try await asset.loadTracks(withMediaType: .video).first,
+                  let result = try await outputAsset.loadTracks(withMediaType: .video).first,
+                  try await source.load(.naturalSize) == result.load(.naturalSize),
+                  try await source.load(.preferredTransform) == result.load(.preferredTransform) else {
+                throw ToolError.invalid("FFmpeg could not preserve the source resolution and orientation.")
+            }
+            await progress(1)
+        } else {
+            try await VideoEncoding.export(asset, to: output, options: options, sample: sample, progress: progress)
+        }
         if sample { return output.lastPathComponent }
         let sourceSize = try input.resourceValues(forKeys: [.fileSizeKey]).fileSize
         let outputSize = try output.resourceValues(forKeys: [.fileSizeKey]).fileSize
