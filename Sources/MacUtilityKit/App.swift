@@ -7,7 +7,7 @@ import UtilityCore
 struct MacUtilityKitApp: App {
     var body: some Scene {
         WindowGroup("Mac Utility Kit") { Workspace() }
-            .windowToolbarStyle(.unified(showsTitle: false))
+            .windowToolbarStyle(.unifiedCompact(showsTitle: false))
             .defaultSize(width: 940, height: 690)
     }
 }
@@ -107,9 +107,7 @@ private struct Workspace: View {
             .padding(.top, 12)
             .navigationSplitViewColumnWidth(min: 170, ideal: 184, max: 220)
         } detail: {
-            VStack(spacing: 0) {
-                workspaceHeader
-                Divider()
+            Group {
                 if let selection {
                     let draft = drafts[selection, default: Draft()]
                     if draft.inputs.isEmpty, reports[selection] == nil,
@@ -122,28 +120,25 @@ private struct Workspace: View {
                     ContentUnavailableView("Choose a tool", systemImage: "wrench.and.screwdriver")
                 }
             }
-        }
-        .tint(palette.accent)
-    }
-
-    private var workspaceHeader: some View {
-        HStack(spacing: 12) {
-            Text("Mac Utility Kit")
-                .font(.system(size: 13, weight: .semibold))
-                .lineLimit(1)
-            Spacer(minLength: 8)
-            if let runningTool {
-                Text(runningTool.title)
-                    .lineLimit(1)
-                    .foregroundStyle(.secondary)
-                    .layoutPriority(-1)
-                ProgressView(value: progress).frame(width: 70)
-                Button("Cancel") { job?.cancel() }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let runningTool {
+                    HStack(spacing: 12) {
+                        Text(runningTool.title)
+                            .lineLimit(1)
+                        Spacer(minLength: 8)
+                        ProgressView(value: progress).frame(width: 88)
+                        Button("Cancel") { job?.cancel() }
+                    }
+                    .font(.callout)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 8)
+                    .background(palette.surface)
+                    .overlay(alignment: .bottom) { Divider() }
+                }
             }
         }
-        .padding(.horizontal, 20)
-        .frame(height: 38)
-        .background(palette.canvas)
+        .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
+        .tint(palette.accent)
     }
 
     private func editor(for tool: Tool) -> some View {
