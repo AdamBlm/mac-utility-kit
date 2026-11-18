@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 88 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 90 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -144,6 +144,9 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Storage Explorer** scans folder and file sizes, distinguishes apparent and allocated bytes, and rechecks selected items before moving them to Trash.
 - **Clipboard History** records supported text and images only after opt-in. It supports session retention, pinning, exclusions, and copy-back.
 - **Translate** uses Apple’s on-device language packs for text, SRT, and VTT. Translated subtitle files retain cue timing.
+- **Ask a Document** retrieves source passages locally and uses Apple Intelligence to answer with verified quotations linked to pages or sections.
+- **Reset Permissions** asks macOS to reset one chosen privacy permission for the selected app’s bundle identifier.
+- **Launcher settings** offer an optional menu bar item, Dock icon visibility, a configurable global shortcut, and launch at login.
 
 
 ### Terminal and local MCP

@@ -9,6 +9,7 @@ let package = Package(
         .executable(name: "muk", targets: ["MacUtilityCLI"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", exact: "2.3.0"),
         .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.7.0"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
@@ -22,7 +23,9 @@ let package = Package(
             .product(name: "cmark-gfm", package: "swift-cmark"),
             .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
         ], resources: [.copy("Resources/confusables.txt"), .copy("Resources/eff_large_wordlist.txt")]),
-        .executableTarget(name: "MacUtilityKit", dependencies: ["UtilityCore"]),
+        .executableTarget(name: "MacUtilityKit", dependencies: [
+            "UtilityCore", .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
+        ]),
         .executableTarget(name: "MacUtilityCLI", dependencies: [
             "UtilityCore", .product(name: "ArgumentParser", package: "swift-argument-parser"),
             .product(name: "MCP", package: "swift-sdk"),

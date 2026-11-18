@@ -20,8 +20,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
-    case signPDF, extractText, wordCounter, summarize, caseConverter, translate
-    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, jwtDecoder, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, ejectAllDisks, presentationMode, networkSpeedTest, storageExplorer, clipboardHistory, findDuplicates, zipUnzip
+    case signPDF, extractText, wordCounter, summarize, caseConverter, translate, askDocument
+    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, jwtDecoder, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, ejectAllDisks, presentationMode, networkSpeedTest, storageExplorer, clipboardHistory, resetPermissions, findDuplicates, zipUnzip
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
     case makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
     case recordScreen, downloadVideo
@@ -38,7 +38,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
         default: false
         }
     }
@@ -91,6 +91,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .summarize: "Summarize"
         case .caseConverter: "Case Converter"
         case .translate: "Translate"
+        case .askDocument: "Ask a Document"
         case .transcribe: "Transcribe"
         case .captureText: "Capture Text"
         case .textToSpeech: "Text to Speech"
@@ -122,6 +123,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .networkSpeedTest: "Network Speed Test"
         case .storageExplorer: "Storage Explorer"
         case .clipboardHistory: "Clipboard History"
+        case .resetPermissions: "Reset Permissions"
         case .zipUnzip: "Zip & Unzip"
         case .findDuplicates: "Find Duplicates"
         case .changeSpeed: "Change Speed"
@@ -150,9 +152,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage, .annotateScreenshot, .removeBackground, .colorPicker, .watermark: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF, .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF: .documents
-        case .extractText, .wordCounter, .summarize, .caseConverter, .translate, .transcribe, .captureText, .textToSpeech: .text
+        case .extractText, .wordCounter, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename, .findDuplicates, .zipUnzip: .files
-        case .keepAwake, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory: .mac
+        case .keepAwake, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions: .mac
         case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
         case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
@@ -165,7 +167,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .mergePDFs, .extractText: [.pdf, .image]
         case .watermark: [.image, .pdf, .movie]
         case .wordCounter, .translate: [.plainText]
-        case .textToSpeech, .summarize: [.plainText, .rtf, .pdf]
+        case .textToSpeech, .summarize, .askDocument: [.plainText, .rtf, .pdf]
         case .excelToPDF:
             ["xls", "xlsx", "ods"].compactMap { UTType(filenameExtension: $0) }
         case .powerPointToPDF:
@@ -177,6 +179,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .markdownToPDF: [.plainText]
         case .webPageToPDF, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .clipboardHistory, .caseConverter: []
         case .findDuplicates, .storageExplorer: [.directory]
+        case .resetPermissions: [.applicationBundle]
         case .zipUnzip: [.data, .directory]
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]

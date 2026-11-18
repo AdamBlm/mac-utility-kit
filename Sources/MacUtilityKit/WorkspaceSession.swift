@@ -29,6 +29,7 @@ struct ToolDraft {
     var summarize = SummarizeDraft()
     var caseConverter = CaseConverterDraft()
     var translate = TranslateDraft()
+    var askDocument = AskDocumentDraft()
     var ejectDisks = EjectDisksDraft()
     var findDuplicates = FindDuplicatesDraft()
     var storageExplorer = StorageExplorerDraft()

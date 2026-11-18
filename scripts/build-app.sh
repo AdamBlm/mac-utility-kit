@@ -7,6 +7,9 @@ app="build/Mac Utility Kit.app"
 mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
 ./scripts/build-icon.sh assets/branding/mac-utility-kit.svg "$app/Contents/Resources/AppIcon.icns"
 cp "$binary_directory/MacUtilityKit" "$binary_directory/muk" "$app/Contents/MacOS/"
+ditto "$binary_directory/KeyboardShortcuts_KeyboardShortcuts.bundle" \
+    "$app/Contents/Resources/KeyboardShortcuts_KeyboardShortcuts.bundle"
+cp .build/checkouts/KeyboardShortcuts/license "$app/Contents/Resources/KeyboardShortcuts-LICENSE.txt"
 mkdir -p "$app/Contents/Resources/CLI-Licenses"
 for dependency in eventsource swift-argument-parser swift-atomics swift-collections swift-log swift-nio swift-sdk swift-system; do
     case "$dependency" in

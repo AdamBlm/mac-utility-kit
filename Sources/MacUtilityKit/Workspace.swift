@@ -4,6 +4,7 @@ import UtilityCore
 
 struct Workspace: View {
     let keepAwakeController: KeepAwakeController
+    let launcherController: LauncherController
     let presentationModeController: PresentationModeController
     let clipboardHistoryController: ClipboardHistoryController
     let audioRecordingController: AudioRecordingController
@@ -157,6 +158,11 @@ struct Workspace: View {
                 }
             }
         }
+        .background(LauncherWorkspaceBridge(controller: launcherController) { tool in
+            selection = .tool(tool)
+            search = ""
+            searching = false
+        })
         .onChange(of: session.previewURL) { _, url in
             if let url { openOutput(url) }
         }
