@@ -17,6 +17,10 @@ struct DocumentScannerView: View {
     @State private var progress = 0.0
     @State private var exported: URL?
     @State private var correctedPreview: CGImage?
+    @State private var retakePage: UUID?
+    @State private var pendingRetake: (target: UUID, page: ScannedPage)?
+    @State private var cameraImport: Task<Void, Never>?
+    @State private var cameraRequest: UUID?
 
     private struct PreviewKey: Equatable {
         let id: UUID
@@ -32,11 +36,38 @@ struct DocumentScannerView: View {
             WorkspaceSection("Pages", palette: palette) {
                 HStack {
                     Button("Import Photos or Scans…", systemImage: "photo.on.rectangle", action: { chooseImages() })
-                        .disabled(importing || exporting)
+                        .disabled(importing || exporting || pendingRetake != nil)
                     if importing { ProgressView().controlSize(.small) }
+                    if cameraRequest != nil {
+                        Button("Cancel Camera Import", action: cancelCameraImport)
+                    }
                 }
-                Text("Use Import from iPhone or iPad in the system menu when Continuity Camera is available.")
-                    .font(.callout).foregroundStyle(.secondary)
+                if let pendingRetake, let target = draft.pages.first(where: { $0.id == pendingRetake.target }) {
+                    HStack(spacing: 12) {
+                        Image(decorative: pendingRetake.page.image, scale: 1)
+                            .resizable().scaledToFit().frame(width: 60, height: 72)
+                            .accessibilityLabel("Replacement scan")
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Replace \(target.name) with the new camera scan?")
+                                .font(.callout).foregroundStyle(.secondary)
+                            HStack {
+                                Button("Replace Page") { confirmRetake(pendingRetake) }
+                                    .buttonStyle(.borderedProminent)
+                                Button("Keep Original") { self.pendingRetake = nil }
+                            }
+                            .disabled(exporting)
+                        }
+                    }
+                } else if let target = draft.pages.first(where: { $0.id == retakePage }) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text("Scan a replacement for \(target.name) using Scan Documents in Import from iPhone or iPad.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Button("Cancel Retake") { retakePage = nil }
+                    }
+                } else {
+                    Text("Use Import from iPhone or iPad in the system menu when Continuity Camera is available.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 ForEach(Array(draft.pages.enumerated()), id: \.element.id) { index, page in
                     HStack {
                         Button("\(index + 1). \(page.name)") { draft.selection = page.id }
@@ -66,8 +97,14 @@ struct DocumentScannerView: View {
                         Button("Rotate", systemImage: "rotate.right") {
                             draft.pages[index].rotation = (draft.pages[index].rotation + 1) % 4
                         }
-                        Button("Replace page…") { chooseImages(replacing: draft.pages[index].id) }
-                            .disabled(importing)
+                        Menu("Replace Page") {
+                            Button("Choose File…") { chooseImages(replacing: page.id) }
+                            Button("Retake with iPhone or iPad") {
+                                retakePage = page.id
+                                issue = nil
+                            }
+                        }
+                        .disabled(importing || pendingRetake != nil)
                     }
                     .disabled(exporting)
                     if !draft.pages[index].corners.isValid {
@@ -119,11 +156,24 @@ struct DocumentScannerView: View {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             }
         }
-        .importsItemProviders([.image, .pdf]) { providers in
-            guard !providers.isEmpty, !importing, !exporting else { return false }
+        .importsItemProviders(importing || exporting || pendingRetake != nil ? [] : [.image, .pdf]) { providers in
+            guard !providers.isEmpty, !importing, !exporting, pendingRetake == nil else { return false }
+            let replacement = retakePage
+            retakePage = nil
+            if replacement != nil, providers.count != 1 {
+                issue = "Scan a single page to replace the selected page."
+                return false
+            }
+            let request = UUID()
+            cameraRequest = request
             importing = true
-            Task { await importContinuity(providers) }
+            cameraImport = Task { await importContinuity(providers, replacing: replacement, request: request) }
             return true
+        }
+        .onDisappear {
+            cancelCameraImport()
+            retakePage = nil
+            pendingRetake = nil
         }
     }
 
@@ -133,6 +183,8 @@ struct DocumentScannerView: View {
         panel.allowsMultipleSelection = pageID == nil
         guard panel.runModal() == .OK else { return }
         let urls = panel.urls
+        retakePage = nil
+        pendingRetake = nil
         importing = true
         issue = nil
         Task {
@@ -152,8 +204,14 @@ struct DocumentScannerView: View {
         }
     }
 
-    private func importContinuity(_ providers: [NSItemProvider]) async {
-        defer { importing = false }
+    private func importContinuity(_ providers: [NSItemProvider], replacing pageID: UUID?, request: UUID) async {
+        defer {
+            if cameraRequest == request {
+                cameraRequest = nil
+                cameraImport = nil
+                importing = false
+            }
+        }
         issue = nil
         for provider in providers {
             let identifier = provider.hasItemConformingToTypeIdentifier(UTType.pdf.identifier)
@@ -165,15 +223,40 @@ struct DocumentScannerView: View {
                         else { continuation.resume(throwing: error ?? ToolError.invalid("No scan was imported.")) }
                     }
                 }
+                try Task.checkCancellation()
                 let name = provider.suggestedName ?? "Camera Scan"
                 let pages = try await Task.detached(priority: .userInitiated) {
                     try DocumentScanner.load(data, name: name)
                 }.value
-                try insert(pages, replacing: nil)
+                try Task.checkCancellation()
+                guard cameraRequest == request else { return }
+                if let pageID {
+                    guard pages.count == 1, let page = pages.first, draft.pages.contains(where: { $0.id == pageID }) else {
+                        throw ToolError.invalid("Choose exactly one replacement page for a scan still in the document.")
+                    }
+                    pendingRetake = (pageID, page)
+                } else {
+                    try insert(pages, replacing: nil)
+                }
             } catch {
+                guard !Task.isCancelled, cameraRequest == request else { return }
                 issue = error.localizedDescription
             }
         }
+    }
+
+    private func cancelCameraImport() {
+        guard cameraRequest != nil else { return }
+        cameraRequest = nil
+        cameraImport?.cancel()
+        cameraImport = nil
+        importing = false
+    }
+
+    private func confirmRetake(_ pending: (target: UUID, page: ScannedPage)) {
+        pendingRetake = nil
+        do { try insert([pending.page], replacing: pending.target) }
+        catch { issue = error.localizedDescription }
     }
 
     private func insert(_ pages: [ScannedPage], replacing id: UUID?) throws {
@@ -200,6 +283,8 @@ struct DocumentScannerView: View {
 
     private func remove(_ page: ScannedPage) {
         draft.pages.removeAll { $0.id == page.id }
+        if retakePage == page.id { retakePage = nil }
+        if pendingRetake?.target == page.id { pendingRetake = nil }
         if draft.selection == page.id { draft.selection = draft.pages.first?.id }
     }
 
