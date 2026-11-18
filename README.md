@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 46 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 50 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -22,6 +22,9 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 
 
 ### Media tools
+
+- **Record Screen** records a display, window, or single-display region with optional system and microphone audio. Set resolution and frame rate, then pause, resume, or stop from the menu bar.
+- **Download Video** inspects a URL using a selected yt-dlp executable. Choose a stream and output format, then download with progress and cancellation. Stream merging and conversion require FFmpeg.
 
 - **Convert Video** converts to MP4, MOV, and M4V with AVFoundation. A user-selected FFmpeg adds WebM export and resolution and frame rate options. Passthrough requires streams compatible with the destination container.
 - **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections, while the optional user-selected ffprobe exports its detailed stream metadata. Frame-timing results describe observed samples only.
@@ -55,6 +58,8 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 ### Image tools
 
+- **Annotate Screenshot** adds ordered arrows, lines, shapes, text, and numbered callouts. Open an image or hand off a capture from Screenshot, then copy or export a flattened PNG or JPEG.
+- **Remove Background** detects foreground subjects locally, supports rectangular Keep and Remove refinements, and exports transparent PNG or a solid-background PNG or JPEG.
 - **Screenshot** captures a display, a window, a region, or a manually scrolled sequence. Review the image or stitching seams before copying or exporting PNG or JPEG.
 - **Redact Image** flattens adjustable solid, blurred, or pixelated regions into PNG. Review at full resolution with undo and redo. Source metadata is stripped by default, with optional retention of title, author, and copyright.
 - **Blur Faces** suggests face masks with Apple Vision. Add or adjust coverage, review the flattened preview, and export PNG with solid cover, blur, or pixelation.

@@ -16,18 +16,19 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
-    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces, screenshot, redactImage
+    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces, screenshot, redactImage, annotateScreenshot, removeBackground
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
+    case recordScreen, downloadVideo
     case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo: true
         default: false
         }
     }
@@ -49,6 +50,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .blurFaces: "Blur Faces"
         case .redactImage: "Redact Image"
         case .screenshot: "Screenshot"
+        case .annotateScreenshot: "Annotate Screenshot"
+        case .removeBackground: "Remove Background"
         case .compressImages: "Compress Images"
         case .removeMetadata: "Remove Metadata"
         case .mergePDFs: "Merge PDFs"
@@ -65,6 +68,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .captureText: "Capture Text"
         case .textToSpeech: "Text to Speech"
         case .recordAudio: "Record Audio"
+        case .recordScreen: "Record Screen"
+        case .downloadVideo: "Download Video"
         case .qrCode: "QR Code"
         case .batchRename: "Batch Rename"
         case .keepAwake: "Keep Awake"
@@ -95,27 +100,27 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var group: ToolCategory {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage: .images
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage, .annotateScreenshot, .removeBackground: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
-        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: .video
+        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
         case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
         }
     }
 
     public var inputTypes: [UTType] {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .imagesToPDF: [.image]
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .annotateScreenshot, .removeBackground, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .wordCounter: [.plainText]
         case .textToSpeech: [.plainText, .rtf, .pdf]
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]
         case .jsonFormatter: [.json]
-        case .keepAwake, .captureText, .recordAudio, .screenshot: []
+        case .keepAwake, .captureText, .recordAudio, .screenshot, .recordScreen, .downloadVideo: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo, .transcribe, .cleanUpAudio: [.movie, .audio]

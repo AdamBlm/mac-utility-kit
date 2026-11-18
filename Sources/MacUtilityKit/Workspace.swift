@@ -5,6 +5,7 @@ import UtilityCore
 struct Workspace: View {
     let keepAwakeController: KeepAwakeController
     let audioRecordingController: AudioRecordingController
+    let screenRecordingController: ScreenRecordingController
     @State private var selection = Destination.tool(.resizeImages)
     @State private var readerSource: URL?
     @State private var captureHandoffError: String?
@@ -121,10 +122,12 @@ struct Workspace: View {
                         session: session,
                         keepAwakeController: keepAwakeController,
                         audioRecordingController: audioRecordingController,
+                        screenRecordingController: screenRecordingController,
                         openOutput: openOutput,
                         openTranscription: openTranscription,
                         openCaptionBurn: openCaptionBurn,
-                        openCapturedText: openCapturedText
+                        openCapturedText: openCapturedText,
+                        openAnnotation: openAnnotation
                     )
                     .id(selection)
                 }
@@ -176,6 +179,13 @@ struct Workspace: View {
         } else {
             NSWorkspace.shared.open(url)
         }
+    }
+
+    private func openAnnotation(_ image: CGImage) {
+        var draft = session.drafts[.annotateScreenshot, default: ToolDraft()]
+        draft.annotation.setImage(image)
+        session.drafts[.annotateScreenshot] = draft
+        selection = .tool(.annotateScreenshot)
     }
 
     private func openTranscription(_ input: URL) {

@@ -6,6 +6,7 @@ struct ImageMaskCanvas: View {
     let masks: [ImageMaskRegion]
     @Binding var selected: UUID?
     @Binding var drawing: Bool
+    var tint: ((ImageMaskRegion) -> Color)? = nil
     let onChange: ([ImageMaskRegion]) -> Void
 
     @State private var temporary: CGRect?
@@ -59,9 +60,10 @@ struct ImageMaskCanvas: View {
     private func overlay(_ mask: ImageMaskRegion, size: CGSize) -> some View {
         let rect = frame(for: mask.rect, size: size)
         let focused = selected == mask.id
+        let outline = tint?(mask) ?? .white
         Rectangle()
             .fill(.black.opacity(0.12))
-            .strokeBorder(focused ? Color.white : Color.white.opacity(0.72), lineWidth: focused ? 2 : 1)
+            .strokeBorder(focused ? outline : outline.opacity(0.72), lineWidth: focused ? 2 : 1)
             .frame(width: rect.width, height: rect.height)
             .position(x: rect.midX, y: rect.midY)
             .gesture(adjust(mask, in: size, corner: nil))

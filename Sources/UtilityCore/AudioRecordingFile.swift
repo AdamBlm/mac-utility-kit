@@ -21,20 +21,6 @@ public struct AudioRecordingFile: Equatable, Sendable {
     }
 
     public func save(to output: URL) async throws {
-        guard output.isFileURL, output.standardizedFileURL != url.standardizedFileURL else {
-            throw ToolError.invalid("Choose a separate local save location.")
-        }
-        let manager = FileManager.default
-        let folder = output.deletingLastPathComponent().appending(path: ".audio-save-\(UUID().uuidString)")
-        try manager.createDirectory(at: folder, withIntermediateDirectories: false)
-        defer { try? manager.removeItem(at: folder) }
-        let copy = folder.appending(path: output.lastPathComponent)
-        try manager.copyItem(at: url, to: copy)
-        try Task.checkCancellation()
-        if manager.fileExists(atPath: output.path) {
-            _ = try manager.replaceItemAt(output, withItemAt: copy)
-        } else {
-            try manager.moveItem(at: copy, to: output)
-        }
+        try await RecordingFileSave.copy(url, to: output)
     }
 }

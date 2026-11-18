@@ -8,10 +8,12 @@ struct ToolWorkspace: View {
     let session: WorkspaceSession
     let keepAwakeController: KeepAwakeController
     let audioRecordingController: AudioRecordingController
+    let screenRecordingController: ScreenRecordingController
     let openOutput: (URL) -> Void
     let openTranscription: (URL) -> Void
     let openCaptionBurn: (URL, String) -> Void
     let openCapturedText: (CGImage, String?) -> Void
+    let openAnnotation: (CGImage) -> Void
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
@@ -50,7 +52,10 @@ struct ToolWorkspace: View {
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
         case .textToSpeech: TextToSpeechView(draft: $draft.textToSpeech)
         case .recordAudio: RecordAudioView(controller: audioRecordingController, onTranscribe: openTranscription)
-        case .screenshot: ScreenshotView(draft: $draft.screenshot)
+        case .screenshot: ScreenshotView(draft: $draft.screenshot, onAnnotate: openAnnotation)
+        case .annotateScreenshot: AnnotateScreenshotView(draft: $draft.annotation)
+        case .recordScreen: RecordScreenView(controller: screenRecordingController)
+        case .downloadVideo: VideoDownloadView(draft: $draft.videoDownload)
         default: EmptyView()
         }
     }
@@ -123,6 +128,8 @@ struct ToolWorkspace: View {
                             BlurFacesControls(inputs: draft.inputs, options: $draft.options.blurFaces)
                         case .redactImage:
                             ImageRedactControls(inputs: draft.inputs, options: $draft.options.redactImage)
+                        case .removeBackground:
+                            RemoveBackgroundControls(inputs: draft.inputs, options: $draft.options.removeBackground)
                         case .compressImages:
                             imageCompressionControls()
                         case .removeMetadata:
@@ -176,7 +183,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {
