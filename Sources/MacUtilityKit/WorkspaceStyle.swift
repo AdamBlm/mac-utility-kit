@@ -5,9 +5,9 @@ import UtilityCore
 struct WorkspacePalette {
     let dark: Bool
 
-    var canvas: Color { dark ? Color(red: 0.10, green: 0.12, blue: 0.115) : Color(red: 0.96, green: 0.96, blue: 0.94) }
-    var surface: Color { dark ? Color(red: 0.14, green: 0.16, blue: 0.155) : Color(red: 0.995, green: 0.992, blue: 0.978) }
-    var accent: Color { dark ? Color(red: 0.52, green: 0.82, blue: 0.72) : Color(red: 0.10, green: 0.37, blue: 0.30) }
+    var canvas: Color { dark ? Color(red: 0.095, green: 0.102, blue: 0.118) : Color(red: 0.975, green: 0.976, blue: 0.982) }
+    var surface: Color { dark ? Color(red: 0.127, green: 0.136, blue: 0.158) : .white }
+    var accent: Color { dark ? Color(red: 0.69, green: 0.72, blue: 1.0) : Color(red: 0.31, green: 0.32, blue: 0.68) }
     var wash: Color { accent.opacity(dark ? 0.16 : 0.075) }
     var line: Color { Color.primary.opacity(dark ? 0.12 : 0.10) }
 }
@@ -16,15 +16,23 @@ struct ToolEmblem: View {
     let tool: Tool
     let palette: WorkspacePalette
 
+    var large = false
+
     var body: some View {
         Image(systemName: tool.symbol)
-            .font(.system(size: 23, weight: .medium))
+            .font(.system(size: large ? 36 : 19, weight: .regular))
             .foregroundStyle(palette.accent)
-            .frame(width: 52, height: 52)
-            .background(palette.wash, in: RoundedRectangle(cornerRadius: 14))
+            .frame(width: large ? 84 : 38, height: large ? 84 : 38)
+            .background {
+                RoundedRectangle(cornerRadius: large ? 23 : 11)
+                    .fill(LinearGradient(
+                        colors: [palette.wash, palette.accent.opacity(large ? 0.12 : 0.045)],
+                        startPoint: .topLeading, endPoint: .bottomTrailing
+                    ))
+            }
             .overlay {
-                RoundedRectangle(cornerRadius: 14)
-                    .strokeBorder(palette.accent.opacity(0.16))
+                RoundedRectangle(cornerRadius: large ? 23 : 11)
+                    .strokeBorder(palette.accent.opacity(0.12))
             }
             .accessibilityHidden(true)
     }
@@ -51,10 +59,10 @@ struct WorkspaceSection<Content: View>: View {
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(14)
-            .background(palette.surface, in: RoundedRectangle(cornerRadius: 16))
+            .background(palette.surface, in: RoundedRectangle(cornerRadius: 12))
             .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(palette.line)
+                RoundedRectangle(cornerRadius: 12)
+                    .strokeBorder(palette.line.opacity(0.65))
                     .allowsHitTesting(false)
             }
         }
@@ -75,6 +83,14 @@ extension Tool {
         case .resizeImages: "Change the dimensions of one image or a whole batch."
         case .mergePDFs: "Choose and combine pages from PDFs and images."
         case .compressVideo: "Make videos smaller while keeping their resolution."
+        }
+    }
+
+    var dropHint: String {
+        switch self {
+        case .resizeImages: "or drop images anywhere in this pane"
+        case .mergePDFs: "or drop PDFs and images anywhere in this pane"
+        case .compressVideo: "or drop videos anywhere in this pane"
         }
     }
 

@@ -25,6 +25,7 @@ private struct Workspace: View {
     @State private var selection: Tool? = .resizeImages
     @State private var search = ""
     @State private var dropTarget: Tool?
+    @State private var advancedTools: Set<Tool> = []
     @FocusState private var searching: Bool
     @State private var drafts: [Tool: Draft] = [:]
     @State private var job: Task<Void, Never>?
@@ -108,10 +109,15 @@ private struct Workspace: View {
             }
             .padding(.horizontal, 14)
             .padding(.top, 20)
-            .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 245)
+            .navigationSplitViewColumnWidth(min: 170, ideal: 184, max: 220)
         } detail: {
             if let selection {
-                editor(for: selection)
+                let draft = drafts[selection, default: Draft()]
+                if draft.inputs.isEmpty, reports[selection] == nil, errors[selection] == nil, runningTool != selection {
+                    emptyWorkspace(for: selection)
+                } else {
+                    editor(for: selection)
+                }
             } else {
                 ContentUnavailableView("Choose a tool", systemImage: "wrench.and.screwdriver")
             }
@@ -142,10 +148,8 @@ private struct Workspace: View {
                                 .font(.system(size: 29, weight: .semibold))
                                 .tracking(-0.65)
                                 .accessibilityAddTraits(.isHeader)
-                            Text(tool.subtitle).foregroundStyle(.secondary)
                         }
                     }
-                    .padding(.bottom, 4)
 
                     VStack(alignment: .leading, spacing: 10) {
                         HStack {
@@ -220,12 +224,9 @@ private struct Workspace: View {
                                 .allowsHitTesting(false)
                         }
                         .dropDestination(for: URL.self) { urls, _ in
-                            let files = urls.filter(\.isFileURL)
-                            drafts[tool, default: Draft()].inputs.append(contentsOf: files)
-                            return !files.isEmpty
+                            addDroppedFiles(urls, to: tool)
                         } isTargeted: { targeted in
-                            if targeted { dropTarget = tool }
-                            else if dropTarget == tool { dropTarget = nil }
+                            updateDropTarget(for: tool, targeted: targeted)
                         }
                     }
 
@@ -308,6 +309,60 @@ private struct Workspace: View {
             .frame(maxWidth: .infinity)
             .background(palette.surface)
         }
+    }
+
+    private func emptyWorkspace(for tool: Tool) -> some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 32)
+            VStack(spacing: 15) {
+                ToolEmblem(tool: tool, palette: palette, large: true)
+                    .padding(.bottom, 6)
+                Text(tool.title)
+                    .font(.system(size: 36, weight: .semibold))
+                    .tracking(-1.25)
+                    .accessibilityAddTraits(.isHeader)
+                Text(tool.subtitle)
+                    .font(.system(size: 14))
+                    .foregroundStyle(.secondary)
+                    .multilineTextAlignment(.center)
+                Button("Choose files…") { chooseInputs(for: tool) }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .padding(.top, 8)
+                Text(dropTarget == tool ? "Release to add files" : tool.dropHint)
+                    .font(.callout)
+                    .foregroundStyle(dropTarget == tool ? palette.accent : .secondary)
+            }
+            .padding(.horizontal, 28)
+            Spacer(minLength: 48)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(palette.canvas)
+        .overlay {
+            if dropTarget == tool {
+                RoundedRectangle(cornerRadius: 18)
+                    .strokeBorder(palette.accent.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5]))
+                    .padding(16)
+                    .allowsHitTesting(false)
+            }
+        }
+        .contentShape(Rectangle())
+        .dropDestination(for: URL.self) { urls, _ in
+            addDroppedFiles(urls, to: tool)
+        } isTargeted: { targeted in
+            updateDropTarget(for: tool, targeted: targeted)
+        }
+    }
+
+    private func addDroppedFiles(_ urls: [URL], to tool: Tool) -> Bool {
+        let files = urls.filter(\.isFileURL)
+        drafts[tool, default: Draft()].inputs.append(contentsOf: files)
+        return !files.isEmpty
+    }
+
+    private func updateDropTarget(for tool: Tool, targeted: Bool) {
+        if targeted { dropTarget = tool }
+        else if dropTarget == tool { dropTarget = nil }
     }
 
     private func dropWell(for tool: Tool) -> some View {
@@ -419,9 +474,10 @@ private struct Workspace: View {
             }
         }
 
-        Divider()
-        Toggle("Allow upscaling", isOn: option(tool, \.upscale))
-        engineControls(tool, path: \.imageMagickExecutable, name: "ImageMagick", current: draft.options.imageMagickExecutable)
+        advanced(for: tool) {
+            Toggle("Allow upscaling", isOn: option(tool, \.upscale))
+            engineControls(tool, path: \.imageMagickExecutable, name: "ImageMagick", current: draft.options.imageMagickExecutable)
+        }
     }
 
     @ViewBuilder
@@ -447,14 +503,14 @@ private struct Workspace: View {
             .labelsHidden()
             .pickerStyle(.segmented)
         }
-        Divider()
-        Toggle("Keep exports that are not smaller", isOn: option(tool, \.keepLargerVideos))
-        engineControls(tool, path: \.ffmpegExecutable, name: "FFmpeg", current: draft.options.ffmpegExecutable)
-        if draft.options.ffmpegExecutable != nil {
-            Text("Constant quality requires FFmpeg with libx264 or libx265.")
-                .font(.caption).foregroundStyle(.secondary)
+        advanced(for: tool) {
+            Toggle("Keep exports that are not smaller", isOn: option(tool, \.keepLargerVideos))
+            engineControls(tool, path: \.ffmpegExecutable, name: "FFmpeg", current: draft.options.ffmpegExecutable)
+            if draft.options.ffmpegExecutable != nil {
+                Text("Constant quality requires FFmpeg with libx264 or libx265.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
-        Divider()
         HStack {
             Button("Create 5-second sample", systemImage: "play.rectangle") { startSample(draft) }
                 .disabled(draft.inputs.isEmpty || job != nil)
@@ -466,6 +522,20 @@ private struct Workspace: View {
                 }
             }
         }
+    }
+
+    private func advanced<Content: View>(for tool: Tool, @ViewBuilder content: @escaping () -> Content) -> some View {
+        DisclosureGroup("Advanced", isExpanded: Binding(
+            get: { advancedTools.contains(tool) },
+            set: { expanded in
+                if expanded { advancedTools.insert(tool) }
+                else { advancedTools.remove(tool) }
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 10, content: content)
+                .padding(.top, 10)
+        }
+        .font(.callout)
     }
 
     private func engineControls(
