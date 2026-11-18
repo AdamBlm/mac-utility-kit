@@ -27,8 +27,7 @@ struct ClipboardFileButton: View {
     }
 
     var body: some View {
-        Button(onPasteImage != nil ? "Paste" : allowsMultiple ? "Paste Files" : "Paste File", systemImage: "clipboard", action: paste)
-        .onPasteCommand(of: onPasteImage == nil ? [.fileURL] : [.fileURL, .image]) { _ in paste() }
+        pasteButton
         .alert("Paste from Clipboard", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -36,6 +35,17 @@ struct ClipboardFileButton: View {
             Button("OK") { message = nil }
         } message: {
             Text(message ?? "")
+        }
+    }
+
+    @ViewBuilder
+    private var pasteButton: some View {
+        if onPasteImage != nil {
+            Button("Paste Image", systemImage: "clipboard", action: paste)
+                .background(ImagePasteShortcut(isEnabled: isEnabled, action: paste))
+        } else {
+            Button(allowsMultiple ? "Paste Files" : "Paste File", systemImage: "clipboard", action: paste)
+                .onPasteCommand(of: [.fileURL]) { _ in paste() }
         }
     }
 
@@ -59,6 +69,52 @@ struct ClipboardFileButton: View {
             } catch {
                 message = error.localizedDescription
             }
+        }
+    }
+}
+
+/// Routes image paste for the current window even when the file button lacks focus.
+private struct ImagePasteShortcut: NSViewRepresentable {
+    let isEnabled: Bool
+    let action: () -> Void
+
+    func makeNSView(context: Context) -> ShortcutView { ShortcutView() }
+
+    func updateNSView(_ view: ShortcutView, context: Context) {
+        view.action = isEnabled ? action : nil
+    }
+
+    static func dismantleNSView(_ view: ShortcutView, coordinator: ()) { view.stopMonitoring() }
+
+    final class ShortcutView: NSView {
+        var action: (() -> Void)?
+        private var monitor: Any?
+
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            stopMonitoring()
+            guard window != nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                self?.handlePaste(event) == true ? nil : event
+            }
+        }
+
+        func stopMonitoring() {
+            if let monitor {
+                NSEvent.removeMonitor(monitor)
+                self.monitor = nil
+            }
+        }
+
+        private func handlePaste(_ event: NSEvent) -> Bool {
+            guard let window, event.window === window, window.isKeyWindow,
+                  window.attachedSheet == nil, !isHiddenOrHasHiddenAncestor,
+                  !(window.firstResponder is NSText),
+                  event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,
+                  event.charactersIgnoringModifiers?.lowercased() == "v",
+                  let action else { return false }
+            if !event.isARepeat { action() }
+            return true
         }
     }
 }
