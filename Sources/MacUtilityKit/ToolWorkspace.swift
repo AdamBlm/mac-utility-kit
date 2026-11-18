@@ -84,6 +84,8 @@ struct ToolWorkspace: View {
             draft.options.audioCleanup.executable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        case .compressPDF:
+            draft.options.pdfCompression.validationIssue != nil
         case .watermark:
             draft.options.watermark.content == .logo
                 ? draft.options.watermark.logo == nil
@@ -192,6 +194,8 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .makePDFSearchable:
                             SearchablePDFControls(inputs: draft.inputs, options: $draft.options.searchablePDF)
+                        case .compressPDF:
+                            PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
                         case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
