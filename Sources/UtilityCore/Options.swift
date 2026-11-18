@@ -70,6 +70,8 @@ public struct ToolOptions: Sendable {
     public var conversion = VideoConversionOptions()
     public var speed = ChangeSpeedOptions()
     public var frames = FrameExtractionOptions()
+    public var trim = TrimVideoOptions()
+    public var mute = MuteVideoOptions()
     public var inspection = MediaInspectionOptions()
     public var extraction = AudioExtractionOptions()
     public var imageConversion = ImageConversionOptions()

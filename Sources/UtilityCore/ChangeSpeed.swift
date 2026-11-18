@@ -42,6 +42,11 @@ public enum ChangeSpeed {
         }
         let videoLength = try await videoDuration(video)
         let audio = try await primaryTrack(.audio, in: asset)
+        let manager = FileManager.default
+        let staging = output.deletingLastPathComponent().appending(path: ".speed-\(UUID().uuidString)")
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: staging) }
+        let candidate = staging.appending(path: "Adjust Speed.mp4")
         let expectsAudio: Bool
         if audio != nil, !options.preservesPitch, options.multiplier != 1 {
             // AVAssetExportSession can stall while encoding scaled PCM with
@@ -49,20 +54,21 @@ public enum ChangeSpeed {
             guard let executable = options.ffmpegExecutable else {
                 throw ToolError.invalid("Choose an FFmpeg executable to change both audio speed and pitch.")
             }
-            try await FFmpegChangeSpeed.export(input, to: output, multiplier: options.multiplier, executable: executable)
+            try await FFmpegChangeSpeed.export(input, to: candidate, multiplier: options.multiplier, executable: executable)
             expectsAudio = true
         } else {
             expectsAudio = try await nativeExport(video: video, audio: audio, duration: videoLength,
-                                                  to: output, multiplier: options.multiplier, progress: progress)
+                                                  to: candidate, multiplier: options.multiplier, progress: progress)
         }
         try Task.checkCancellation()
-        let result = try localAsset(output)
+        let result = try localAsset(candidate)
         let videoTracks = try await result.loadTracks(withMediaType: .video)
         let audioTracks = try await result.loadTracks(withMediaType: .audio)
         guard !videoTracks.isEmpty, !expectsAudio || !audioTracks.isEmpty, try await result.load(.isPlayable) else {
             throw ToolError.invalid("The export did not contain all expected playable media.")
         }
         try Task.checkCancellation()
+        try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let speed = options.multiplier.formatted(.number.precision(.fractionLength(0...4)))
         return "\(input.lastPathComponent) · \(speed)× · MP4"

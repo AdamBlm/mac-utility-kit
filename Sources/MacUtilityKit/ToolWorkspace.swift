@@ -10,6 +10,7 @@ struct ToolWorkspace: View {
     let openOutput: (URL) -> Void
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
+    @State private var trimReview: TrimVideoReview?
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
@@ -45,10 +46,13 @@ struct ToolWorkspace: View {
         }
     }
 
-    private var requiresMissingEngine: Bool {
+    private var exportSettingsIncomplete: Bool {
         switch tool {
         case .convertVideo:
             draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil
+        case .trimVideo:
+            trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
+                || trimReview?.permitsExport != true
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .convertImages:
@@ -98,6 +102,10 @@ struct ToolWorkspace: View {
                             ChangeSpeedControls(inputs: draft.inputs, options: $draft.options.speed)
                         case .extractFrames:
                             FrameExtractionSettings(input: draft.inputs.first, options: $draft.options.frames)
+                        case .trimVideo:
+                            TrimVideoSettings(inputs: draft.inputs, review: $trimReview, options: $draft.options.trim)
+                        case .muteVideo:
+                            MuteVideoControls(inputs: draft.inputs, options: $draft.options.mute)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:
@@ -198,7 +206,7 @@ struct ToolWorkspace: View {
                 Button(tool == .mediaInfo ? "Inspect media" : tool.title) { session.start(tool, draft: draft) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(draft.inputs.isEmpty || session.isRunning || requiresMissingEngine
+                    .disabled(draft.inputs.isEmpty || session.isRunning || exportSettingsIncomplete
                               || (tool.requiresSinglePDF && !pdfEditorReady))
             }
             .controlSize(.large)

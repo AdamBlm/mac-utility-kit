@@ -224,6 +224,34 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(!names.contains { $0.hasPrefix(".MacUtilityKit-") })
 }
 
+@Test func trimAndMutePublishThroughSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.mov")
+    try await writeVideoFixture(to: source)
+
+    var options = ToolOptions()
+    options.trim.start = 0.15
+    options.trim.end = 0.65
+    let trimmed = try await ToolRunner.run(
+        .trimVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(trimmed.failures.isEmpty)
+    let output = try #require(trimmed.outputs.first)
+    #expect(output.pathExtension == "mp4")
+    let duration = try await AVURLAsset(url: output).load(.duration).seconds
+    #expect(abs(duration - 0.5) < 0.075)
+
+    let silent = try await ToolRunner.run(
+        .muteVideo, inputs: [output], destination: folder, imageSize: 0
+    ) { _ in }
+    #expect(silent.outputs.isEmpty)
+    #expect(silent.failures.count == 1)
+    #expect(FileManager.default.fileExists(atPath: source.path))
+    let names = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+    #expect(!names.contains { $0.hasPrefix(".MacUtilityKit-") })
+}
+
 @Test func balancedKeeps4KResolutionInExportAndSample() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

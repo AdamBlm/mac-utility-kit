@@ -30,6 +30,20 @@ struct ChangeSpeedTests {
     }
 
     @Test
+    func scalesAudioStartOffsetAlongWithVideo() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await Self.makeVideo(in: directory, audio: true, audioOffset: 0.5)
+        let output = directory.appending(path: "offset.mp4")
+        var options = ChangeSpeedOptions()
+        options.multiplier = 2
+        _ = try await ChangeSpeed.export(source, to: output, options: options) { _ in }
+        let samples = try await Self.audioSamples(output)
+        let leadingSilence = try #require(samples.firstIndex { abs(Int($0)) > 2_000 })
+        #expect(abs(Double(leadingSilence) / 48_000 - 0.25) < 0.06)
+    }
+
+    @Test
     func preservesPitch() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -80,7 +94,7 @@ struct ChangeSpeedTests {
         return directory
     }
 
-    private static func makeVideo(in directory: URL, audio: Bool) async throws -> URL {
+    private static func makeVideo(in directory: URL, audio: Bool, audioOffset: Double = 0) async throws -> URL {
         let url = directory.appending(path: "fixture.mov")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -118,7 +132,8 @@ struct ChangeSpeedTests {
             let asset = AVURLAsset(url: file)
             let source = try #require(try await asset.loadTracks(withMediaType: type).first)
             let track = try #require(composition.addMutableTrack(withMediaType: type, preferredTrackID: kCMPersistentTrackID_Invalid))
-            try await track.insertTimeRange(source.load(.timeRange), of: source, at: .zero)
+            let offset = type == .audio ? CMTime(seconds: audioOffset, preferredTimescale: 48_000) : .zero
+            try await track.insertTimeRange(source.load(.timeRange), of: source, at: offset)
         }
         let combined = directory.appending(path: "combined.mov")
         let export = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
@@ -140,6 +155,14 @@ struct ChangeSpeedTests {
     }
 
     private static func audioFrequency(_ url: URL) async throws -> Double {
+        let samples = try await audioSamples(url)
+        try #require(samples.count > 28_800)
+        let middle = samples[9600..<28800]
+        let crossings = zip(middle, middle.dropFirst()).filter { $0 < 0 && $1 >= 0 }.count
+        return Double(crossings) * 48_000 / Double(middle.count)
+    }
+
+    private static func audioSamples(_ url: URL) async throws -> [Int16] {
         let asset = AVURLAsset(url: url)
         let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
         let reader = try AVAssetReader(asset: asset)
@@ -160,9 +183,6 @@ struct ChangeSpeedTests {
             }
             try #require(status == kCMBlockBufferNoErr)
         }
-        try #require(samples.count > 28_800)
-        let middle = samples[9600..<28800]
-        let crossings = zip(middle, middle.dropFirst()).filter { $0 < 0 && $1 >= 0 }.count
-        return Double(crossings) * 48_000 / Double(middle.count)
+        return samples
     }
 }

@@ -5,6 +5,7 @@ struct ChangeSpeedControls: View {
     let inputs: [URL]
     @Binding var options: ChangeSpeedOptions
     @State private var custom = false
+    @State private var customInput: String?
     @State private var loadedSource: URL?
     @State private var originalDuration: Double?
     @State private var previewError: String?
@@ -17,7 +18,21 @@ struct ChangeSpeedControls: View {
             return options.multiplier
         } set: { preset in
             custom = preset == nil
-            if let preset { options.multiplier = preset }
+            if let preset {
+                options.multiplier = preset
+                customInput = nil
+            }
+        }
+    }
+
+    private var multiplierText: Binding<String> {
+        Binding {
+            customInput ?? (options.multiplier.isFinite ? options.multiplier.formatted() : "")
+        } set: { value in
+            customInput = value
+            let input = value.trimmingCharacters(in: .whitespacesAndNewlines)
+            let separator = Locale.current.decimalSeparator ?? "."
+            options.multiplier = Double(input.replacingOccurrences(of: separator, with: ".")) ?? 0
         }
     }
 
@@ -32,7 +47,7 @@ struct ChangeSpeedControls: View {
                 }
                 .labelsHidden()
                 if selectedPreset.wrappedValue == nil {
-                    TextField("Speed multiplier", value: $options.multiplier, format: .number)
+                    TextField("Speed multiplier", text: multiplierText)
                         .frame(width: 76)
                     Text("×").foregroundStyle(.secondary)
                 }
@@ -42,7 +57,7 @@ struct ChangeSpeedControls: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
             Toggle("Preserve audio pitch", isOn: $options.preservesPitch)
-            if !options.preservesPitch, options.multiplier != 1 {
+            if !options.preservesPitch, options.isValid, options.multiplier != 1 {
                 Text("Videos with audio require FFmpeg when pitch preservation is off.")
                     .font(.callout).foregroundStyle(.secondary)
                 executablePicker("FFmpeg", selection: $options.ffmpegExecutable)

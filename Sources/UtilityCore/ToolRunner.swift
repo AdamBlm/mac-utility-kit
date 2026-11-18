@@ -116,6 +116,8 @@ public enum ToolRunner {
                     case .compressVideo: options.videoFormat.rawValue
                     case .convertVideo: options.conversion.format.rawValue
                     case .changeSpeed: "mp4"
+                    case .trimVideo: options.trim.fileExtension
+                    case .muteVideo: try MuteVideo.outputExtension(input, options: options.mute)
                     case .extractFrames: throw ToolError.invalid("Frame extraction requires an output directory.")
                     case .mediaInfo: "json"
                     case .extractAudio: options.extraction.format.rawValue
@@ -146,6 +148,16 @@ public enum ToolRunner {
                         summaries.append(summary)
                     case .changeSpeed:
                         let summary = try await ChangeSpeed.export(input, to: output, options: options.speed) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .trimVideo:
+                        let summary = try await TrimVideo.export(input, to: output, options: options.trim) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .muteVideo:
+                        let summary = try await MuteVideo.export(input, to: output, options: options.mute) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
