@@ -68,6 +68,8 @@ struct PDFFormsView: View {
                 HStack {
                     Button("Open PDF…", systemImage: "folder", action: open)
                         .disabled(exporting)
+                    ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: load)
+                        .disabled(exporting)
                     if let source = draft.source { Text(source.lastPathComponent).font(.callout).lineLimit(1) }
                 }
             }

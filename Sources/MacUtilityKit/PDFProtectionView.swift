@@ -32,6 +32,7 @@ struct PDFProtectionView: View {
                 HStack {
                     if let input { Text(input.lastPathComponent).lineLimit(1) }
                     Button(input == nil ? "Choose PDF…" : "Replace PDF…", systemImage: "folder", action: choosePDF)
+                    ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: setInput)
                 }
                 executablePicker("qpdf", selection: $options.executable)
             }
@@ -86,6 +87,10 @@ struct PDFProtectionView: View {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.pdf]
         guard panel.runModal() == .OK, let url = panel.url else { return }
+        setInput(url)
+    }
+
+    private func setInput(_ url: URL) {
         input = url
         savedOutput = nil
         issue = nil

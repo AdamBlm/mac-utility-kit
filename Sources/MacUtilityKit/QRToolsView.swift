@@ -192,6 +192,7 @@ struct QRToolsView: View {
                     panel.allowedContentTypes = [.image]
                     if panel.runModal() == .OK, let url = panel.url { scan(url) }
                 }
+                ClipboardFileButton(allowedTypes: [.image], onPasteFile: scan)
                 Text(scannedName ?? "or drop an image here")
                     .font(.callout)
                     .foregroundStyle(.secondary)

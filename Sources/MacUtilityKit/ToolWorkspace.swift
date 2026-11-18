@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 struct ToolWorkspace: View {
@@ -368,6 +369,7 @@ struct ToolWorkspace: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if !draft.inputs.isEmpty {
+                    pasteFilesButton(for: tool)
                     Button(tool.requiresSinglePDF ? "Replace PDF…" : "Add files…", systemImage: tool.requiresSinglePDF ? "arrow.triangle.2.circlepath" : "plus") { chooseInputs(for: tool) }
                         .buttonStyle(.plain)
                         .foregroundStyle(palette.accent)
@@ -443,10 +445,13 @@ struct ToolWorkspace: View {
                     .font(.system(size: 14))
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Button("Choose files…") { chooseInputs(for: tool) }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.large)
-                    .padding(.top, 8)
+                HStack {
+                    Button("Choose files…") { chooseInputs(for: tool) }
+                        .buttonStyle(.borderedProminent)
+                    pasteFilesButton(for: tool)
+                }
+                .controlSize(.large)
+                .padding(.top, 8)
                 Text(dropTarget == tool ? "Release to add files" : tool.dropHint)
                     .font(.callout)
                     .foregroundStyle(dropTarget == tool ? palette.accent : .secondary)
@@ -497,9 +502,12 @@ struct ToolWorkspace: View {
                 .foregroundStyle(palette.accent)
                 .accessibilityHidden(true)
             Text(tool.dropTitle).font(.system(size: 14, weight: .semibold))
-            Button("Choose files…") { chooseInputs(for: tool) }
-                .foregroundStyle(palette.accent)
-                .buttonStyle(.plain)
+            HStack {
+                Button("Choose files…") { chooseInputs(for: tool) }
+                pasteFilesButton(for: tool)
+            }
+            .foregroundStyle(palette.accent)
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 23)
@@ -528,6 +536,15 @@ struct ToolWorkspace: View {
             set: { draft.mergeInspections[index] = $0 }
         )
         return PDFPageControls(input: input, range: range, password: password, inspection: inspection).id(input)
+    }
+
+    @ViewBuilder
+    private func pasteFilesButton(for tool: Tool) -> some View {
+        if tool.inputTypes.contains(where: { $0.conforms(to: .image) || $0.conforms(to: .pdf) }) {
+            ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF) {
+                _ = addDroppedFiles($0, to: tool)
+            }
+        }
     }
 
     private func chooseInputs(for tool: Tool) {

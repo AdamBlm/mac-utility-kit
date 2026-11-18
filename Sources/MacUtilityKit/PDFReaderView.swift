@@ -46,6 +46,7 @@ struct PDFReaderView: View {
                             Text(message).foregroundStyle(.secondary)
                         }
                         Button("Open Another PDF…", action: choosePDF)
+                        ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
                     }
                 }
             } else {
@@ -55,6 +56,7 @@ struct PDFReaderView: View {
                     Text(reader.error ?? "Open a PDF or drop it here.")
                 } actions: {
                     Button("Open PDF…", action: choosePDF).buttonStyle(.borderedProminent)
+                    ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
                 }
             }
         }
@@ -87,6 +89,8 @@ struct PDFReaderView: View {
                 Button("Open PDF…", systemImage: "folder", action: choosePDF)
                     .labelStyle(.iconOnly)
                     .help("Open PDF")
+                ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
+                    .labelStyle(.iconOnly)
                 Text(source?.lastPathComponent ?? "PDF Reader")
                     .font(.headline)
                     .truncationMode(.middle)

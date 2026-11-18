@@ -37,6 +37,8 @@ struct DocumentScannerView: View {
                 HStack {
                     Button("Import Photos or Scans…", systemImage: "photo.on.rectangle", action: { chooseImages() })
                         .disabled(importing || exporting || pendingRetake != nil)
+                    ClipboardFileButton(allowedTypes: [.image, .pdf]) { files in importFiles(files) }
+                        .disabled(importing || exporting || pendingRetake != nil)
                     if importing { ProgressView().controlSize(.small) }
                     if cameraRequest != nil {
                         Button("Cancel Camera Import", action: cancelCameraImport)
@@ -182,7 +184,10 @@ struct DocumentScannerView: View {
         panel.allowedContentTypes = [.image, .pdf]
         panel.allowsMultipleSelection = pageID == nil
         guard panel.runModal() == .OK else { return }
-        let urls = panel.urls
+        importFiles(panel.urls, replacing: pageID)
+    }
+
+    private func importFiles(_ urls: [URL], replacing pageID: UUID? = nil) {
         retakePage = nil
         pendingRetake = nil
         importing = true
