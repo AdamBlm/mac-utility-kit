@@ -1,7 +1,7 @@
 import AVFoundation
 import VideoToolbox
 
-enum VideoEncoding {
+enum AVFoundationEncoding {
     private struct Stream {
         let reader: AVAssetReaderTrackOutput
         let writer: AVAssetWriterInput

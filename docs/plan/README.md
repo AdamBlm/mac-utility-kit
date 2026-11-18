@@ -45,3 +45,9 @@ Each row specifies user controls, results, and acceptance checks. Use the [featu
 A tool ships when its planned controls work from the normal app entry point, its result passes the row's checks, and unsupported modes have a clear explanation. Cover clean macOS 15 and current macOS installs, keyboard workflows, large or malformed inputs, mixed-success batches, cancellation, name conflicts, and denied permissions.
 
 Use Apache-2.0 as the provisional license for original code. Confirm it before source publication and review the pinned licenses of bundled dependencies, executables, and models. Release signed and notarized DMGs through GitHub after signing credentials and publication are approved. The AI provider remains open and does not affect v0.1.
+
+## Code boundaries
+
+The approved workspace uses a compact native title bar, a focused file-first empty state, and an Advanced disclosure. The app target owns window composition, tool presentation, and per-window state. `WorkspaceStyle` holds shared visual components, `ToolSettings` holds individual controls, and `WorkspaceSession` coordinates drafts and jobs.
+
+`UtilityCore` supplies the tool catalog and callable operations. `ToolRunner` owns file staging, batching, publishing results, and dispatching to the relevant domain. Each domain owns its processing rules and selects an engine adapter where needed. ImageMagick, FFmpeg, and AVFoundation adapters can evolve independently of the interface. Workflow tests exercise the same entry points as the app.
