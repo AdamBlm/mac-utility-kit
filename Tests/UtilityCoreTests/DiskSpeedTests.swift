@@ -1,8 +1,28 @@
 import Foundation
+import Synchronization
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 struct DiskSpeedTests {
+    @Test func refillsEntireChunkBeyondPreviousBufferExtentAndAcrossPasses() async throws {
+        let temporary = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: temporary) }
+        var options = DiskSpeedOptions()
+        options.sizeMiB = 17
+        options.repeats = true
+        let samples = Mutex<[UInt8]>([])
+        let output = try await DiskSpeed.run(in: temporary, options: options, refill: { buffer, count in
+            samples.withLock { values in
+                #expect(count == 1_048_576)
+                buffer.initializeMemory(as: UInt8.self, repeating: UInt8(truncatingIfNeeded: values.count), count: count)
+                values.append(buffer.load(fromByteOffset: count - 1, as: UInt8.self))
+            }
+        }, progress: { _ in })
+        #expect(output.passes.count == 3)
+        #expect(samples.withLock { $0 } == (0..<51).map(UInt8.init))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: temporary.path).isEmpty)
+    }
+
     @Test func measuresRepeatedSequentialIOAndPreservesOtherFiles() async throws {
         let temporary = try Self.folder()
         defer { try? FileManager.default.removeItem(at: temporary) }

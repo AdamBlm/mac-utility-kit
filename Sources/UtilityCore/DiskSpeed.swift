@@ -40,6 +40,14 @@ public enum DiskSpeed {
         in folder: URL, options: DiskSpeedOptions,
         progress: @escaping @Sendable (DiskSpeedProgress) async -> Void = { _ in }
     ) async throws -> DiskSpeedResult {
+        try await run(in: folder, options: options, refill: { arc4random_buf($0, $1) }, progress: progress)
+    }
+
+    static func run(
+        in folder: URL, options: DiskSpeedOptions,
+        refill: @Sendable (UnsafeMutableRawPointer, Int) -> Void,
+        progress: @escaping @Sendable (DiskSpeedProgress) async -> Void
+    ) async throws -> DiskSpeedResult {
         guard folder.isFileURL, (1...4_096).contains(options.sizeMiB) else {
             throw ToolError.invalid("Choose a local folder and a test size between 1 and 4,096 MiB.")
         }
@@ -77,12 +85,10 @@ public enum DiskSpeed {
         unlinked = true
         let uncached = fcntl(descriptor, F_NOCACHE, 1) == 0
         let chunk = 1_048_576
-        let capacity = 16 * chunk
-        let writeBuffer = UnsafeMutableRawPointer.allocate(byteCount: capacity, alignment: 4096)
+        let writeBuffer = UnsafeMutableRawPointer.allocate(byteCount: chunk, alignment: 4096)
         defer { writeBuffer.deallocate() }
         let readBuffer = UnsafeMutableRawPointer.allocate(byteCount: chunk, alignment: 4096)
         defer { readBuffer.deallocate() }
-        arc4random_buf(writeBuffer, capacity)
 
         var measured: [DiskSpeedResult.Pass] = []
         var fullFlush = true
@@ -95,10 +101,11 @@ public enum DiskSpeed {
             for index in 0..<options.sizeMiB {
                 try Task.checkCancellation()
                 let offset = Int64(index) * Int64(chunk)
+                // Refill before timing so each write has fresh data and measures storage I/O.
+                refill(writeBuffer, chunk)
+                writeBuffer.storeBytes(of: UInt64(index) ^ (UInt64(pass) << 32), as: UInt64.self)
                 let start = ContinuousClock.now
-                let block = writeBuffer.advanced(by: (index % 16) * chunk)
-                block.storeBytes(of: UInt64(index) ^ (UInt64(pass) << 32), as: UInt64.self)
-                try transfer(descriptor, buffer: block, offset: offset, count: chunk, writing: true)
+                try transfer(descriptor, buffer: writeBuffer, offset: offset, count: chunk, writing: true)
                 elapsed += start.duration(to: .now)
                 if index.isMultiple(of: 16) || index == options.sizeMiB - 1 {
                     await progress(.init(phase: .write, pass: pass, passes: passes,
