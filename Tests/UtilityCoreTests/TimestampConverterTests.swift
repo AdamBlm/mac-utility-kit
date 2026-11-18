@@ -31,11 +31,53 @@ import UtilityCore
         #expect(throws: ToolError.self) { try TimestampConverter.display(min, in: .gmt) }
     }
 
+    @Test func copiedISO8601RoundTripsInAnySelectedZone() throws {
+        let zone = try #require(TimeZone(identifier: "Australia/Lord_Howe"))
+        for microseconds: Int64 in [-1, 0, 1_707_680_901_123_456] {
+            let timestamp = UnixMicrosecondTimestamp(microseconds: microseconds)
+            let iso8601 = try TimestampConverter.display(timestamp, in: .gmt).iso8601
+            #expect(try TimestampConverter.resolveDate(iso8601, in: zone).map(\.timestamp) == [timestamp])
+        }
+        let east = try TimestampConverter.resolveDate("1970-01-01T05:29:59.999999+05:30", in: zone)
+        let west = try TimestampConverter.resolveDate("1969-12-31t19:00:00.000001-05:00", in: zone)
+        #expect(east.first?.timestamp.microseconds == -1)
+        #expect(east.first?.offset == "UTC+05:30")
+        #expect(west.first?.timestamp.microseconds == 1)
+        #expect(try TimestampConverter.resolveDate("1970-01-01t00:00:00z", in: zone).first?.timestamp.microseconds == 0)
+    }
+
+    @Test func rejectsInvalidOffsetsAndUnrepresentableUTCYears() {
+        for text in ["1970-01-01T00:00:00+24:00", "1970-01-01T00:00:00-02:60",
+                     "1970-01-01T00:00:00.0000001Z", "0001-01-01T00:00:00+08:00",
+                     "1970-01-01 00:00:00 UTC+00:00:60"] {
+            #expect(throws: ToolError.self) { try TimestampConverter.resolveDate(text, in: .gmt) }
+        }
+    }
+
+    @Test func copiedLocalTimePreservesHistoricalOffsetSeconds() throws {
+        let paris = try #require(TimeZone(identifier: "Europe/Paris"))
+        let occurrence = try #require(TimestampConverter.resolveLocal("1911-03-10 23:55:00.123456", in: paris).first)
+        let display = try TimestampConverter.display(occurrence.timestamp, in: paris)
+        #expect(display.offset == "UTC+00:09:21")
+        let pasted = try TimestampConverter.resolveDate(display.local + " " + display.offset, in: .gmt)
+        #expect(pasted.map(\.timestamp) == [occurrence.timestamp])
+        let unknown = try #require(TimestampConverter.resolveDate("1970-01-01T00:00:00-00:00", in: paris).first)
+        #expect(unknown.timestamp.microseconds == 0)
+        #expect(unknown.offset == "Unknown local offset (UTC−00:00)")
+    }
+
+    @Test func rejectsLocalDatesOutsideTheRepresentableUTCYears() throws {
+        let east = try #require(TimeZone(secondsFromGMT: 3_600))
+        let west = try #require(TimeZone(secondsFromGMT: -3_600))
+        #expect(throws: ToolError.self) { try TimestampConverter.resolveDate("0001-01-01 00:00:00", in: east) }
+        #expect(throws: ToolError.self) { try TimestampConverter.resolveDate("9999-12-31 23:59:59", in: west) }
+    }
+
     @Test func surfacesASpringGapAndANonHourFallFold() throws {
         let newYork = try #require(TimeZone(identifier: "America/New_York"))
         #expect(try TimestampConverter.resolveLocal("2024-03-10 02:30:00.123456", in: newYork).isEmpty)
         let lordHowe = try #require(TimeZone(identifier: "Australia/Lord_Howe"))
-        let folded = try TimestampConverter.resolveLocal("2024-04-07 01:45:00.654321", in: lordHowe)
+        let folded = try TimestampConverter.resolveDate("2024-04-07 01:45:00.654321", in: lordHowe)
         #expect(folded.map(\.offset) == ["UTC+11:00", "UTC+10:30"])
         let timestamps = try folded.map { try TimestampConverter.display($0.timestamp, in: lordHowe) }
         #expect(timestamps.map(\.iso8601) == ["2024-04-06T14:45:00.654321Z", "2024-04-06T15:15:00.654321Z"])

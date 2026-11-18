@@ -55,16 +55,20 @@ struct TimestampConverterView: View {
                         TextField("Unix timestamp", text: $draft.unixInput)
                             .accessibilityLabel("Unix timestamp in \(draft.unit.rawValue.lowercased())")
                     } else {
-                        TextField("YYYY-MM-DD HH:MM:SS.ffffff", text: Binding(get: { draft.localInput }, set: {
+                        TextField("Local date and time or ISO 8601", text: Binding(get: { draft.localInput }, set: {
                             draft.localInput = $0
                             draft.selectedMatch = nil
                         }))
-                            .accessibilityLabel("Local date and time")
+                            .accessibilityLabel("Local date and time or ISO 8601 timestamp")
                     }
                     Button("Now", systemImage: "clock", action: useNow)
                 }
                 .textFieldStyle(.roundedBorder)
                 .font(.body.monospaced())
+                if draft.direction == .toUnix {
+                    Text("Use the selected time zone for a date without an offset.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             }
             if draft.direction == .toDate {
                 if !draft.unixInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
@@ -95,12 +99,13 @@ struct TimestampConverterView: View {
 
     @ViewBuilder
     private var civilResult: some View {
-        switch Result(catching: { try TimestampConverter.resolveLocal(draft.localInput, in: selectedZone) }) {
+        switch Result(catching: { try TimestampConverter.resolveDate(draft.localInput, in: selectedZone) }) {
         case .success(let matches):
             if matches.isEmpty {
                 failure("This local time does not exist in \(draft.timeZone) because the clocks change.")
             } else if matches.count == 1, let onlyMatch = matches.first {
                 formattedResult(onlyMatch.timestamp)
+                Text(onlyMatch.offset).font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("This local time is repeated. Choose the occurrence by its UTC offset.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -125,7 +130,7 @@ struct TimestampConverterView: View {
 
     @ViewBuilder
     private func formattedResult(_ timestamp: UnixMicrosecondTimestamp) -> some View {
-        switch Result(catching: { try TimestampConverter.display(timestamp, in: selectedZone) }) {
+        switch Result(catching: { try TimestampConverter.display(timestamp, in: draft.direction == .toDate ? selectedZone : .gmt) }) {
         case .success(let result):
             if draft.direction == .toDate {
                 resultRow("Local date", value: result.local + " " + result.offset)

@@ -97,10 +97,56 @@ public enum TimestampConverter {
     private static let minimumCivilSecond: Int64 = -62_135_596_800
     private static let maximumCivilSecond: Int64 = 253_402_300_799
 
+    /// Resolves a local date using the selected zone, or an ISO 8601 date using its explicit offset.
+    public static func resolveDate(_ input: String, in zone: TimeZone) throws -> [LocalTimestampMatch] {
+        let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let parts = text.wholeMatch(of: /(.+?)([Zz]|[+-][0-9]{2}:[0-9]{2}| UTC[+-][0-9]{2}:[0-9]{2}(?::[0-9]{2})?)/) else {
+            return try resolveLocal(text, in: zone)
+        }
+        let (nominal, micros) = try civilDate(String(parts.1))
+        // RFC 3339 defines numeric offsets as local time minus UTC.
+        let numeric = parts.2.hasPrefix(" UTC") ? parts.2.dropFirst(4) : parts.2
+        let offset: Int
+        if numeric == "Z" || numeric == "z" {
+            offset = 0
+        } else {
+            let fields = numeric.dropFirst().split(separator: ":").compactMap { Int($0) }
+            guard (2...3).contains(fields.count), fields[0] < 24, fields.dropFirst().allSatisfy({ $0 < 60 }) else {
+                throw ToolError.invalid("Enter a valid offset in Z, ±HH:MM, or UTC±HH:MM[:SS] format.")
+            }
+            let magnitude = fields[0] * 3_600 + fields[1] * 60 + (fields.count == 3 ? fields[2] : 0)
+            offset = numeric.first == "-" ? -magnitude : magnitude
+        }
+        let seconds = Int64(nominal.timeIntervalSince1970.rounded()) - Int64(offset)
+        guard (minimumCivilSecond...maximumCivilSecond).contains(seconds) else {
+            throw ToolError.invalid("This offset places the timestamp outside Gregorian years 0001 to 9999.")
+        }
+        let label = numeric == "-00:00" ? "Unknown local offset (UTC−00:00)" : offsetLabel(offset)
+        return [LocalTimestampMatch(timestamp: .init(microseconds: seconds * 1_000_000 + micros), offset: label)]
+    }
+
     /// Returns zero matches in a gap and all valid instants in a repeated wall-clock interval.
     public static func resolveLocal(_ input: String, in zone: TimeZone) throws -> [LocalTimestampMatch] {
+        let (nominal, micros) = try civilDate(input)
+        let matches: [LocalTimestampMatch] = nearbyOffsets(in: zone, around: nominal).compactMap { offset in
+            let candidate = nominal.addingTimeInterval(-Double(offset))
+            guard zone.secondsFromGMT(for: candidate) == offset else { return nil }
+            let seconds = Int64(candidate.timeIntervalSince1970.rounded())
+            let stamp = UnixMicrosecondTimestamp(microseconds: seconds * 1_000_000 + micros)
+            return LocalTimestampMatch(timestamp: stamp, offset: offsetLabel(offset))
+        }.sorted { $0.timestamp.microseconds < $1.timestamp.microseconds }
+        let representable = matches.filter {
+            (minimumCivilSecond...maximumCivilSecond).contains($0.timestamp.split.seconds)
+        }
+        if !matches.isEmpty, representable.isEmpty {
+            throw ToolError.invalid("The selected time zone places this timestamp outside Gregorian years 0001 to 9999.")
+        }
+        return representable
+    }
+
+    private static func civilDate(_ input: String) throws -> (Date, Int64) {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parts = text.wholeMatch(of: /([0-9]{4})-([0-9]{2})-([0-9]{2})[ T]([0-9]{2}):([0-9]{2}):([0-5][0-9])(?:[.,]([0-9]{1,6}))?/),
+        guard let parts = text.wholeMatch(of: /([0-9]{4})-([0-9]{2})-([0-9]{2})[ Tt]([0-9]{2}):([0-9]{2}):([0-5][0-9])(?:[.,]([0-9]{1,6}))?/),
               parts.1 != "0000" else {
             throw ToolError.invalid("Enter YYYY-MM-DD HH:MM:SS with up to six fractional digits.")
         }
@@ -111,13 +157,7 @@ public enum TimestampConverter {
         }
         let fraction = parts.7.map { String($0) } ?? ""
         let micros = Int64(fraction + String(repeating: "0", count: 6 - fraction.count)) ?? 0
-        return nearbyOffsets(in: zone, around: nominal).compactMap { offset in
-            let candidate = nominal.addingTimeInterval(-Double(offset))
-            guard zone.secondsFromGMT(for: candidate) == offset else { return nil }
-            let seconds = Int64(candidate.timeIntervalSince1970.rounded())
-            let stamp = UnixMicrosecondTimestamp(microseconds: seconds * 1_000_000 + micros)
-            return LocalTimestampMatch(timestamp: stamp, offset: offsetLabel(offset))
-        }.sorted { $0.timestamp.microseconds < $1.timestamp.microseconds }
+        return (nominal, micros)
     }
 
     public static func display(_ timestamp: UnixMicrosecondTimestamp, in zone: TimeZone) throws -> TimestampDisplay {
