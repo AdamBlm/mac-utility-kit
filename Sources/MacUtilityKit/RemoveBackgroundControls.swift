@@ -14,6 +14,8 @@ struct RemoveBackgroundControls: View {
     @State private var drawing = false
     @State private var selectedRegion: UUID?
     @State private var drawingAction = ForegroundRefinement.Action.keep
+    @State private var brushMode = true
+    @State private var brushWidth = 0.04
 
     private struct Document {
         let input: URL
@@ -43,6 +45,13 @@ struct RemoveBackgroundControls: View {
             let edit = options.edit(for: $0.input, analysis: $0.analysis)
             return RenderRequest(input: $0.input, digest: $0.analysis.source.digest, edit: edit, options: options)
         }
+        let renderRequest = request.map { request in
+            guard !showsResult else { return request }
+            var overlay = request.options
+            overlay.background = .transparent
+            overlay.format = .png
+            return RenderRequest(input: request.input, digest: request.digest, edit: request.edit, options: overlay)
+        }
         VStack(alignment: .leading, spacing: 12) {
             exportSettings
             if inputs.count > 1 {
@@ -57,7 +66,7 @@ struct RemoveBackgroundControls: View {
             }
             if let active, let request {
                 subjects(active, edit: request.edit)
-                editor(active, request: request)
+                editor(active, request: renderRequest ?? request)
             } else if let issue {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             } else if activeInput != nil {
@@ -65,8 +74,8 @@ struct RemoveBackgroundControls: View {
             }
         }
         .task(id: activeInput) { await open(activeInput) }
-        .task(id: showsResult ? request : nil) {
-            if showsResult, let active, let request { await render(active, request: request) }
+        .task(id: showsResult || brushMode ? renderRequest : nil) {
+            if showsResult || brushMode, let active, let renderRequest { await render(active, request: renderRequest) }
         }
     }
 
@@ -109,8 +118,8 @@ struct RemoveBackgroundControls: View {
         let all = document.analysis.subjects
         if all.isEmpty {
             Text(document.analysis.detectionIssue == nil
-                 ? "No clear subject found. Draw a Keep region to retain part of the image."
-                 : "Automatic segmentation was unavailable. You can still draw a Keep region.")
+                 ? "No clear subject found. Use a Keep correction to retain part of the image."
+                 : "Automatic segmentation was unavailable. You can still use a Keep correction.")
                 .font(.callout).foregroundStyle(.secondary)
         } else {
             VStack(alignment: .leading, spacing: 6) {
@@ -170,23 +179,94 @@ struct RemoveBackgroundControls: View {
                 ProgressView("Rendering subject…").controlSize(.small)
             }
         } else {
-            refinementControls(document, edit: request.edit)
+            Picker("Correction tool", selection: $brushMode) {
+                Text("Brush").tag(true)
+                Text("Rectangle").tag(false)
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+            .frame(maxWidth: 200)
+            .onChange(of: brushMode) { drawing = false }
             let original = document.analysis.source.image
-            ImageMaskViewport(image: original, actualPixels: actualPixels) { size in
-                ImageMaskCanvas(image: original, masks: request.edit.refinements.map(\.region),
-                                selected: $selectedRegion, drawing: $drawing, tint: { region in
-                    request.edit.refinements.first { $0.id == region.id }?.action == .remove ? .orange : .green
-                }) { regions in
-                    update(document) { updated in
-                        let previous = Dictionary(updated.refinements.map { ($0.id, $0.action) }, uniquingKeysWith: { first, _ in first })
-                        updated.refinements = regions.prefix(256).map {
-                            ForegroundRefinement(region: $0, action: previous[$0.id] ?? drawingAction)
+            if brushMode {
+                brushControls(document, edit: request.edit)
+                ImageMaskViewport(image: original, actualPixels: actualPixels) { size in
+                    ForegroundBrushCanvas(image: original, overlay: liveOverlay(for: request),
+                                          refinements: request.edit.refinements, action: drawingAction, width: brushWidth,
+                                          enabled: request.edit.refinements.count < RemoveBackgroundEdit.maximumCorrections) { stroke, action in
+                        update(document) { edit in
+                            guard edit.refinements.count < RemoveBackgroundEdit.maximumCorrections else { return }
+                            edit.refinements.append(ForegroundRefinement(stroke: stroke, action: action))
                         }
                     }
+                    .id(document.input)
+                    .frame(width: size.width, height: size.height)
                 }
-                .id(document.input)
-                .frame(width: size.width, height: size.height)
+                .overlay(alignment: .topTrailing) {
+                    if liveOverlay(for: request) != nil, rendered?.request != request {
+                        ProgressView("Updating mask…")
+                            .controlSize(.small)
+                            .padding(8)
+                            .allowsHitTesting(false)
+                    }
+                }
+            } else {
+                refinementControls(document, edit: request.edit)
+                ImageMaskViewport(image: original, actualPixels: actualPixels) { size in
+                    ImageMaskCanvas(image: original, masks: request.edit.refinements.compactMap(\.region),
+                                    selected: $selectedRegion, drawing: $drawing, tint: { region in
+                        request.edit.refinements.first { $0.id == region.id }?.action == .remove ? .orange : .green
+                    }) { regions in
+                        update(document) { edit in
+                            let updated = Dictionary(uniqueKeysWithValues: regions.map { ($0.id, $0) })
+                            let previous = Set(edit.refinements.map(\.id))
+                            edit.refinements = edit.refinements.compactMap { item in
+                                guard item.region != nil else { return item }
+                                return updated[item.id].map { ForegroundRefinement(region: $0, action: item.action) }
+                            }
+                            for region in regions where !previous.contains(region.id)
+                                && edit.refinements.count < RemoveBackgroundEdit.maximumCorrections {
+                                edit.refinements.append(ForegroundRefinement(region: region, action: drawingAction))
+                            }
+                        }
+                    }
+                    .id(document.input)
+                    .frame(width: size.width, height: size.height)
+                }
             }
+            if request.edit.refinements.count >= RemoveBackgroundEdit.maximumCorrections {
+                Text("This image has \(RemoveBackgroundEdit.maximumCorrections) corrections. Remove a correction before drawing another.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func liveOverlay(for request: RenderRequest) -> CGImage? {
+        guard let rendered, rendered.request.input == request.input,
+              rendered.request.digest == request.digest, rendered.request.options.background == .transparent,
+              case .success(let image) = rendered.result else { return nil }
+        return image
+    }
+
+    private func brushControls(_ document: Document, edit: RemoveBackgroundEdit) -> some View {
+        HStack {
+            Picker("Brush action", selection: $drawingAction) {
+                ForEach(ForegroundRefinement.Action.allCases) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .frame(width: 95)
+            Slider(value: $brushWidth, in: ForegroundBrushStroke.widths)
+                .accessibilityLabel("Brush width")
+            let pixels = Int((brushWidth * Double(min(document.analysis.source.image.width,
+                                                       document.analysis.source.image.height))).rounded())
+            Text("\(max(1, pixels)) px").font(.caption.monospacedDigit())
+            let lastBrush = edit.refinements.last { $0.region == nil }?.id
+            Button("Undo Brush Stroke", systemImage: "arrow.uturn.backward") {
+                update(document) { $0.refinements.removeAll { $0.id == lastBrush } }
+            }
+            .labelStyle(.iconOnly)
+            .help("Undo Brush Stroke")
+            .disabled(lastBrush == nil)
         }
     }
 
@@ -199,13 +279,14 @@ struct RemoveBackgroundControls: View {
             .labelsHidden()
             .frame(width: 95)
             Button(drawing ? "Cancel Drawing" : "Draw Region", systemImage: "rectangle.dashed") { drawing.toggle() }
-                .disabled(!drawing && edit.refinements.count >= 256)
+                .disabled(!drawing && edit.refinements.count >= RemoveBackgroundEdit.maximumCorrections)
         }
-        if !edit.refinements.isEmpty {
+        let rectangles = edit.refinements.filter { $0.region != nil }
+        if !rectangles.isEmpty {
             HStack {
                 Picker("Selected region", selection: $selectedRegion) {
                     Text("Choose Region").tag(UUID?.none)
-                    ForEach(Array(edit.refinements.enumerated()), id: \.element.id) { index, refinement in
+                    ForEach(Array(rectangles.enumerated()), id: \.element.id) { index, refinement in
                         Text("\(refinement.action.rawValue) \(index + 1)").tag(Optional(refinement.id))
                     }
                 }

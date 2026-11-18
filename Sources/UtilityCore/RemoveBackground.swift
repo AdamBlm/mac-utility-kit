@@ -12,17 +12,40 @@ public struct ForegroundRefinement: Equatable, Identifiable, Sendable {
         public var id: Self { self }
     }
 
-    public var id: UUID { region.id }
-    public var region: ImageMaskRegion
+    public enum Shape: Equatable, Sendable {
+        case rectangle(ImageMaskRegion)
+        case brush(ForegroundBrushStroke)
+    }
+
+    public var id: UUID {
+        switch shape {
+        case .rectangle(let region): region.id
+        case .brush(let stroke): stroke.id
+        }
+    }
+
+    public var region: ImageMaskRegion? {
+        if case .rectangle(let region) = shape { return region }
+        return nil
+    }
+
+    public let shape: Shape
     public var action: Action
 
     public init(region: ImageMaskRegion, action: Action) {
-        self.region = region
+        shape = .rectangle(region)
+        self.action = action
+    }
+
+    public init(stroke: ForegroundBrushStroke, action: Action) {
+        shape = .brush(stroke)
         self.action = action
     }
 }
 
 public struct RemoveBackgroundEdit: Equatable, Sendable {
+    public static let maximumCorrections = 256
+
     /// nil keeps every automatic subject. An empty set starts with a blank mask.
     public var subjects: IndexSet?
     public var refinements: [ForegroundRefinement] = []
@@ -141,7 +164,7 @@ public enum RemoveBackground {
     ) throws -> CGImage {
         let subjects = edit.subjects ?? analysis.subjects
         guard !subjects.isEmpty || edit.refinements.contains(where: { $0.action == .keep }) else {
-            throw ToolError.invalid("Select a subject or draw a Keep region.")
+            throw ToolError.invalid("Select a subject or use a Keep correction.")
         }
         let mask = try analysis.mask(for: subjects)
         return try composite(analysis.source.image, mask: mask, edit: edit, options: options)
@@ -151,6 +174,7 @@ public enum RemoveBackground {
         let analysis = try analyze(input)
         let edit = try options.exportEdit(for: input, analysis: analysis)
         let result = try preview(analysis, edit: edit, options: options)
+        try Task.checkCancellation()
         try publish(result, input: input, to: output, options: options)
         return "\(input.lastPathComponent) · \(result.width) × \(result.height) · \(options.format.rawValue)"
     }
@@ -160,7 +184,7 @@ public enum RemoveBackground {
     ) throws -> CGImage {
         guard options.backgroundColor <= 0xFFFFFF, (0...1).contains(options.quality),
               options.format != .jpeg || options.background == .solid,
-              edit.refinements.count <= 256 else {
+              edit.refinements.count <= RemoveBackgroundEdit.maximumCorrections else {
             throw ToolError.invalid("Choose valid output options. Transparent backgrounds require PNG.")
         }
         let input = CIImage(cgImage: original)
@@ -172,13 +196,8 @@ public enum RemoveBackground {
             }
             matte = mask.cropped(to: extent)
         }
-        for refinement in edit.refinements {
-            try Task.checkCancellation()
-            let pixels = try ImageRedaction.pixelBounds(refinement.region.rect, width: original.width, height: original.height)
-            let rectangle = CGRect(x: pixels.minX, y: extent.height - pixels.maxY,
-                                   width: pixels.width, height: pixels.height)
-            let fill = CIImage(color: refinement.action == .keep ? .white : .black).cropped(to: rectangle)
-            matte = fill.composited(over: matte)
+        if !edit.refinements.isEmpty {
+            matte = try correctedMatte(matte, extent: extent, refinements: edit.refinements)
         }
         let color = options.backgroundColor
         let rgb = CIColor(cgColor: CGColor(srgbRed: CGFloat((color >> 16) & 255) / 255,
@@ -200,6 +219,35 @@ public enum RemoveBackground {
             throw ToolError.invalid("Could not render the new background.")
         }
         return image
+    }
+
+    private static func correctedMatte(
+        _ matte: CIImage, extent: CGRect, refinements: [ForegroundRefinement]
+    ) throws -> CIImage {
+        let width = Int(extent.width)
+        let height = Int(extent.height)
+        let gray = CGColorSpaceCreateDeviceGray()
+        // Matte samples are opacity values. A gray output profile would apply a transfer curve.
+        guard let canvas = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
+                                     bytesPerRow: 0, space: gray, bitmapInfo: CGImageAlphaInfo.none.rawValue),
+              let data = canvas.data else {
+            throw ToolError.invalid("Could not prepare the foreground mask for editing.")
+        }
+        context.render(matte, toBitmap: data, rowBytes: canvas.bytesPerRow, bounds: extent, format: .L8, colorSpace: nil)
+        for refinement in refinements {
+            try Task.checkCancellation()
+            switch refinement.shape {
+            case .rectangle(let region):
+                let pixels = try ImageRedaction.pixelBounds(region.rect, width: width, height: height)
+                canvas.setFillColor(gray: refinement.action == .keep ? 1 : 0, alpha: 1)
+                canvas.fill(CGRect(x: pixels.minX, y: extent.height - pixels.maxY,
+                                   width: pixels.width, height: pixels.height))
+            case .brush(let stroke):
+                try stroke.paint(in: canvas, extent: extent, action: refinement.action)
+            }
+        }
+        guard let mask = canvas.makeImage() else { throw ToolError.invalid("Could not render the edited foreground mask.") }
+        return CIImage(cgImage: mask, options: [.colorSpace: NSNull()])
     }
 
     private static func publish(_ image: CGImage, input: URL, to output: URL, options: RemoveBackgroundOptions) throws {

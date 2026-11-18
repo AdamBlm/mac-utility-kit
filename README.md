@@ -61,7 +61,7 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 - **Watermark** adds text or a logo to images, selected PDF pages, and video time ranges. Set placement, tiling, opacity, scale, margin, and rotation. Video uses a selected FFmpeg executable. Marked PDF pages retain visible content and selectable source text where supported, with interactive objects flattened.
 - **Color Picker** uses the macOS magnified sampler and shows sRGB HEX, RGB, and HSL. Choose a precision, copy a value, or revisit recent session swatches.
 - **Annotate Screenshot** adds ordered arrows, lines, shapes, text, and numbered callouts. Open an image or hand off a capture from Screenshot, then copy or export a flattened PNG or JPEG.
-- **Remove Background** detects foreground subjects locally, supports rectangular Keep and Remove refinements, and exports transparent PNG or a solid-background PNG or JPEG.
+- **Remove Background** detects foreground subjects locally, supports adjustable Keep and Remove brushes plus rectangular refinements, and exports transparent PNG or a solid-background PNG or JPEG.
 - **Screenshot** captures a display, a window, a region, or a manually scrolled sequence. Review the image or stitching seams before copying or exporting PNG or JPEG.
 - **Redact Image** flattens adjustable solid, blurred, or pixelated regions into PNG. Review at full resolution with undo and redo. Source metadata is stripped by default, with optional retention of title, author, and copyright.
 - **Blur Faces** suggests face masks with Apple Vision. Add or adjust coverage, review the flattened preview, and export PNG with solid cover, blur, or pixelation.

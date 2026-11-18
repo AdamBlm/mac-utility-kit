@@ -59,6 +59,63 @@ struct RemoveBackgroundTests {
         #expect(abs(Int(chosenBackground[2]) - 221) < 22 && chosenBackground[3] == 255)
     }
 
+    @Test func brushAndRectangleCorrectionsUseTheSameOrderInPreviewAndExport() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appending(path: "source.png")
+        let output = directory.appending(path: "brushed.png")
+        try ImageRedaction.writePNG(Self.makeRedImage(), to: input)
+        let analysis = try RemoveBackground.analyze(input)
+        var edit = RemoveBackgroundEdit()
+        edit.subjects = []
+        edit.refinements = [
+            .init(stroke: .init(points: [.init(x: 0.125, y: 0.125), .init(x: 0.75, y: 0.75)], width: 0.125), action: .keep),
+            .init(region: ImageMaskRegion(rect: CGRect(x: 0.5, y: 0.5, width: 0.5, height: 0.5)), action: .keep),
+            .init(stroke: .init(points: [.init(x: 0.75, y: 0.75)], width: 0.25), action: .remove),
+            .init(stroke: .init(points: [.init(x: 0.75, y: 0.75)], width: 0.09375), action: .keep)
+        ]
+        var options = RemoveBackgroundOptions()
+        options.apply(edit, to: input, analysis: analysis)
+        let preview = try Self.pixels(RemoveBackground.preview(analysis, edit: edit, options: options))
+        _ = try await RemoveBackground.export(input, to: output, options: options)
+        let exported = try Self.pixels(Self.read(output))
+        #expect(preview.bytes == exported.bytes)
+        #expect(exported.pixel(x: 6, y: 4) == [255, 0, 0, 255])
+        #expect(exported.pixel(x: 18, y: 12) == [255, 0, 0, 255])
+        #expect(exported.pixel(x: 18, y: 4) == [0, 0, 0, 0])
+        #expect(exported.pixel(x: 42, y: 24) == [255, 0, 0, 255])
+        #expect(exported.pixel(x: 36, y: 24)[3] > 200)
+        #expect(exported.pixel(x: 39, y: 24)[3] < 20)
+    }
+
+    @Test func rejectsInvalidBrushCoordinates() throws {
+        let original = try Self.makeRedImage()
+        var edit = RemoveBackgroundEdit()
+        edit.refinements = [
+            .init(stroke: .init(points: [.init(x: 1.25, y: 0)], width: 0.1), action: .keep)
+        ]
+        #expect(throws: ToolError.self) {
+            try RemoveBackground.composite(original, mask: nil, edit: edit, options: .init())
+        }
+    }
+
+    @Test func brushPreservesUntouchedFractionalMatteValues() throws {
+        let original = try Self.makeRedImage()
+        let extent = CGRect(x: 0, y: 0, width: original.width, height: original.height)
+        let mask = CIImage(bitmapData: Data(repeating: 128, count: original.width * original.height),
+                           bytesPerRow: original.width, size: extent.size, format: .L8, colorSpace: nil)
+        let baseline = try Self.pixels(RemoveBackground.composite(original, mask: mask, edit: .init(), options: .init()))
+        var edited = RemoveBackgroundEdit()
+        edited.refinements = [
+            .init(stroke: .init(points: [.init(x: 0.2, y: 0.2)], width: 0.1), action: .remove)
+        ]
+        let output = try Self.pixels(RemoveBackground.composite(original, mask: mask, edit: edited, options: .init()))
+        #expect(baseline.pixel(x: 30, y: 20)[3] == 128)
+        #expect(output.pixel(x: 30, y: 20) == baseline.pixel(x: 30, y: 20))
+        #expect(output.pixel(x: 9, y: 6)[3] == 0)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FOREGROUND_TEST"] != nil))
     func nativeVisionFindsAndMasksAnActualSubject() throws {
         let input = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FOREGROUND_TEST"]))
