@@ -17,7 +17,7 @@ enum PDFOperations {
                 guard let reviewed = stamps[index] else {
                     throw ToolError.invalid("Refresh the preview for \(input.lastPathComponent) before merging.")
                 }
-                try reviewed.validate(input)
+                try validate(reviewed, input: input)
             }
             let source = excluded ? nil : try open(input, password: password)
             sources.append(source)
@@ -47,7 +47,13 @@ enum PDFOperations {
     ) throws {
         guard let stamps else { return }
         for index in Set(selected.map(\.source)) {
-            try stamps[index]?.validate(inputs[index])
+            if let stamp = stamps[index] { try validate(stamp, input: inputs[index]) }
+        }
+    }
+
+    private static func validate(_ stamp: PDFSourceStamp, input: URL) throws {
+        guard (try? PDFSourceStamp.read(input)) == stamp else {
+            throw ToolError.invalid("\(input.lastPathComponent) changed after preview. Refresh the source previews before merging.")
         }
     }
 

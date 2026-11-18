@@ -24,7 +24,7 @@ public enum PDFSignaturePageOverride: Equatable, Sendable {
     case excluded
 }
 
-public typealias PDFSignatureSourceStamp = PDFMergeSourceStamp
+public typealias PDFSignatureSourceStamp = PDFSourceStamp
 
 public struct PDFSignatureOptions: Sendable {
     public var password = ""
