@@ -11,10 +11,10 @@ ditto "$binary_directory/KeyboardShortcuts_KeyboardShortcuts.bundle" \
     "$app/Contents/Resources/KeyboardShortcuts_KeyboardShortcuts.bundle"
 /usr/bin/install -m 0644 .build/checkouts/KeyboardShortcuts/license "$app/Contents/Resources/KeyboardShortcuts-LICENSE.txt"
 mkdir -p "$app/Contents/Resources/CLI-Licenses"
-for dependency in eventsource swift-argument-parser swift-atomics swift-collections swift-log swift-nio swift-sdk swift-system; do
+for dependency in eventsource swift-argument-parser swift-atomics swift-collections swift-log swift-nio swift-sdk swift-subprocess swift-system; do
     case "$dependency" in
         eventsource) license="LICENSE.md" ;;
-        swift-sdk) license="LICENSE" ;;
+        swift-sdk|swift-subprocess) license="LICENSE" ;;
         *) license="LICENSE.txt" ;;
     esac
     checkout=".build/checkouts/$dependency"

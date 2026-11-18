@@ -9,7 +9,7 @@ Working name for an open-source macOS utility suite with its own interface. The 
 
 ## Run locally
 
-On an Apple silicon Mac with macOS 15 or later and Xcode installed, run `./scripts/build-app.sh` and open `build/Mac Utility Kit.app`. Run `swift test` to check the workflow fixtures. The generated app is ad hoc signed for local use.
+On an Apple silicon Mac with macOS 15 or later and Xcode 26 or newer installed, run `./scripts/build-app.sh` and open `build/Mac Utility Kit.app`. Run `swift test` to check the workflow fixtures. The generated app is ad hoc signed for local use.
 
 
 ### Video compression engines

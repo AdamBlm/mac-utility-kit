@@ -1,4 +1,4 @@
-// swift-tools-version: 6.0
+// swift-tools-version: 6.2
 import PackageDescription
 
 let package = Package(
@@ -11,6 +11,7 @@ let package = Package(
     dependencies: [
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", exact: "2.3.0"),
         .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.7.0"),
+        .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.2"),
         .package(url: "https://github.com/apple/swift-argument-parser.git", exact: "1.8.2"),
         .package(url: "https://github.com/modelcontextprotocol/swift-sdk.git", exact: "0.12.1"),
     ],
@@ -20,6 +21,7 @@ let package = Package(
         .target(name: "UtilityCore", dependencies: [
             "CSystemRegex",
             "CSystemArchive",
+            .product(name: "Subprocess", package: "swift-subprocess"),
             .product(name: "cmark-gfm", package: "swift-cmark"),
             .product(name: "cmark-gfm-extensions", package: "swift-cmark"),
         ], resources: [.copy("Resources/confusables.txt"), .copy("Resources/eff_large_wordlist.txt")]),
