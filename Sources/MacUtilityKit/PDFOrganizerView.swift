@@ -185,7 +185,9 @@ struct PDFOrganizerView: View {
         }
         .buttonStyle(.plain)
         .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
-            guard !page.removed, press.modifiers == .option,
+            // Arrow events can carry the numeric-pad flag.
+            let modifiers = press.modifiers.intersection([.option, .shift, .control, .command])
+            guard !page.removed, modifiers == .option,
                   let index = strip.firstIndex(where: { $0.number == page.number }) else { return .ignored }
             let target = index + (press.key == .leftArrow ? -1 : 1)
             if strip.indices.contains(target) { _ = move(page.number, to: strip[target].number) }
