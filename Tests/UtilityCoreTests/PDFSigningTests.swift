@@ -75,6 +75,78 @@ import UtilityCore
     #expect(throws: ToolError.self) { try PDFSigning.pageIndices("4", pageCount: 3) }
 }
 
+@Test func visualPDFSignatureUsesPerPagePlacementAndOmitsRemovedPage() async throws {
+    let directory = try signingDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appending(path: "Source.pdf")
+    try signingFixture(to: source)
+    let original = try Data(contentsOf: source)
+    let output = directory.appending(path: "Signed.pdf")
+    var options = PDFSignatureOptions()
+    options.text = "Avery Chen"
+    options.pageRange = "1–3"
+    options.center = CGPoint(x: 0.20, y: 0.22)
+    options.width = 0.14
+    options.pageOverrides[2] = .excluded
+    options.pageOverrides[3] = .custom(.init(center: CGPoint(x: 0.73, y: 0.78), width: 0.36))
+    try await PDFSigning.sign(source, to: output, options: options) { _ in }
+
+    let document = try #require(PDFDocument(url: output))
+    #expect(try Data(contentsOf: source) == original)
+    #expect(document.page(at: 1)?.annotations.isEmpty == true)
+    for (index, x, y, width) in [(0, 0.20, 0.78, 0.14), (2, 0.73, 0.22, 0.36)] {
+        let page = try #require(document.page(at: index))
+        let ref = try #require(page.pageRef)
+        let annotation = try #require(page.annotations.first)
+        let size = PDFSigning.visibleSize(for: ref)
+        let transform = ref.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: size),
+                                                rotate: 0, preserveAspectRatio: true)
+        let display = annotation.bounds.applying(transform)
+        #expect(abs(display.midX / size.width - x) < 0.025)
+        #expect(abs(display.midY / size.height - y) < 0.025)
+        #expect(abs(display.width / size.width - width) < 0.03)
+    }
+
+    options.pageRange = "2"
+    let excluded = directory.appending(path: "Excluded.pdf")
+    await #expect(throws: ToolError.self) {
+        try await PDFSigning.sign(source, to: excluded, options: options) { _ in }
+    }
+    #expect(!FileManager.default.fileExists(atPath: excluded.path))
+    options.pageOverrides[2] = nil
+    #expect(options.placement(forPage: 2) == options.sharedPlacement)
+}
+
+@Test func visualPDFSignatureRequiresRefreshAfterSamePageCountReplacement() async throws {
+    let directory = try signingDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appending(path: "Source.pdf")
+    let replacement = directory.appending(path: "Replacement.pdf")
+    let output = directory.appending(path: "Signed.pdf")
+    try signingFixture(to: source)
+    var options = PDFSignatureOptions()
+    options.text = "Avery Chen"
+    options.sourceStamp = try PDFSignatureSourceStamp.read(source)
+    let different = try #require(PDFDocument(url: source))
+    let page = try #require(different.page(at: 0))
+    page.rotation = 180
+    try #require(different.write(to: replacement))
+    _ = try FileManager.default.replaceItemAt(source, withItemAt: replacement)
+
+    do {
+        try await PDFSigning.sign(source, to: output, options: options) { _ in }
+        Issue.record("A replaced source should not be signed using the previous preview.")
+    } catch {
+        #expect(error.localizedDescription.contains("Refresh the PDF preview"))
+    }
+    #expect(!FileManager.default.fileExists(atPath: output.path))
+    options.sourceStamp = try PDFSignatureSourceStamp.read(source)
+    try await PDFSigning.sign(source, to: output, options: options) { _ in }
+    let signed = try #require(PDFDocument(url: output))
+    #expect(signed.pageCount == 3)
+    #expect(signed.page(at: 0)?.rotation == 180)
+}
+
 private func signingDirectory() throws -> URL {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

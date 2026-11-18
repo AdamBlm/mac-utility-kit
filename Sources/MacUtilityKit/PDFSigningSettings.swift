@@ -11,10 +11,24 @@ struct PDFSigningSettings: View {
 
     @State private var document: PDFDocument?
     @State private var passwordError: String?
+    @State private var sourceError: String?
     @State private var previewPage = 0
 
+    private enum PagePlacementMode: String, CaseIterable, Identifiable {
+        case shared = "Shared Placement"
+        case custom = "Custom Placement"
+        case excluded = "No Signature"
+        var id: Self { self }
+    }
+
     var body: some View {
-        Group {
+        VStack(alignment: .leading, spacing: 10) {
+            if input != nil {
+                Button("Refresh PDF Preview", systemImage: "arrow.clockwise", action: load)
+            }
+            if let sourceError {
+                Text(sourceError).font(.callout).foregroundStyle(.secondary)
+            }
             if let document {
                 if document.isLocked || !document.allowsCommenting {
                     VStack(alignment: .leading, spacing: 8) {
@@ -32,8 +46,6 @@ struct PDFSigningSettings: View {
                 } else {
                     signingControls(document)
                 }
-            } else if input != nil {
-                Text("Could not open this PDF.").font(.callout).foregroundStyle(.secondary)
             }
         }
         .disabled(!canEdit)
@@ -85,10 +97,22 @@ struct PDFSigningSettings: View {
                         .labelsHidden()
                     }
                 }
-                SignaturePlacementPreview(page: page, size: PDFSigning.visibleSize(for: pageRef), options: $options)
-                if pages.count > 1 {
-                    Text("The same relative placement applies to all selected pages.")
+                SettingRow("This page") {
+                    Picker("Signature placement for page \(currentPage + 1)", selection: placementMode(for: currentPage + 1)) {
+                        ForEach(PagePlacementMode.allCases) { mode in Text(mode.rawValue).tag(mode) }
+                    }
+                    .labelsHidden()
+                }
+                SignaturePlacementPreview(page: page, size: PDFSigning.visibleSize(for: pageRef), options: options,
+                                          placement: placement(for: currentPage + 1),
+                                          showsSignature: options.placement(forPage: currentPage + 1) != nil)
+                    .id(currentPage)
+                if options.pageOverrides[currentPage + 1] == nil, pages.count > 1 {
+                    Text("These controls update every page using shared placement.")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                if (try? PDFSigning.signingPageIndices(options, pageCount: document.pageCount)) == nil {
+                    Text("Include at least one page to sign.").font(.caption).foregroundStyle(.secondary)
                 }
             }
 
@@ -101,29 +125,78 @@ struct PDFSigningSettings: View {
         }
     }
 
+    private func placementMode(for page: Int) -> Binding<PagePlacementMode> {
+        Binding {
+            switch options.pageOverrides[page] {
+            case .custom: .custom
+            case .excluded: .excluded
+            case nil: .shared
+            }
+        } set: { mode in
+            switch mode {
+            case .shared: options.pageOverrides[page] = nil
+            case .custom: options.pageOverrides[page] = .custom(options.placement(forPage: page) ?? options.sharedPlacement)
+            case .excluded: options.pageOverrides[page] = .excluded
+            }
+        }
+    }
+
+    private func placement(for page: Int) -> Binding<PDFSignaturePlacement> {
+        Binding {
+            options.placement(forPage: page) ?? options.sharedPlacement
+        } set: { placement in
+            switch options.pageOverrides[page] {
+            case .custom: options.pageOverrides[page] = .custom(placement)
+            case nil: options.sharedPlacement = placement
+            case .excluded: break
+            }
+        }
+    }
+
     private var canExport: Bool {
-        guard let document, !document.isLocked, document.allowsCommenting,
-              let pages = try? PDFSigning.pageIndices(options.pageRange, pageCount: document.pageCount),
-              let index = pages.first, let page = document.page(at: index)?.pageRef else { return false }
-        return (try? PDFSigning.appearance(on: PDFSigning.visibleSize(for: page), options: options)) != nil
+        guard let document, options.sourceStamp != nil, sourceError == nil,
+              !document.isLocked, document.allowsCommenting else { return false }
+        return (try? PDFSigning.validate(document: document, options: options)) != nil
     }
 
     private func load() {
         passwordError = nil
+        sourceError = nil
         previewPage = 0
-        document = input.flatMap { PDFDocument(url: $0) }
-        if !options.password.isEmpty { unlock() }
+        document = nil
+        options.sourceStamp = nil
+        guard let input else { return }
+        guard let stamp = try? PDFSignatureSourceStamp.read(input), let refreshed = PDFDocument(url: input) else {
+            sourceError = "Could not open this PDF."
+            return
+        }
+        guard (try? PDFSignatureSourceStamp.read(input)) == stamp else {
+            sourceError = "This PDF changed while opening. Refresh the PDF preview to try again."
+            return
+        }
+        document = refreshed
+        options.sourceStamp = stamp
+        if !options.password.isEmpty, refreshed.isEncrypted { unlock() }
     }
 
     private func unlock() {
-        guard let input, let unlocked = PDFDocument(url: input),
-              unlocked.unlock(withPassword: options.password) else {
+        guard let input, let stamp = options.sourceStamp,
+              (try? PDFSignatureSourceStamp.read(input)) == stamp else {
+            sourceError = "This PDF changed after preview. Refresh the PDF preview to unlock it."
+            return
+        }
+        guard let unlocked = PDFDocument(url: input), unlocked.unlock(withPassword: options.password) else {
             passwordError = "Could not unlock this PDF. Check the password."
+            return
+        }
+        guard (try? PDFSignatureSourceStamp.read(input)) == stamp else {
+            sourceError = "This PDF changed after preview. Refresh the PDF preview to unlock it."
             return
         }
         passwordError = unlocked.allowsCommenting ? nil : "That password does not allow annotations."
         document = unlocked
     }
+
 }
 
 private struct SignatureDrawingPad: View {
@@ -181,7 +254,9 @@ private struct SignatureDrawingPad: View {
 private struct SignaturePlacementPreview: View {
     let page: PDFPage
     let size: CGSize
-    @Binding var options: PDFSignatureOptions
+    let options: PDFSignatureOptions
+    @Binding var placement: PDFSignaturePlacement
+    let showsSignature: Bool
     @State private var thumbnail: NSImage?
     @State private var availableWidth: CGFloat = 440
 
@@ -195,7 +270,7 @@ private struct SignaturePlacementPreview: View {
                     if let thumbnail {
                         Image(nsImage: thumbnail).resizable().scaledToFit()
                     }
-                    if let appearance = try? PDFSigning.appearance(on: size, options: options) {
+                    if showsSignature, let appearance = try? PDFSigning.appearance(on: size, options: options, placement: placement) {
                         let transform = CGAffineTransform(a: scale, b: 0, c: 0, d: -scale,
                                                           tx: 0, ty: previewSize.height)
                         Path(appearance.path).applying(transform)
@@ -208,25 +283,31 @@ private struct SignaturePlacementPreview: View {
                 .overlay { Rectangle().strokeBorder(.secondary.opacity(0.26)) }
                 .contentShape(Rectangle())
                 .gesture(DragGesture(minimumDistance: 0).onChanged { event in
-                    options.center = CGPoint(x: min(max(event.location.x / previewSize.width, 0), 1),
+                    guard showsSignature else { return }
+                    placement.center = CGPoint(x: min(max(event.location.x / previewSize.width, 0), 1),
                                              y: min(max(event.location.y / previewSize.height, 0), 1))
                 })
                 .accessibilityLabel("Signature placement preview")
-                Text("Click or drag on the page to position the signature.")
-                    .font(.caption).foregroundStyle(.secondary)
-                SettingRow("Signature width") {
-                    Slider(value: $options.width, in: 0.05...0.95) { Text("Signature width") }
-                }
-                DisclosureGroup("Precise placement") {
-                    VStack(alignment: .leading, spacing: 8) {
-                        SettingRow("Horizontal") {
-                            Slider(value: $options.center.x, in: 0...1) { Text("Horizontal position") }
-                        }
-                        SettingRow("Vertical") {
-                            Slider(value: $options.center.y, in: 0...1) { Text("Vertical position") }
-                        }
+                if showsSignature {
+                    Text("Click or drag on the page to position the signature.")
+                        .font(.caption).foregroundStyle(.secondary)
+                    SettingRow("Signature width") {
+                        Slider(value: $placement.width, in: 0.05...0.95) { Text("Signature width") }
                     }
-                    .padding(.top, 8)
+                    DisclosureGroup("Precise placement") {
+                        VStack(alignment: .leading, spacing: 8) {
+                            SettingRow("Horizontal") {
+                                Slider(value: $placement.center.x, in: 0...1) { Text("Horizontal position") }
+                            }
+                            SettingRow("Vertical") {
+                                Slider(value: $placement.center.y, in: 0...1) { Text("Vertical position") }
+                            }
+                        }
+                        .padding(.top, 8)
+                    }
+                } else {
+                    Text("This page will be exported without a new signature.")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
             }
         }

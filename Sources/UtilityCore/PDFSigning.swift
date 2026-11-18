@@ -9,6 +9,23 @@ public enum PDFSignatureMode: String, CaseIterable, Identifiable, Sendable {
     public var id: Self { self }
 }
 
+public struct PDFSignaturePlacement: Equatable, Sendable {
+    public var center: CGPoint
+    public var width: Double
+
+    public init(center: CGPoint, width: Double) {
+        self.center = center
+        self.width = width
+    }
+}
+
+public enum PDFSignaturePageOverride: Equatable, Sendable {
+    case custom(PDFSignaturePlacement)
+    case excluded
+}
+
+public typealias PDFSignatureSourceStamp = PDFMergeSourceStamp
+
 public struct PDFSignatureOptions: Sendable {
     public var password = ""
     public var pageRange = "1"
@@ -18,8 +35,24 @@ public struct PDFSignatureOptions: Sendable {
     public var center = CGPoint(x: 0.72, y: 0.82)
     public var width = 0.28
     public var dateLabel = ""
+    /// Overrides use one-based source page numbers.
+    public var pageOverrides: [Int: PDFSignaturePageOverride] = [:]
+    public var sourceStamp: PDFSignatureSourceStamp?
 
     public init() {}
+
+    public var sharedPlacement: PDFSignaturePlacement {
+        get { PDFSignaturePlacement(center: center, width: width) }
+        set { center = newValue.center; width = newValue.width }
+    }
+
+    public func placement(forPage number: Int) -> PDFSignaturePlacement? {
+        switch pageOverrides[number] {
+        case .custom(let placement): placement
+        case .excluded: nil
+        case nil: sharedPlacement
+        }
+    }
 }
 
 public struct PDFSignatureAppearance {
@@ -35,6 +68,7 @@ public enum PDFSigning {
         progress: @Sendable (Double) async -> Void
     ) async throws {
         try Task.checkCancellation()
+        try verifySource(input, stamp: options.sourceStamp)
         guard input.isFileURL, let document = PDFDocument(url: input) else {
             throw ToolError.invalid("Could not open this PDF.")
         }
@@ -48,16 +82,17 @@ public enum PDFSigning {
         guard output.isFileURL, !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local output PDF.")
         }
-        let pages = try pageIndices(options.pageRange, pageCount: document.pageCount)
+        let pages = try signingPageIndices(options, pageCount: document.pageCount)
         let mark = try signaturePath(options)
         var counts: [Int: Int] = [:]
         for (index, pageIndex) in pages.enumerated() {
             try Task.checkCancellation()
-            guard let page = document.page(at: pageIndex), let pageRef = page.pageRef else {
+            guard let page = document.page(at: pageIndex), let pageRef = page.pageRef,
+                  let placement = options.placement(forPage: pageIndex + 1) else {
                 throw ToolError.invalid("Could not open page \(pageIndex + 1).")
             }
             let size = visibleSize(for: pageRef)
-            let appearance = try place(mark, on: size, options: options)
+            let appearance = try place(mark, on: size, mode: options.mode, placement: placement)
             var transform = pageRef.getDrawingTransform(.cropBox,
                 rect: CGRect(origin: .zero, size: size), rotate: 0, preserveAspectRatio: true).inverted()
             guard let positioned = appearance.path.copy(using: &transform) else {
@@ -82,6 +117,7 @@ public enum PDFSigning {
             await progress(Double(index + 1) / Double(pages.count + 1))
         }
 
+        try verifySource(input, stamp: options.sourceStamp)
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appendingPathComponent(UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
@@ -96,17 +132,32 @@ public enum PDFSigning {
             throw ToolError.invalid("Could not verify the visible signature in the output PDF.")
         }
         try Task.checkCancellation()
+        try verifySource(input, stamp: options.sourceStamp)
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
     }
 
+    private static func verifySource(_ input: URL, stamp: PDFSignatureSourceStamp?) throws {
+        if let stamp, (try? PDFSignatureSourceStamp.read(input)) != stamp {
+            throw ToolError.invalid("This PDF changed after preview. Refresh the PDF preview before signing.")
+        }
+    }
+
     public static func pageIndices(_ range: String, pageCount: Int) throws -> [Int] {
-        guard !range.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+        guard pageCount > 0, !range.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ToolError.invalid("Choose at least one page to sign.")
         }
         let selected = try PageSelection.indices(range, pageCount: pageCount)
         guard !selected.isEmpty else { throw ToolError.invalid("Choose at least one page to sign.") }
         return selected
+    }
+
+    public static func signingPageIndices(_ options: PDFSignatureOptions, pageCount: Int) throws -> [Int] {
+        let pages = try pageIndices(options.pageRange, pageCount: pageCount).filter {
+            options.placement(forPage: $0 + 1) != nil
+        }
+        guard !pages.isEmpty else { throw ToolError.invalid("Include at least one page to sign.") }
+        return pages
     }
 
     public static func visibleSize(for page: CGPDFPage) -> CGSize {
@@ -115,8 +166,22 @@ public enum PDFSigning {
             ? CGSize(width: crop.height, height: crop.width) : crop.size
     }
 
-    public static func appearance(on size: CGSize, options: PDFSignatureOptions) throws -> PDFSignatureAppearance {
-        try place(signaturePath(options), on: size, options: options)
+    public static func appearance(
+        on size: CGSize, options: PDFSignatureOptions, placement: PDFSignaturePlacement? = nil
+    ) throws -> PDFSignatureAppearance {
+        try place(signaturePath(options), on: size, mode: options.mode, placement: placement ?? options.sharedPlacement)
+    }
+
+    public static func validate(document: PDFDocument, options: PDFSignatureOptions) throws {
+        let pages = try signingPageIndices(options, pageCount: document.pageCount)
+        let mark = try signaturePath(options)
+        for index in pages {
+            guard let ref = document.page(at: index)?.pageRef,
+                  let placement = options.placement(forPage: index + 1) else {
+                throw ToolError.invalid("Could not open page \(index + 1).")
+            }
+            _ = try place(mark, on: visibleSize(for: ref), mode: options.mode, placement: placement)
+        }
     }
 
     private static func signatures(in page: PDFPage) -> Int {
@@ -124,22 +189,22 @@ public enum PDFSigning {
     }
 
     private static func place(
-        _ mark: CGPath, on size: CGSize, options: PDFSignatureOptions
+        _ mark: CGPath, on size: CGSize, mode: PDFSignatureMode, placement: PDFSignaturePlacement
     ) throws -> PDFSignatureAppearance {
         guard size.width.isFinite, size.height.isFinite, size.width > 4, size.height > 4,
-              options.width.isFinite, (0.05...0.95).contains(options.width),
-              (0...1).contains(options.center.x), (0...1).contains(options.center.y)
+              placement.width.isFinite, (0.05...0.95).contains(placement.width),
+              (0...1).contains(placement.center.x), (0...1).contains(placement.center.y)
         else { throw ToolError.invalid("The signature placement is outside the page.") }
 
         let bounds = mark.boundingBoxOfPath
-        let scale = min(size.width * options.width / max(bounds.width, 1),
+        let scale = min(size.width * placement.width / max(bounds.width, 1),
                         size.height * 0.32 / max(bounds.height, 1))
         let width = bounds.width * scale
         let height = bounds.height * scale
-        let lineWidth = min(2.5, max(0.8, scale * (options.mode == .drawn ? 4 : 1.5)))
+        let lineWidth = min(2.5, max(0.8, scale * (mode == .drawn ? 4 : 1.5)))
         let inset = min(2, min((size.width - width) / 2, (size.height - height) / 2))
-        let centerX = min(size.width - inset - width / 2, max(inset + width / 2, size.width * options.center.x))
-        let centerY = min(size.height - inset - height / 2, max(inset + height / 2, size.height * (1 - options.center.y)))
+        let centerX = min(size.width - inset - width / 2, max(inset + width / 2, size.width * placement.center.x))
+        let centerY = min(size.height - inset - height / 2, max(inset + height / 2, size.height * (1 - placement.center.y)))
         var transform = CGAffineTransform(a: scale, b: 0, c: 0, d: scale,
                                           tx: centerX - bounds.midX * scale, ty: centerY - bounds.midY * scale)
         guard let path = mark.copy(using: &transform) else { throw ToolError.invalid("Could not scale the signature.") }
