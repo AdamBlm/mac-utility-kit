@@ -140,7 +140,7 @@ public enum ToolRunner {
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
                     case .extractText: "txt"
-                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo:
+                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker:
                         throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
@@ -270,7 +270,7 @@ public enum ToolRunner {
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
                     case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames, .mergeVideos,
-                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo:
+                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker:
                         break
                     }
                     outputs.append(output)

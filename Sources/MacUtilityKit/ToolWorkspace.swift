@@ -56,6 +56,7 @@ struct ToolWorkspace: View {
         case .annotateScreenshot: AnnotateScreenshotView(draft: $draft.annotation)
         case .recordScreen: RecordScreenView(controller: screenRecordingController)
         case .downloadVideo: VideoDownloadView(draft: $draft.videoDownload)
+        case .colorPicker: ColorPickerToolView(draft: $draft.colorPicker)
         default: EmptyView()
         }
     }
@@ -183,7 +184,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {
