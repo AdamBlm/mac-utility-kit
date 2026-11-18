@@ -26,5 +26,8 @@ jobs:
           assert len(titles) == len(inventory) == 102
           assert len({entry["id"] for entry in catalog}) == len(catalog), "Duplicate tool IDs"
           assert sorted(titles) == sorted(inventory), "The app catalog and roadmap inventory differ"
+          assert all(isinstance(entry["inputTypes"], list) and all(
+              isinstance(kind, str) and kind for kind in entry["inputTypes"]
+          ) for entry in catalog), "The catalog is missing accepted input type identifiers"
           PYTHON
       - run: ./scripts/build-dmg.sh

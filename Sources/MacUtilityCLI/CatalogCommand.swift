@@ -9,10 +9,13 @@ struct Catalog: ParsableCommand {
         let id: String
         let title: String
         let category: String
+        let inputTypes: [String]
     }
 
     func run() throws {
-        let entries = Tool.allCases.map { Entry(id: $0.id, title: $0.title, category: $0.category) }
+        let entries = Tool.allCases.map { tool in
+            Entry(id: tool.id, title: tool.title, category: tool.category, inputTypes: tool.inputTypes.map(\.identifier))
+        }
         let encoder = JSONEncoder()
         encoder.outputFormatting = [.prettyPrinted, .sortedKeys]
         print(String(decoding: try encoder.encode(entries), as: UTF8.self))
