@@ -176,4 +176,4 @@ The optional `clean-link` tool is also available. The server uses the client pro
 
 ### Local installer
 
-Run `./scripts/build-dmg.sh` after building the app to create a verified local preview disk image. The build uses an ad-hoc signature by default. Set `MUK_CODESIGN_IDENTITY` when building with an authorized Developer ID identity. Apple notarization and publication are separate release steps.
+Run `./scripts/build-dmg.sh` after building the app to create a verified local preview disk image. The build uses an ad hoc signature by default. For an authorized distribution build, set `MUK_CODESIGN_IDENTITY` to the Developer ID Application identity when running both build scripts. Set `MUK_NOTARY_PROFILE` for the DMG script to submit the final disk image using an authorized Keychain notary profile. The script checks acceptance and staples and validates the ticket before saving the requested disk image. Publication is a separate release step. [Apple notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
