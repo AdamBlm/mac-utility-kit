@@ -9,6 +9,7 @@ struct ClipboardFileButton: View {
     let onPasteImage: ((CGImage) throws -> Void)?
     let onPaste: ([URL]) -> Void
     @State private var message: String?
+    @Environment(\.isEnabled) private var isEnabled
 
     init(allowedTypes: [UTType], allowsMultiple: Bool = true,
          onPasteImage: ((CGImage) throws -> Void)? = nil, onPaste: @escaping ([URL]) -> Void) {
@@ -39,6 +40,7 @@ struct ClipboardFileButton: View {
     }
 
     private func paste() {
+        guard isEnabled else { return }
         let board = NSPasteboard.general
         let files = ClipboardFiles.read(from: board, allowedTypes: allowedTypes)
         if !allowsMultiple && files.count > 1 {

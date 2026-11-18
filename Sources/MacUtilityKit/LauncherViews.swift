@@ -43,6 +43,9 @@ struct LauncherSettingsView: View {
             Section("Exports") {
                 ExportNotificationPreference()
             }
+            Section("PDF Reader") {
+                PDFReaderPreference()
+            }
             Section("Drafts") {
                 DraftRetentionPreference()
             }

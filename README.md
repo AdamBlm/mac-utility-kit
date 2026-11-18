@@ -76,7 +76,7 @@ Set `MAC_UTILITY_EXIFTOOL_TEST` to a local ExifTool executable to run its integr
 
 ### PDF reader
 
-Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom, print, or send the source to a document tool. PDF output and merge previews can open directly in the reader.
+Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom, print, or send the source to a document tool. PDF output and merge previews can open directly in the reader. Use **Use in Tool** to send a supported PDF to **Fill & Flatten Forms**. In **Settings → PDF Reader**, choose whether macOS should open PDFs with Mac Utility Kit.
 
 ### PDF page tools
 

@@ -6,6 +6,7 @@ import UtilityCore
 
 struct PDFReaderView: View {
     @Binding var source: URL?
+    let canHandoffForms: Bool
     let onHandoff: (Tool, URL) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
@@ -114,6 +115,10 @@ struct PDFReaderView: View {
                         }
                     }
                     if !document.isEncrypted {
+                        Button(Tool.fillFlattenForms.title) {
+                            if let source { onHandoff(.fillFlattenForms, source) }
+                        }
+                        .disabled(!canHandoffForms || !document.allowsFormFieldEntry)
                         Button(Tool.redactPDF.title) {
                             if let source { onHandoff(.redactPDF, source) }
                         }

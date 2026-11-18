@@ -114,7 +114,9 @@ struct Workspace: View {
             Group {
                 switch selection {
                 case .pdfReader:
-                    PDFReaderView(source: $readerSource, onHandoff: handoffPDF)
+                    PDFReaderView(source: $readerSource,
+                                  canHandoffForms: session.drafts[.fillFlattenForms]?.pdfForms.exportTask == nil,
+                                  onHandoff: handoffPDF)
                 case .tool(let selection):
                     ToolWorkspace(
                         tool: selection,
@@ -252,6 +254,11 @@ struct Workspace: View {
             if draft.pdfRedaction.input != input {
                 draft.pdfRedaction = PDFRedactionDraft()
                 draft.pdfRedaction.input = input
+            }
+        } else if tool == .fillFlattenForms {
+            guard draft.pdfForms.exportTask == nil else { return }
+            if draft.pdfForms.source != input || draft.pdfForms.session == nil {
+                draft.pdfForms.pendingSource = input
             }
         } else if tool.requiresSinglePDF {
             if draft.inputs.first != input { draft.replacePDF(with: input) }

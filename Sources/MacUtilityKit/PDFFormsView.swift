@@ -5,6 +5,7 @@ import UtilityCore
 
 struct PDFFormsDraft {
     var source: URL?
+    var pendingSource: URL?
     var python: URL?
     var mode = PDFFormMode.editable
     var session: PDFForms?
@@ -172,8 +173,14 @@ struct PDFFormsView: View {
             if let issue { Label(issue, systemImage: "exclamationmark.circle").font(.callout) }
         }
         .onAppear {
+            guard draft.pendingSource == nil else { return }
             if session != nil { refresh() }
             else if let source = draft.source { load(source) }
+        }
+        .task(id: draft.pendingSource) {
+            guard !Task.isCancelled, !exporting, let source = draft.pendingSource else { return }
+            draft.pendingSource = nil
+            load(source)
         }
     }
 
@@ -210,6 +217,7 @@ struct PDFFormsView: View {
     }
 
     private func load(_ source: URL) {
+        guard !exporting else { return }
         do {
             draft.session = try PDFForms(source: source)
             draft.source = source
