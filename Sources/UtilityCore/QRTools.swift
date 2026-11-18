@@ -119,6 +119,12 @@ public enum QRToolError: LocalizedError {
 }
 
 public enum QRTools {
+    package static func isWiFiPayload(_ payload: String) -> Bool {
+        // ZXing strips a leading byte order mark before parsing Wi-Fi payloads.
+        let text = payload.first == "\u{FEFF}" ? payload.dropFirst() : payload[...]
+        return text.prefix(5).uppercased() == "WIFI:"
+    }
+
     private static let context = CIContext()
 
     public static func generate(_ payload: QRPayload, options: QRCodeOptions = QRCodeOptions()) throws -> CGImage {

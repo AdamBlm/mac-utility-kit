@@ -206,10 +206,7 @@ struct WiFiPasswordView: View {
     }
 
     private func writePrivateClipboardItem(_ item: NSPasteboardItem) {
-        item.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
-        item.setData(Data(), forType: .init("org.nspasteboard.TransientType"))
-        NSPasteboard.general.clearContents()
-        message = NSPasteboard.general.writeObjects([item]) ? "Copied to clipboard." : "Could not copy to the clipboard."
+        message = ConcealedClipboard.write(item) ? "Copied to clipboard." : "Could not copy to the clipboard."
     }
 
     private func exportQR(_ image: CGImage) {

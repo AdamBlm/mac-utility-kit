@@ -91,6 +91,28 @@ struct ClipboardHistoryTests {
         #expect(board.string(forType: .string) == nil)
     }
 
+    @Test func concealedWiFiQRRemainsPasteableAndIsSkippedByHistory() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let history = ClipboardHistoryController(pasteboard: { board }, foregroundApp: { ("example.app", "Example") })
+        history.start()
+        defer { history.disable() }
+
+        let payload = "WIFI:T:WPA;S:Example;P:example-password;;"
+        #expect(QRTools.isWiFiPayload(payload))
+        #expect(QRTools.isWiFiPayload("\u{FEFF}" + payload))
+        #expect(!QRTools.isWiFiPayload("https://example.com"))
+        let item = NSPasteboardItem()
+        let png = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aVUkAAAAASUVORK5CYII="))
+        item.setString(payload, forType: .string)
+        item.setData(png, forType: .png)
+        #expect(ConcealedClipboard.write(item, to: board))
+        history.poll()
+        #expect(history.entries.isEmpty)
+        #expect(board.string(forType: .string) == payload)
+        #expect(board.data(forType: .png) == png)
+    }
+
     private func write(_ text: String, marker: String? = nil, on board: NSPasteboard) {
         let item = NSPasteboardItem()
         item.setString(text, forType: .string)

@@ -105,10 +105,7 @@ struct PasswordGeneratorView: View {
     private func copySecret(_ value: String) {
         let item = NSPasteboardItem()
         item.setString(value, forType: .string)
-        item.setData(Data(), forType: .init("org.nspasteboard.ConcealedType"))
-        item.setData(Data(), forType: .init("org.nspasteboard.TransientType"))
-        NSPasteboard.general.clearContents()
-        if !NSPasteboard.general.writeObjects([item]) {
+        if !ConcealedClipboard.write(item) {
             issue = "Could not copy the generated secret."
         }
     }

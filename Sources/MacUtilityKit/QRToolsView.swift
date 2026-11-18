@@ -172,7 +172,9 @@ struct QRToolsView: View {
                     .frame(width: 210, height: 210)
                     .accessibilityLabel("Generated QR code")
                 HStack {
-                    Button("Copy PNG", systemImage: "doc.on.doc") { copy(preview) }
+                    Button("Copy PNG", systemImage: "doc.on.doc") {
+                        copy(preview, concealed: (try? input.payload.encoded()).map(QRTools.isWiFiPayload) ?? false)
+                    }
                     Button("Export PNG…", systemImage: "square.and.arrow.down") { export(preview) }
                 }
             }
@@ -202,15 +204,21 @@ struct QRToolsView: View {
             }
             ForEach(detections) { detection in
                 Divider()
+                let concealed = QRTools.isWiFiPayload(detection.payload)
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(detection.type).font(.caption).foregroundStyle(.secondary)
-                        Text(detection.payload).textSelection(.enabled)
+                        if concealed {
+                            Text(detection.payload).textSelection(.disabled)
+                        } else {
+                            Text(detection.payload).textSelection(.enabled)
+                        }
                     }
                     Spacer()
                     Button("Copy", systemImage: "doc.on.doc") {
-                        NSPasteboard.general.clearContents()
-                        NSPasteboard.general.setString(detection.payload, forType: .string)
+                        let item = NSPasteboardItem()
+                        item.setString(detection.payload, forType: .string)
+                        writeClipboardItem(item, concealed: concealed)
                     }
                     if let text = try? QRPayload.url(detection.payload).encoded(), let url = URL(string: text) {
                         Button("Open URL", systemImage: "arrow.up.right.square") {
@@ -255,11 +263,19 @@ struct QRToolsView: View {
         }
     }
 
-    private func copy(_ preview: CGImage) {
+    @discardableResult
+    private func writeClipboardItem(_ item: NSPasteboardItem, concealed: Bool) -> Bool {
+        if concealed { return ConcealedClipboard.write(item) }
+        NSPasteboard.general.clearContents()
+        return NSPasteboard.general.writeObjects([item])
+    }
+
+    private func copy(_ preview: CGImage, concealed: Bool) {
         do {
             let data = try QRTools.png(preview)
-            NSPasteboard.general.clearContents()
-            if NSPasteboard.general.setData(data, forType: .png) {
+            let item = NSPasteboardItem()
+            item.setData(data, forType: .png)
+            if writeClipboardItem(item, concealed: concealed) {
                 exportingMessage = "PNG copied."
             } else {
                 exportingMessage = "Could not copy the PNG."
