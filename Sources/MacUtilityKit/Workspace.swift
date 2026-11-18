@@ -120,7 +120,7 @@ struct Workspace: View {
                         tool: selection,
                         draft: Binding(
                             get: { session.drafts[selection, default: ToolDraft()] },
-                            set: { session.drafts[selection] = $0 }
+                            set: { session.setDraft($0, for: selection) }
                         ),
                         session: session,
                         keepAwakeController: keepAwakeController,
@@ -163,6 +163,10 @@ struct Workspace: View {
             search = ""
             searching = false
         })
+        .onOpenURL { url in
+            guard url.isFileURL, url.pathExtension.lowercased() == "pdf" else { return }
+            openOutput(url)
+        }
         .onChange(of: session.previewURL) { _, url in
             if let url { openOutput(url) }
         }

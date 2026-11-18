@@ -35,6 +35,9 @@ struct ToolDraft {
     var ejectDisks = EjectDisksDraft()
     var findDuplicates = FindDuplicatesDraft()
     var storageExplorer = StorageExplorerDraft()
+    var downloads = OrganizeDownloadsDraft()
+    var uninstallApp = UninstallAppDraft()
+    var displayControl = DisplayControlDraft()
     var archiveTools = ArchiveToolsDraft()
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()
@@ -102,7 +105,33 @@ final class WorkspaceSession {
     private(set) var errors: [Tool: String] = [:]
     @ObservationIgnored private var job: Task<Void, Never>?
 
+    init() {
+        let retention = DraftRetention.shared
+        if let text = retention.retained(for: .wordCounter) {
+            drafts[.wordCounter, default: ToolDraft()].wordCounter.text = text
+        }
+        if let text = retention.retained(for: .caseConverter) {
+            drafts[.caseConverter, default: ToolDraft()].caseConverter.input = text
+        }
+    }
+
     var isRunning: Bool { runningTool != nil }
+
+    func setDraft(_ updated: ToolDraft, for tool: Tool) {
+        let previous = drafts.updateValue(updated, forKey: tool)
+        let changedText: String?
+        switch tool {
+        case .wordCounter:
+            changedText = previous?.wordCounter.text.utf8.elementsEqual(updated.wordCounter.text.utf8) == true
+                ? nil : updated.wordCounter.text
+        case .caseConverter:
+            changedText = previous?.caseConverter.input.utf8.elementsEqual(updated.caseConverter.input.utf8) == true
+                ? nil : updated.caseConverter.input
+        default:
+            changedText = nil
+        }
+        if let changedText { DraftRetention.shared.record(changedText, for: tool) }
+    }
 
     func cancel() { job?.cancel() }
 
@@ -164,8 +193,11 @@ final class WorkspaceSession {
         previewURL = nil
         reports[tool] = nil
         errors[tool] = nil
+        let center = ExportActivityCenter.shared
+        let export = preview ? nil : center.start(tool) { [weak self] in self?.cancel() }
         job = Task { @MainActor in
             defer {
+                if let export { center.finish(export) }
                 job = nil
                 runningTool = nil
             }
@@ -180,11 +212,13 @@ final class WorkspaceSession {
                     imageSize: draft.pixels, options: options
                 ) { fraction in
                     await self.updateProgress(fraction)
+                    if let export { await center.update(export, fraction: fraction) }
                 }
                 if preview, let output = report.outputs.first {
                     previewURL = output
                 } else {
                     reports[tool] = report
+                    if export != nil { center.postCompletion(tool, report: report) }
                 }
             } catch is CancellationError {
                 errors[tool] = "Canceled."

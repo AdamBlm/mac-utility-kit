@@ -40,6 +40,12 @@ struct LauncherSettingsView: View {
                 Text("Use the shortcut from any app while Mac Utility Kit is running.")
                     .foregroundStyle(.secondary)
             }
+            Section("Exports") {
+                ExportNotificationPreference()
+            }
+            Section("Drafts") {
+                DraftRetentionPreference()
+            }
             Section("Login") {
                 Toggle("Launch at login", isOn: Binding(
                     get: { controller.loginStatus == .enabled || controller.loginStatus == .requiresApproval },

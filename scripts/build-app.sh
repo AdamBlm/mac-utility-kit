@@ -37,15 +37,30 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleName</key><string>Mac Utility Kit</string>
     <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
+    <key>CFBundleDocumentTypes</key>
+    <array>
+        <dict>
+            <key>CFBundleTypeName</key><string>PDF Document</string>
+            <key>CFBundleTypeRole</key><string>Viewer</string>
+            <key>LSHandlerRank</key><string>Alternate</string>
+            <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
+        </dict>
+    </array>
     <key>CFBundleShortVersionString</key><string>0.0.1</string>
     <key>CFBundleVersion</key><string>2</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
+    <key>NSPhotoLibraryUsageDescription</key><string>Organize selected downloaded images into Photos albums.</string>
     <key>NSMicrophoneUsageDescription</key><string>Record audio with the microphone you select.</string>
 </dict>
 </plist>
 PLIST
-codesign --force --sign - "$app/Contents/MacOS/muk"
-codesign --force --sign - "$app"
+identity="${MUK_CODESIGN_IDENTITY:--}"
+signing=(--force --sign "$identity")
+if [[ "$identity" != "-" ]]; then
+    signing+=(--options runtime --timestamp)
+fi
+codesign "${signing[@]}" "$app/Contents/MacOS/muk"
+codesign "${signing[@]}" "$app"
 # Refresh the icon when a local build replaces an already registered app in place.
 touch "$app"
 launch_services="/System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister"

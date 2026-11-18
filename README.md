@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 97 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 102 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -153,6 +153,11 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Fill & Flatten Forms** edits PDF form fields, adds text or checkboxes, proposes printed field locations, and saves interactive or flattened copies. Select a Python environment with pypdf for export verification.
 - **Hidden Settings** shows and edits a fixed set of Finder and Dock preferences, with reset to the macOS default.
 - **Clean Keyboard** briefly pauses software keyboard input after a permission check, while keeping the pointer available to stop the session.
+- **Wi-Fi Password & QR** creates guest QR codes and can ask macOS to retrieve a password for a selected supported saved network.
+- **Organize Downloads** groups images by recorded web origin, copies or moves selected files, or imports them into Photos albums.
+- **Uninstall App** previews eligible applications and exact bundle-owned items before moving confirmed choices to Trash.
+- **Display Control** uses a user-installed m1ddc executable to read and adjust DDC settings on compatible Apple Silicon external displays.
+- **Mouse Fixes** uses a user-installed LinearMouse to apply reversible per-device scroll settings.
 - **Launcher settings** offer an optional menu bar item, Dock icon visibility, a configurable global shortcut, and launch at login.
 
 
@@ -167,3 +172,8 @@ To enable specific MCP operations in a local client, set its command to the app 
 ```
 
 The optional `clean-link` tool is also available. The server uses the client process’s standard input and output and operates on supplied text. It opens no network listener.
+
+
+### Local installer
+
+Run `./scripts/build-dmg.sh` after building the app to create a verified local preview disk image. The build uses an ad-hoc signature by default. Set `MUK_CODESIGN_IDENTITY` when building with an authorized Developer ID identity. Apple notarization and publication are separate release steps.

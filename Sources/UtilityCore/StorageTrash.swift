@@ -32,7 +32,7 @@ extension StorageExplorer {
         for item in selectedItems(ids, in: report) {
             do {
                 try Task.checkCancellation()
-                try await verify(item, in: report)
+                try await verifyTrashCandidate(item, in: report)
                 try Task.checkCancellation()
                 try move(item.url)
                 moved.append(item.url)
@@ -45,7 +45,7 @@ extension StorageExplorer {
         return StorageTrashResult(moved: moved, issues: issues)
     }
 
-    private static func verify(_ item: StorageScanItem, in report: StorageScanReport) async throws {
+    static func verifyTrashCandidate(_ item: StorageScanItem, in report: StorageScanReport) async throws {
         let changed = ToolError.invalid("This item changed after the scan. Scan again before moving it to Trash.")
         guard item.url.resolvingSymlinksInPath().standardizedFileURL.path == item.url.path,
               let expected = item.stamp else { throw changed }

@@ -1,6 +1,6 @@
 # Mac Utility Kit development plan
 
-Build an original, local-first SwiftUI app for Apple silicon on macOS 15 and later. The app currently has three foundation tools. This plan defines the scope for completing them and releasing the rest of the suite.
+Build an original, local-first SwiftUI app for Apple silicon on macOS 15 and later. This plan defines the foundation work, tool scope, and release requirements.
 
 ## Tool specifications
 

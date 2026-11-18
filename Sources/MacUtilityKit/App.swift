@@ -3,6 +3,7 @@ import UtilityCore
 
 @main
 struct MacUtilityKitApp: App {
+    @NSApplicationDelegateAdaptor(ExportTerminationDelegate.self) private var exportDelegate
     @State private var keepAwakeController = KeepAwakeController()
     @State private var launcherController = LauncherController()
     @State private var presentationModeController = PresentationModeController()
