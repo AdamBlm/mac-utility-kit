@@ -20,21 +20,62 @@ public enum TranscriptFormat: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum Transcription {
+    public enum ModelCapability: Equatable, Sendable {
+        case englishOnly, multilingual, unknown
+    }
+
+    public struct Result: Sendable {
+        public let cues: [SubtitleCue]
+        public let language: String?
+        public let forcedEnglish: Bool
+    }
+
+    public static func modelCapability(at model: URL) throws -> ModelCapability {
+        guard model.isFileURL,
+              try model.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+            throw ToolError.invalid("Choose a local Whisper model file.")
+        }
+        let file = try FileHandle(forReadingFrom: model)
+        defer { try? file.close() }
+        guard let header = try file.read(upToCount: 8), header.count == 8 else { return .unknown }
+        // whisper.cpp GGML magic and n_vocab are the first two little-endian words.
+        return header.withUnsafeBytes { bytes in
+            guard UInt32(littleEndian: bytes.loadUnaligned(as: UInt32.self)) == 0x67676d6c else { return .unknown }
+            let vocabularySize = Int32(littleEndian: bytes.loadUnaligned(fromByteOffset: 4, as: Int32.self))
+            switch vocabularySize {
+            case 51_864: return .englishOnly
+            case 51_865, 51_866: return .multilingual
+            default: return .unknown
+            }
+        }
+    }
+
     public static func run(
         _ input: URL, options: TranscriptionOptions, progress: @Sendable (Double) async -> Void
     ) async throws -> [SubtitleCue] {
+        try await runWithLanguage(input, options: options, progress: progress).cues
+    }
+
+    public static func runWithLanguage(
+        _ input: URL, options: TranscriptionOptions, progress: @Sendable (Double) async -> Void
+    ) async throws -> Result {
         guard let executable = options.executable, executable.isFileURL,
               FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw ToolError.invalid("Choose a local whisper-cli executable.")
         }
-        guard let model = options.model, model.isFileURL,
-              try model.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        guard let model = options.model else {
             throw ToolError.invalid("Choose a local Whisper model file.")
         }
         let language = options.language.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard language == "auto" || ((2...3).contains(language.utf8.count) && language.utf8.allSatisfy({ (97...122).contains($0) })) else {
             throw ToolError.invalid("Enter a Whisper language code or choose auto-detect.")
         }
+        let capability = try modelCapability(at: model)
+        guard capability != .englishOnly || language == "auto" || language == "en" else {
+            throw ToolError.invalid("This Whisper model supports only English. Choose English or use a multilingual model.")
+        }
+        let forcedEnglish = capability == .englishOnly && language == "auto"
+        let effectiveLanguage = forcedEnglish ? "en" : language
         let selection = try await TranscriptionAudio.selection(input, options: options)
         let manager = FileManager.default
         let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -45,14 +86,15 @@ public enum Transcription {
         try await TranscriptionAudio.normalize(selection, to: wav)
         await progress(0.25)
         try await ExternalTool.run(executable, name: "whisper-cli", arguments: [
-            "-m", model.path, "-f", wav.path, "-l", language, "-oj", "-of", output.path, "-np"
+            "-m", model.path, "-f", wav.path, "-l", effectiveLanguage, "-oj", "-of", output.path, "-np"
         ], directory: directory)
         try Task.checkCancellation()
         let data = try Data(contentsOf: output.appendingPathExtension("json"))
-        let cues = try parseWhisperJSON(data, sourceOffset: selection.range.start.seconds,
-                                       duration: selection.range.duration.seconds, language: language)
+        let result = try parseWhisperResult(data, sourceOffset: selection.range.start.seconds,
+                                            duration: selection.range.duration.seconds, language: effectiveLanguage,
+                                            forcedEnglish: forcedEnglish)
         await progress(1)
-        return cues
+        return result
     }
 
     public static func render(_ cues: [SubtitleCue], format: TranscriptFormat) -> String {
@@ -79,6 +121,12 @@ public enum Transcription {
     }
 
     static func parseWhisperJSON(_ data: Data, sourceOffset: Double, duration: Double, language: String) throws -> [SubtitleCue] {
+        try parseWhisperResult(data, sourceOffset: sourceOffset, duration: duration, language: language).cues
+    }
+
+    private static func parseWhisperResult(
+        _ data: Data, sourceOffset: Double, duration: Double, language: String, forcedEnglish: Bool = false
+    ) throws -> Result {
         let document: WhisperOutput
         do { document = try JSONDecoder().decode(WhisperOutput.self, from: data) }
         catch { throw ToolError.invalid("The selected whisper-cli did not produce valid timestamped JSON.") }
@@ -107,7 +155,8 @@ public enum Transcription {
                 cues.append(SubtitleCue(startMilliseconds: origin + from, endMilliseconds: origin + end, text: text))
             }
         }
-        return cues
+        return Result(cues: cues, language: document.result?.language ?? (forcedEnglish ? "en" : nil),
+                      forcedEnglish: forcedEnglish)
     }
 }
 

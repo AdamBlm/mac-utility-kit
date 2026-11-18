@@ -53,8 +53,10 @@ import Testing
         options.model = engine.1
         options.start = 0.2
         options.end = 0.65
-        let cues = try await Transcription.run(source, options: options) { _ in }
-        #expect(cues == [SubtitleCue(startMilliseconds: 300, endMilliseconds: 500, text: "Fixture speech")])
+        let transcript = try await Transcription.runWithLanguage(source, options: options) { _ in }
+        #expect(transcript.language == "en")
+        #expect(!transcript.forcedEnglish)
+        #expect(transcript.cues == [SubtitleCue(startMilliseconds: 300, endMilliseconds: 500, text: "Fixture speech")])
         let normalized = try AVAudioFile(forReading: folder.appendingPathComponent("observed.wav"))
         #expect(normalized.fileFormat.sampleRate == 16_000)
         #expect(normalized.fileFormat.channelCount == 1)
@@ -64,6 +66,46 @@ import Testing
         try normalized.read(into: samples)
         let wave = try #require(samples.floatChannelData?.pointee)
         #expect((0..<Int(samples.frameLength)).contains { abs(wave[$0]) > 0.05 })
+    }
+
+    @Test func distinguishesModelLanguageCapabilitiesFromHeader() async throws {
+        let folder = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let engine = try mockEngine(in: folder)
+        func writeVocabulary(_ count: UInt32) throws {
+            let header = [UInt32(0x67676d6c).littleEndian, count.littleEndian]
+            try header.withUnsafeBytes { try Data($0).write(to: engine.1) }
+        }
+        #expect(try Transcription.modelCapability(at: engine.1) == .unknown)
+        try writeVocabulary(50_000)
+        #expect(try Transcription.modelCapability(at: engine.1) == .unknown)
+        try writeVocabulary(51_865)
+        #expect(try Transcription.modelCapability(at: engine.1) == .multilingual)
+        try writeVocabulary(51_864)
+        #expect(try Transcription.modelCapability(at: engine.1) == .englishOnly)
+
+        let source = folder.appendingPathComponent("test.wav")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 8_000))
+        buffer.frameLength = 8_000
+        let samples = try #require(buffer.floatChannelData?.pointee)
+        for index in 0..<8_000 { samples[index] = 0 }
+        try writeWave(buffer, to: source)
+
+        var options = TranscriptionOptions()
+        options.executable = engine.0
+        options.model = engine.1
+        options.language = "fr"
+        await #expect(throws: ToolError.self) {
+            try await Transcription.runWithLanguage(source, options: options) { _ in }
+        }
+        let observed = folder.appendingPathComponent("observed.wav")
+        #expect(!FileManager.default.fileExists(atPath: observed.path))
+        options.language = "auto"
+        let result = try await Transcription.runWithLanguage(source, options: options) { _ in }
+        #expect(result.language == "en")
+        #expect(result.forcedEnglish)
+        #expect(try String(contentsOf: folder.appendingPathComponent("observed-language"), encoding: .utf8) == "en")
     }
 
     @Test func reportsVideoWithoutAudioBeforeRunningWhisper() async throws {
@@ -88,9 +130,13 @@ import Testing
         var options = TranscriptionOptions()
         options.executable = URL(fileURLWithPath: try #require(env["MAC_UTILITY_WHISPER_TEST"]))
         options.model = URL(fileURLWithPath: try #require(env["MAC_UTILITY_WHISPER_MODEL_TEST"]))
-        options.language = "en"
         let audio = URL(fileURLWithPath: try #require(env["MAC_UTILITY_WHISPER_AUDIO_TEST"]))
-        let cues = try await Transcription.run(audio, options: options) { _ in }
+        let result = try await Transcription.runWithLanguage(audio, options: options) { _ in }
+        let cues = result.cues
+        #expect(result.language == "en")
+        if let model = options.model, try Transcription.modelCapability(at: model) == .englishOnly {
+            #expect(result.forcedEnglish)
+        }
         #expect(!cues.isEmpty)
         #expect(Transcription.render(cues, format: .txt).lowercased().contains("country"))
         #expect(try SubRip.parse(Transcription.render(cues, format: .srt)) == cues)
@@ -116,11 +162,13 @@ import Testing
         while [ "$#" -gt 0 ]; do
             case "$1" in
                 -f) wave="$2"; shift ;;
+            -l) language="$2"; shift ;;
                 -of) out="$2"; shift ;;
             esac
             shift
         done
         /bin/cp "$wave" "$(dirname "$0")/observed.wav"
+        printf '%s' "$language" > "$(dirname "$0")/observed-language"
         cat > "$out.json" <<'JSON'
         {"result":{"language":"en"},"transcription":[{"offsets":{"from":100,"to":300},"text":" Fixture speech "}]}
         JSON

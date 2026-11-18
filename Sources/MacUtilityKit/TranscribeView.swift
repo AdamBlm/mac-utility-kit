@@ -8,6 +8,8 @@ struct TranscribeDraft {
     var options = TranscriptionOptions()
     var cues: [SubtitleCue] = []
     var resultInput: URL?
+    var resultLanguage: String?
+    var forcedEnglish = false
     var format = TranscriptFormat.txt
     var task: Task<Void, Never>?
     var progress = 0.0
@@ -19,6 +21,9 @@ struct TranscribeView: View {
     let onCaptionHandoff: (URL, String) -> Void
 
     @State private var inputSummary: InputSummary?
+    @State private var inspectedModel: URL?
+    @State private var modelCapability: Transcription.ModelCapability?
+    @State private var modelRevision = 0
     @State private var startText: String?
     @State private var endText: String?
 
@@ -28,6 +33,11 @@ struct TranscribeView: View {
         let hasVideo: Bool
     }
 
+    private struct ModelRequest: Equatable {
+        let url: URL?
+        let revision: Int
+    }
+
     private var timeFormat: FloatingPointFormatStyle<Double> {
         .number.grouping(.never).precision(.fractionLength(0...3))
     }
@@ -35,6 +45,14 @@ struct TranscribeView: View {
     private var activeSource: InputSummary? { inputSummary?.url == draft.input ? inputSummary : nil }
 
     private var invalidTimecode: Bool { draft.options.start < 0 || (draft.options.end ?? 0) < 0 }
+
+    private var englishOnly: Bool {
+        inspectedModel == draft.options.model && modelCapability == .englishOnly
+    }
+
+    private var unsupportedLanguage: Bool {
+        englishOnly && draft.options.language != "auto" && draft.options.language != "en"
+    }
 
     var body: some View {
         InteractiveToolLayout(tool: .transcribe) { palette in
@@ -61,7 +79,11 @@ struct TranscribeView: View {
                 SettingRow("Model") {
                     if let model = draft.options.model { Text(model.lastPathComponent).help(model.path) }
                     Button("Choose Model…") {
-                        if let url = DeveloperToolFiles.choose() { draft.options.model = url }
+                        if let url = DeveloperToolFiles.choose() {
+                            modelCapability = nil
+                            draft.options.model = url
+                            modelRevision += 1
+                        }
                     }
                 }
                 SettingRow("Language") {
@@ -72,12 +94,19 @@ struct TranscribeView: View {
                     }
                     .labelsHidden()
                 }
+                if unsupportedLanguage {
+                    Text("This model supports only English. Choose English or a multilingual model.")
+                        .font(.callout).foregroundStyle(.red)
+                } else if englishOnly && draft.options.language == "auto" {
+                    Text("This model supports only English. Auto-detect will use English.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
             .disabled(draft.task != nil)
             HStack {
                 Button("Transcribe", systemImage: "waveform", action: run)
                     .disabled(draft.task != nil || draft.input == nil || draft.options.executable == nil ||
-                              draft.options.model == nil || invalidTimecode)
+                              draft.options.model == nil || invalidTimecode || unsupportedLanguage)
                     .buttonStyle(.borderedProminent)
                 if draft.task != nil {
                     ProgressView(value: draft.progress).controlSize(.small)
@@ -87,6 +116,12 @@ struct TranscribeView: View {
             if let error = draft.error { Text(error).font(.callout).foregroundStyle(.red) }
             if let source = draft.resultInput, source == draft.input {
                 WorkspaceSection("Transcript", palette: palette) {
+                    if draft.forcedEnglish {
+                        LabeledContent("Transcript language", value: "English · required by the model used")
+                    } else if let language = draft.resultLanguage {
+                        let name = Locale.current.localizedString(forLanguageCode: language) ?? language
+                        LabeledContent("Transcript language", value: name)
+                    }
                     if draft.cues.isEmpty {
                         Text("No speech was detected in the selection.").foregroundStyle(.secondary)
                     } else {
@@ -97,6 +132,12 @@ struct TranscribeView: View {
             }
         }
         .task(id: draft.input) { await inspect(draft.input) }
+        .task(id: ModelRequest(url: draft.options.model, revision: modelRevision)) {
+            guard !Task.isCancelled else { return }
+            let model = draft.options.model
+            modelCapability = model.flatMap { try? Transcription.modelCapability(at: $0) }
+            inspectedModel = model
+        }
         .dropDestination(for: URL.self) { urls, _ in
             guard draft.task == nil, urls.count == 1, let url = urls.first, url.isFileURL else { return false }
             replaceInput(url)
@@ -196,6 +237,8 @@ struct TranscribeView: View {
     private func replaceInput(_ input: URL) {
         draft.input = input
         draft.resultInput = nil
+        draft.resultLanguage = nil
+        draft.forcedEnglish = false
         draft.cues = []
         draft.options.start = 0
         draft.options.end = nil
@@ -230,7 +273,7 @@ struct TranscribeView: View {
                 draft.task = nil
             }
             do {
-                let cues = try await Transcription.run(input, options: options) { fraction in
+                let result = try await Transcription.runWithLanguage(input, options: options) { fraction in
                     await MainActor.run {
                         guard draft.input == input else { return }
                         draft.progress = fraction
@@ -238,7 +281,9 @@ struct TranscribeView: View {
                     }
                 }
                 guard !Task.isCancelled, draft.input == input else { return }
-                draft.cues = cues
+                draft.cues = result.cues
+                draft.resultLanguage = result.language
+                draft.forcedEnglish = result.forcedEnglish
                 draft.resultInput = input
             } catch is CancellationError {
                 return
