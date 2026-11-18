@@ -19,6 +19,7 @@ struct ToolWorkspace: View {
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
+    @State private var compressionReview: CompressionReview?
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
@@ -135,6 +136,9 @@ struct ToolWorkspace: View {
             tool.officePDFKind.map { kind in
                 draft.inputs.allSatisfy { OfficePDF.optionIssue($0, kind: kind, options: draft.options.officePDF) != nil }
             } ?? true
+        case .compressVideo:
+            compressionReview?.request != .init(inputs: draft.inputs, options: draft.options)
+                || compressionReview?.supportsAnyInput != true
         case .watermark:
             draft.options.watermark.content == .logo
                 ? draft.options.watermark.logo == nil
@@ -195,7 +199,11 @@ struct ToolWorkspace: View {
                         case .removeMetadata:
                             metadataControls()
                         case .compressVideo:
-                            videoControls()
+                            VideoCompressionControls(inputs: draft.inputs, options: $draft.options,
+                                                     advancedExpanded: $draft.showsAdvanced, review: $compressionReview,
+                                                     running: session.isRunning, sample: session.sample) {
+                                session.startSample(draft)
+                            }
                         case .convertVideo:
                             conversionControls()
                         case .changeSpeed:

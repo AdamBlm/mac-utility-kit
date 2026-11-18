@@ -144,7 +144,7 @@ private func imageFixture(in folder: URL) throws -> URL {
 
 private func writeVideoFixture(
     to url: URL, width: Int = 640, height: Int = 480, frames: Int = 30,
-    transform: CGAffineTransform = .identity
+    transform: CGAffineTransform = .identity, patterned: Bool = false
 ) async throws {
     let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -167,6 +167,17 @@ private func writeVideoFixture(
     CVPixelBufferLockBaseAddress(frame, [])
     if let bytes = CVPixelBufferGetBaseAddress(frame) {
         memset(bytes, 80, CVPixelBufferGetBytesPerRow(frame) * CVPixelBufferGetHeight(frame))
+        if patterned {
+            var seed: UInt32 = 0xabcdef01
+            let stride = CVPixelBufferGetBytesPerRow(frame)
+            for row in 0..<height {
+                for column in 0..<width {
+                    seed = seed &* 1_664_525 &+ 1_013_904_223
+                    let color = 0xff00_0000 | (seed >> 8)
+                    bytes.storeBytes(of: color, toByteOffset: row * stride + column * 4, as: UInt32.self)
+                }
+            }
+        }
     }
     CVPixelBufferUnlockBaseAddress(frame, [])
 
@@ -688,4 +699,195 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(report.failures.count == 1)
     #expect(report.textExtractions.first?.source == image)
     #expect(report.textExtractions.first?.result.pages.count == 1)
+}
+
+@Test func advancedNativeCompressionAppliesCapAndKeepsPortraitOrientation() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("rotated.mov")
+    let rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 360, ty: 0)
+    try await writeVideoFixture(to: source, width: 640, height: 360, frames: 16, transform: rotation)
+    var options = ToolOptions()
+    options.videoCompression.rateControl = .averageBitrate
+    options.videoCompression.videoKbps = 750
+    options.videoCompression.maximumEdge = 320
+    options.videoCompression.audioKbps = 128
+    let preview = try await VideoCompression.preview(source, options: options, capabilities: .macOS)
+    #expect(preview.width == 180 && preview.height == 320)
+    let report = try await ToolRunner.run(.compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.failures.isEmpty, "\(report.failures)")
+    let url = try #require(report.outputs.first)
+    let tracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .video)
+    let track = try #require(tracks.first)
+    #expect(try await track.load(.naturalSize) == CGSize(width: 320, height: 180))
+    #expect(try await track.load(.preferredTransform) == CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 180, ty: 0))
+    #expect(FileManager.default.fileExists(atPath: source.path))
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+func advancedFFmpegCompressionSupportsWebMAndSourceOrientedScaling() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("rotated.mov")
+    let rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 360, ty: 0)
+    try await writeVideoFixture(to: source, width: 640, height: 360, frames: 16, transform: rotation)
+
+    var options = ToolOptions()
+    options.ffmpegExecutable = URL(fileURLWithPath: executable)
+    options.videoFormat = .webm
+    options.videoCompression.rateControl = .constantQuality
+    options.videoCompression.quality = 31
+    options.videoCompression.maximumEdge = 320
+    options.keepLargerVideos = true
+    let caps = try await VideoCompressionCapabilities.ffmpeg(URL(fileURLWithPath: executable))
+    if !caps.supports(.webm, codec: .vp9) { return }
+    #expect(!caps.supports(.webm, codec: .h264))
+    let preview = try await VideoCompression.preview(source, options: options, capabilities: caps)
+    #expect(preview.width == 180 && preview.height == 320 && preview.codec == .vp9)
+    let report = try await ToolRunner.run(.compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.failures.isEmpty, "\(report.failures)")
+    #expect(report.outputs.first?.pathExtension == "webm")
+    let sample = try await ToolRunner.sampleVideo(source, destination: folder, options: options)
+    #expect(sample.url.pathExtension == "webm")
+    #expect(sample.estimatedBytes != nil)
+}
+
+@Test func advancedCompressionRejectsUnsupportedModesAndInvalidRanges() async {
+    let source = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".mov")
+    var options = ToolOptions()
+    options.videoFormat = .webm
+    await #expect(throws: ToolError.self) {
+        try await VideoCompression.preview(source, options: options, capabilities: .macOS)
+    }
+    options.videoFormat = .mp4
+    options.videoCompression.rateControl = .constantQuality
+    await #expect(throws: ToolError.self) {
+        try await VideoCompression.preview(source, options: options, capabilities: .macOS)
+    }
+    options.videoCompression.rateControl = .averageBitrate
+    options.videoCompression.videoKbps = 3
+    await #expect(throws: ToolError.self) {
+        try await VideoCompression.preview(source, options: options, capabilities: .macOS)
+    }
+    options.videoCompression.videoKbps = 1_000
+    options.videoCompression.maximumEdge = 1
+    await #expect(throws: ToolError.self) {
+        try await VideoCompression.preview(source, options: options, capabilities: .macOS)
+    }
+    options.videoCompression.maximumEdge = nil
+    options.videoCompression.audioKbps = 999
+    await #expect(throws: ToolError.self) {
+        try await VideoCompression.preview(source, options: options, capabilities: .macOS)
+    }
+}
+
+@Test func advancedAudioBitrateChangesTheReencodedTrack() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let video = folder.appendingPathComponent("video.mov")
+    let tone = folder.appendingPathComponent("tone.wav")
+    try await writeVideoFixture(to: video, width: 320, height: 180, frames: 36)
+    try writeToneFixture(to: tone)
+    var mux = ToolOptions()
+    mux.replaceAudio.source = tone
+    let sourceReport = try await ToolRunner.run(.replaceAudio, inputs: [video], destination: folder, imageSize: 0, options: mux) { _ in }
+    let source = try #require(sourceReport.outputs.first)
+    var actualRates: [Float] = []
+    for target in [64, 256] {
+        var options = ToolOptions()
+        options.videoCompression.audioKbps = target
+        options.keepLargerVideos = true
+        let report = try await ToolRunner.run(.compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options) { _ in }
+        #expect(report.failures.isEmpty, "\(report.failures)")
+        let url = try #require(report.outputs.first)
+        let tracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .audio)
+        let audio = try #require(tracks.first)
+        actualRates.append(try await audio.load(.estimatedDataRate))
+    }
+    #expect(actualRates[0] > 0)
+    #expect(actualRates[1] > actualRates[0])
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+func advancedConstantQualityChangesTheEncodedSize() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("pattern.mov")
+    try await writeVideoFixture(to: source, width: 640, height: 360, frames: 16, patterned: true)
+    var outputSizes: [Int] = []
+    for quality in [14, 40] {
+        var options = ToolOptions()
+        options.ffmpegExecutable = URL(fileURLWithPath: executable)
+        options.videoCompression.rateControl = .constantQuality
+        options.videoCompression.quality = quality
+        options.keepLargerVideos = true
+        let report = try await ToolRunner.run(.compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options) { _ in }
+        #expect(report.failures.isEmpty, "\(report.failures)")
+        let output = try #require(report.outputs.first)
+        outputSizes.append(try #require(output.resourceValues(forKeys: [.fileSizeKey]).fileSize))
+    }
+    #expect(outputSizes[0] > outputSizes[1])
+}
+
+@Test func compressionFormatsExposeHEVCWhenH264IsAbsent() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let executable = folder.appendingPathComponent("ffmpeg-mock")
+    let script = """
+    #!/bin/sh
+    case "$3" in
+      -encoders) printf ' V....D libx265 HEVC\\n A....D aac AAC\\n';;
+      -muxers) printf ' E mp4 MP4\\n E mov MOV\\n';;
+      *) exit 1;;
+    esac
+    """
+    try Data(script.utf8).write(to: executable)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+    let capabilities = try await VideoCompressionCapabilities.ffmpeg(executable)
+    #expect(capabilities.formats == [.mp4, .mov, .m4v])
+    #expect(capabilities.supports(.mp4, codec: .hevc))
+    #expect(!capabilities.supports(.mp4, codec: .automatic))
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+func webMCompressionNormalizesAnamorphicPixelsAndSideSurround() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("anamorphic.mp4")
+    let process = Process()
+    process.executableURL = URL(fileURLWithPath: executable)
+    process.arguments = ["-nostdin", "-hide_banner", "-loglevel", "error",
+                          "-f", "lavfi", "-i", "testsrc2=size=720x480:rate=24",
+                          "-f", "lavfi", "-i", "anullsrc=cl=5.1(side):r=48000",
+                          "-t", "0.5", "-vf", "setsar=8/9", "-c:v", "libx264", "-c:a", "aac", source.path]
+    try process.run()
+    process.waitUntilExit()
+    try #require(process.terminationStatus == 0)
+
+    var options = ToolOptions()
+    options.ffmpegExecutable = URL(fileURLWithPath: executable)
+    options.videoFormat = .webm
+    options.keepLargerVideos = true
+    let capabilities = try await VideoCompressionCapabilities.ffmpeg(URL(fileURLWithPath: executable))
+    if !capabilities.supports(.webm, codec: .vp9) { return }
+    let review = try await VideoCompression.preview(source, options: options, capabilities: capabilities)
+    #expect(review.width == 640 && review.height == 480)
+    let report = try await ToolRunner.run(.compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.failures.isEmpty, "\(report.failures)")
+    let output = try #require(report.outputs.first)
+
+    let inspect = Process()
+    let log = Pipe()
+    inspect.executableURL = URL(fileURLWithPath: executable)
+    inspect.arguments = ["-nostdin", "-hide_banner", "-i", output.path,
+                         "-map", "0:a:0", "-t", "0.1", "-f", "null", "-"]
+    inspect.standardError = log
+    try inspect.run()
+    let info = String(decoding: log.fileHandleForReading.readDataToEndOfFile(), as: UTF8.self)
+    inspect.waitUntilExit()
+    #expect(inspect.terminationStatus == 0)
+    #expect(info.contains("Audio: opus, 48000 Hz, 5.1"))
 }

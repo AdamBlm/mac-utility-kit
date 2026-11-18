@@ -14,7 +14,7 @@ On an Apple silicon Mac with macOS 15 or later and Xcode installed, run `./scrip
 
 ### Video compression engines
 
-The macOS encoder is available on a fresh install and uses bitrate-based quality presets. To use FFmpeg's constant-quality mode, select an installed executable with **Choose FFmpeg…** in Compress Video. The selected FFmpeg build needs libx264 for Automatic or libx265 for HEVC. The app uses codec-specific CRF targets and preserves source resolution and orientation. The sample and full export use the same encoder settings.
+Compress Video defaults to the native macOS encoder for H.264 and HEVC in MP4, MOV, and M4V. Balanced keeps the source resolution. Advanced settings let you set a target video bitrate, cap the longest edge, or set a bitrate per audio track. Select an installed FFmpeg executable to use constant-quality (CRF) encoding or export VP9/Opus WebM when the required encoders are available. Preview a five-second sample with the same settings used for export. WebM uses square pixels and preserves the displayed proportions of anamorphic sources. FFmpeg preserves supported HDR transfer functions and bit depth, while HDR10 mastering-display and content-light metadata can be lost.
 
 The quality and sizing controls are based on [HandBrake's constant-quality model](https://handbrake.fr/docs/en/latest/technical/video-cq-vs-abr.html), [its separate resolution settings](https://handbrake.fr/docs/en/latest/advanced/resizing-video.html), and [FFmpeg's encoder options](https://ffmpeg.org/ffmpeg-codecs.html). FFmpeg is user-supplied. Set `MAC_UTILITY_FFMPEG_TEST` to its executable path when running `swift test` to enable the integration fixture.
 

@@ -76,50 +76,6 @@ extension ToolWorkspace {
         }
     }
 
-    @ViewBuilder
-    func videoControls() -> some View {
-        SettingRow("Output format") {
-            Picker("Output format", selection: option(\.videoFormat)) {
-                ForEach(VideoFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-        }
-        SettingRow("Codec") {
-            Picker("Codec", selection: option(\.videoCodec)) {
-                ForEach(VideoCodec.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-        }
-        SettingRow("Quality") {
-            Picker("Compression quality", selection: option(\.videoQuality)) {
-                ForEach(VideoQuality.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-        }
-        advanced() {
-            Toggle("Keep exports that are not smaller", isOn: option(\.keepLargerVideos))
-            engineControls(path: \.ffmpegExecutable, name: "FFmpeg", current: draft.options.ffmpegExecutable)
-            if draft.options.ffmpegExecutable != nil {
-                Text("Constant quality requires FFmpeg with libx264 or libx265.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
-        }
-        HStack {
-            Button("Create 5-second sample", systemImage: "play.rectangle") { session.startSample(draft) }
-                .disabled(draft.inputs.isEmpty || session.isRunning)
-            if let sample = session.sample {
-                Button("Open sample") { NSWorkspace.shared.open(sample.url) }
-                if let bytes = sample.estimatedBytes {
-                    Text("Estimated size: " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-            }
-        }
-    }
-
     private func advanced<Content: View>(@ViewBuilder content: @escaping () -> Content) -> some View {
         DisclosureGroup("Advanced", isExpanded: $draft.showsAdvanced) {
             VStack(alignment: .leading, spacing: 10, content: content)

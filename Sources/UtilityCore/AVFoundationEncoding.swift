@@ -11,33 +11,36 @@ enum AVFoundationEncoding {
         _ asset: AVURLAsset, to output: URL, options: ToolOptions, sample: Bool,
         progress: @Sendable (Double) async -> Void
     ) async throws {
-        guard let video = try await asset.loadTracks(withMediaType: .video).first else {
-            throw ToolError.invalid("The file has no video track.")
+        let source = try await VideoCompression.source(asset, options: options)
+        guard let fileType = options.videoFormat.fileType else {
+            throw ToolError.invalid("This container requires FFmpeg.")
         }
-        let size = try await video.load(.naturalSize)
-        let transform = try await video.load(.preferredTransform)
+        let video = source.track
+        let size = source.size
         let duration = try await asset.load(.duration)
         guard size.width > 0, size.height > 0, duration.seconds.isFinite, duration.seconds > 0 else {
             throw ToolError.invalid("Could not read the video dimensions or duration.")
         }
 
         let reader = try AVAssetReader(asset: asset)
-        let writer = try AVAssetWriter(outputURL: output, fileType: options.videoFormat.fileType)
-        let frameRate = Double(try await video.load(.nominalFrameRate))
+        let writer = try AVAssetWriter(outputURL: output, fileType: fileType)
+        let advanced = options.videoCompression
+        let nominalRate = Double(try await video.load(.nominalFrameRate))
+        let frameRate = nominalRate.isFinite ? min(240, max(24, nominalRate)) : 24
         let sourceRate = Double(try await video.load(.estimatedDataRate))
         let quality = options.videoQuality
         let ratio: Double = quality == .smaller ? 0.45 : quality == .balanced ? 0.75 : 0.92
         let bitsPerPixel: Double = quality == .smaller ? 0.065 : quality == .balanced ? 0.13 : 0.22
-        let qualityRate = size.width * size.height * max(24, frameRate) * bitsPerPixel
-        let target = sourceRate > 0 ? min(qualityRate, sourceRate * ratio) : qualityRate
-        let formats = try await video.load(.formatDescriptions)
-        let format = formats.first
+        let qualityRate = size.width * size.height * frameRate * bitsPerPixel
+        let sourceScale = size.width * size.height / (source.naturalSize.width * source.naturalSize.height)
+        let target = advanced.rateControl == .averageBitrate ? Double(advanced.videoKbps * 1_000)
+            : sourceRate > 0 ? min(qualityRate, sourceRate * ratio * sourceScale) : qualityRate
+        let format = source.description
         let transfer = format.flatMap {
             CMFormatDescriptionGetExtension($0, extensionKey: kCMFormatDescriptionExtension_TransferFunction) as? String
         }
-        let hdr = transfer == (kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ as String)
-            || transfer == (kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG as String)
-        let hevc = options.videoCodec == .hevc || hdr
+        let hdr = source.hdr
+        let hevc = source.codec == .hevc
         var compression: [String: Any] = [AVVideoAverageBitRateKey: Int(max(64_000, target))]
         if hdr { compression[AVVideoProfileLevelKey] = kVTProfileLevel_HEVC_Main10_AutoLevel }
         var settings: [String: Any] = [
@@ -62,7 +65,17 @@ enum AVFoundationEncoding {
             video, read: [kCVPixelBufferPixelFormatTypeKey as String: pixelFormat], write: settings,
             to: reader, writer: writer
         )
+        var transform = source.transform
+        if source.size != source.naturalSize {
+            let translatedWidth = abs(transform.a) * source.naturalSize.width + abs(transform.c) * source.naturalSize.height
+            let translatedHeight = abs(transform.b) * source.naturalSize.width + abs(transform.d) * source.naturalSize.height
+            let outputWidth = abs(transform.a) * size.width + abs(transform.c) * size.height
+            let outputHeight = abs(transform.b) * size.width + abs(transform.d) * size.height
+            if translatedWidth > 0 { transform.tx *= outputWidth / translatedWidth }
+            if translatedHeight > 0 { transform.ty *= outputHeight / translatedHeight }
+        }
         videoStream.writer.transform = transform
+        let scaler = source.size == source.naturalSize ? nil : try NativeVideoScaler(size: size, pixelFormat: pixelFormat)
         var streams = [videoStream]
         for audio in try await asset.loadTracks(withMediaType: .audio) {
             let format = try await audio.load(.formatDescriptions).first
@@ -72,7 +85,8 @@ enum AVFoundationEncoding {
             streams.append(try add(
                 audio, read: [AVFormatIDKey: kAudioFormatLinearPCM],
                 write: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: sampleRate,
-                        AVNumberOfChannelsKey: channels, AVEncoderBitRateKey: min(320_000, 96_000 * channels)],
+                        AVNumberOfChannelsKey: channels,
+                        AVEncoderBitRateKey: advanced.audioKbps.map { $0 * 1_000 } ?? min(320_000, 96_000 * channels)],
                 to: reader, writer: writer
             ))
         }
@@ -100,7 +114,10 @@ enum AVFoundationEncoding {
                 madeProgress = true
                 let stream = streams[index]
                 if let buffer = try await readers[index].next() {
-                    guard stream.writer.append(buffer) else {
+                    let sample: CMSampleBuffer
+                    if index == 0, let scaler { sample = try scaler.resize(buffer) }
+                    else { sample = buffer }
+                    guard stream.writer.append(sample) else {
                         throw writer.error ?? ToolError.invalid("Could not encode a media sample.")
                     }
                     if index == 0 {
@@ -127,7 +144,7 @@ enum AVFoundationEncoding {
         let result = AVURLAsset(url: output)
         guard let resultTrack = try await result.loadTracks(withMediaType: .video).first,
               try await resultTrack.load(.naturalSize) == size else {
-            throw ToolError.invalid("The encoder could not preserve the source resolution.")
+            throw ToolError.invalid("The encoder did not produce the selected resolution.")
         }
         await progress(1)
     }

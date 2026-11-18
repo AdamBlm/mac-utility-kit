@@ -3,13 +3,14 @@ import Foundation
 import UniformTypeIdentifiers
 
 public enum VideoFormat: String, CaseIterable, Sendable {
-    case mp4, mov, m4v
+    case mp4, mov, m4v, webm
 
-    var fileType: AVFileType {
+    var fileType: AVFileType? {
         switch self {
         case .mp4: .mp4
         case .mov: .mov
         case .m4v: .m4v
+        case .webm: nil
         }
     }
 }
@@ -22,7 +23,9 @@ public enum VideoQuality: String, CaseIterable, Sendable {
 
 public enum VideoCodec: String, CaseIterable, Sendable {
     case automatic = "Automatic"
+    case h264 = "H.264"
     case hevc = "HEVC"
+    case vp9 = "VP9"
 }
 
 public enum ImageSizing: String, CaseIterable, Sendable {
@@ -74,6 +77,7 @@ public struct ToolOptions: Sendable {
     public var videoFormat: VideoFormat = .mp4
     public var videoCodec: VideoCodec = .automatic
     public var videoQuality: VideoQuality = .balanced
+    public var videoCompression = VideoCompressionOptions()
     public var keepLargerVideos = false
     public var conversion = VideoConversionOptions()
     public var speed = ChangeSpeedOptions()
