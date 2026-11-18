@@ -10,6 +10,7 @@ struct ToolDraft {
     var ranges: [Int: String] = [:]
     var passwords: [Int: String] = [:]
     var outputName = "Merged"
+    var wordCounter = WordCounterDraft()
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory
@@ -22,6 +23,7 @@ struct ToolDraft {
         options.pdfOrganize = PDFOrganizeOptions()
         options.pdfDelete = PDFDeleteOptions()
         options.pdfExtract = PDFExtractOptions()
+        options.pdfSignature = PDFSignatureOptions()
         options.pdfToImages.password = ""
         options.pdfToImages.range = ""
     }

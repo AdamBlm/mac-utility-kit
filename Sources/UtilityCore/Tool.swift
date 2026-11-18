@@ -5,6 +5,7 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
     case documents = "Documents"
     case video = "Video"
     case audio = "Audio"
+    case text = "Text"
 
     public var id: Self { self }
     public var title: String { rawValue }
@@ -16,9 +17,11 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
+    case signPDF, extractText, wordCounter
+
     public var requiresSinglePDF: Bool {
         switch self {
-        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages: true
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: true
         default: false
         }
     }
@@ -37,6 +40,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .extractPDFPages: "Extract Pages"
         case .imagesToPDF: "Images to PDF"
         case .pdfToImages: "PDF to Images"
+        case .signPDF: "Sign PDF"
+        case .extractText: "Extract Text"
+        case .wordCounter: "Word Counter"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
@@ -49,7 +55,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     public var group: ToolCategory {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata: .images
-        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages: .documents
+        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
+        case .extractText, .wordCounter: .text
         case .compressVideo, .convertVideo, .mediaInfo: .video
         case .extractAudio: .audio
         }
@@ -58,8 +65,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     public var inputTypes: [UTType] {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .imagesToPDF: [.image]
-        case .mergePDFs: [.pdf, .image]
-        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages: [.pdf]
+        case .mergePDFs, .extractText: [.pdf, .image]
+        case .wordCounter: [.plainText]
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio: [.movie]
         case .mediaInfo: [.movie, .audio]
         }

@@ -422,3 +422,34 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(try Data(contentsOf: source) == sourceBytes)
     #expect(try Data(contentsOf: image) == imageBytes)
 }
+
+@Test func signingAndOCRPublishThroughTheSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("Original.pdf")
+    try writePDF(widths: [200, 300], to: source)
+    let sourceBytes = try Data(contentsOf: source)
+
+    var options = ToolOptions()
+    options.pdfSignature.text = "Taylor"
+    options.pdfSignature.pageRange = "2"
+    let signed = try await ToolRunner.run(
+        .signPDF, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let signedURL = try #require(signed.outputs.first)
+    let document = try #require(PDFDocument(url: signedURL))
+    #expect(document.page(at: 0)?.annotations.isEmpty == true)
+    #expect(document.page(at: 1)?.annotations.contains(where: { $0.contents == "Visual signature" }) == true)
+    #expect(try Data(contentsOf: source) == sourceBytes)
+
+    let image = try imageFixture(in: folder)
+    let corrupted = folder.appendingPathComponent("broken.png")
+    try Data("Not an image".utf8).write(to: corrupted)
+    let report = try await ToolRunner.run(
+        .extractText, inputs: [image, corrupted], destination: folder, imageSize: 0
+    ) { _ in }
+    #expect(report.outputs.map(\.pathExtension) == ["txt"])
+    #expect(report.failures.count == 1)
+    #expect(report.textExtractions.first?.source == image)
+    #expect(report.textExtractions.first?.result.pages.count == 1)
+}

@@ -4,9 +4,15 @@ public struct JobReport: Sendable {
     public let outputs: [URL]
     public let failures: [String]
     public let summaries: [String]
+    public let textExtractions: [ExtractedTextFile]
     public let inspections: [MediaInspectionResult]
     public let imageComparisons: [ImageComparisonResult]
     public let metadataResults: [ImageMetadataResult]
+}
+
+public struct ExtractedTextFile: Sendable {
+    public let source: URL
+    public let result: TextExtractionResult
 }
 
 public struct MediaInspectionResult: Sendable {
@@ -44,6 +50,7 @@ public enum ToolRunner {
         _ tool: Tool, inputs: [URL], destination: URL, imageSize: Int, options: ToolOptions = ToolOptions(),
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> JobReport {
+        guard tool != .wordCounter else { throw ToolError.invalid("Use the live text editor to count words.") }
         guard !inputs.isEmpty else { throw ToolError.invalid("Choose at least one file.") }
         if tool.requiresSinglePDF, inputs.count != 1 {
             throw ToolError.invalid("Choose one PDF for this operation.")
@@ -61,6 +68,7 @@ public enum ToolRunner {
         var outputs: [URL] = []
         var failures: [String] = []
         var summaries: [String] = []
+        var textExtractions: [ExtractedTextFile] = []
         var inspections: [MediaInspectionResult] = []
         var comparisons: [ImageComparisonResult] = []
         var metadataResults: [ImageMetadataResult] = []
@@ -95,7 +103,8 @@ public enum ToolRunner {
                     case .convertImages: options.imageConversion.format.rawValue
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
-                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF: "pdf"
+                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
+                    case .extractText, .wordCounter: "txt"
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
                     let output = staging.appendingPathComponent(
@@ -138,7 +147,24 @@ public enum ToolRunner {
                         try await PDFPageEditing.delete(input, to: output, options: options.pdfDelete, progress: progress)
                     case .extractPDFPages:
                         try await PDFPageEditing.extract(input, to: output, options: options.pdfExtract, progress: progress)
-                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages: break
+                    case .signPDF:
+                        try await PDFSigning.sign(input, to: output, options: options.pdfSignature, progress: progress)
+                    case .extractText:
+                        let extracted = try await TextExtraction.extract(input, options: options.textExtraction) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        let pageFailures = extracted.pages.compactMap { page -> String? in
+                            guard let error = page.error else { return nil }
+                            let label = page.pageNumber.map { "Page \($0): " } ?? ""
+                            return label + error
+                        }
+                        guard pageFailures.count < extracted.pages.count else {
+                            throw ToolError.invalid(pageFailures.joined(separator: " · "))
+                        }
+                        try Data(extracted.text.utf8).write(to: output)
+                        textExtractions.append(ExtractedTextFile(source: input, result: extracted))
+                        failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
+                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .wordCounter: break
                     }
                     outputs.append(output)
                 } catch {
@@ -151,11 +177,11 @@ public enum ToolRunner {
         }
 
         try Task.checkCancellation()
-        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], inspections: [], imageComparisons: [], metadataResults: []) }
+        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], textExtractions: [], inspections: [], imageComparisons: [], metadataResults: []) }
         try manager.moveItem(at: staging, to: result)
         return JobReport(
             outputs: outputs.map { result.appendingPathComponent($0.lastPathComponent) },
-            failures: failures, summaries: summaries, inspections: inspections,
+            failures: failures, summaries: summaries, textExtractions: textExtractions, inspections: inspections,
             imageComparisons: comparisons, metadataResults: metadataResults
         )
     }

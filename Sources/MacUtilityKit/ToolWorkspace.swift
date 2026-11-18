@@ -15,7 +15,9 @@ struct ToolWorkspace: View {
 
     var body: some View {
         Group {
-            if draft.inputs.isEmpty, session.reports[tool] == nil,
+            if tool == .wordCounter {
+                WordCounterView(draft: $draft.wordCounter)
+            } else if draft.inputs.isEmpty, session.reports[tool] == nil,
                session.errors[tool] == nil, session.runningTool != tool {
                 emptyWorkspace(for: tool)
             } else {
@@ -89,6 +91,14 @@ struct ToolWorkspace: View {
                                 canEdit: !session.isRunning
                             )
                             .id(draft.pdfSourceRevision)
+                        case .signPDF:
+                            PDFSigningSettings(input: draft.inputs.first, options: $draft.options.pdfSignature,
+                                               ready: $pdfEditorReady, canEdit: !session.isRunning)
+                                .id(draft.pdfSourceRevision)
+                        case .extractText:
+                            TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
+                        case .wordCounter:
+                            EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {
                                 TextField("Output filename", text: Binding(
@@ -114,6 +124,9 @@ struct ToolWorkspace: View {
                                 ForEach(Array(report.summaries.enumerated()), id: \.offset) { _, summary in
                                     Text(summary).font(.callout).textSelection(.enabled)
                                 }
+                            }
+                            ForEach(Array(report.textExtractions.enumerated()), id: \.offset) { _, extraction in
+                                TextExtractionResultView(file: extraction, password: draft.options.textExtraction.password)
                             }
                             ForEach(Array(report.metadataResults.enumerated()), id: \.offset) { _, item in
                                 MetadataRemovalResultView(item: item)

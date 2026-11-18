@@ -51,6 +51,8 @@ public enum ImageFormat: String, CaseIterable, Sendable {
 }
 
 public struct ToolOptions: Sendable {
+    public var pdfSignature = PDFSignatureOptions()
+    public var textExtraction = TextExtractionOptions()
     public var pdfExtract = PDFExtractOptions()
     public var imagesToPDF = ImagesToPDFOptions()
     public var pdfToImages = PDFToImagesOptions()
