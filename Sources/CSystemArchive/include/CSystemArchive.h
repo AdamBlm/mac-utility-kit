@@ -38,6 +38,7 @@ struct archive;
 struct archive_entry;
 #define ARCHIVE_EOF 1
 #define ARCHIVE_OK 0
+#define ARCHIVE_FATAL (-30)
 
 struct archive *archive_read_new(void);
 int archive_read_support_filter_bzip2(struct archive *);
@@ -49,12 +50,24 @@ int archive_read_support_format_rar5(struct archive *);
 int archive_read_support_format_tar(struct archive *);
 int archive_read_support_format_zip(struct archive *);
 int archive_read_add_passphrase(struct archive *, const char *);
-int archive_read_open_fd(struct archive *, int, size_t);
+typedef int archive_open_callback(struct archive *, void *);
+typedef ssize_t archive_read_callback(struct archive *, void *, const void **);
+typedef int64_t archive_skip_callback(struct archive *, void *, int64_t);
+typedef int64_t archive_seek_callback(struct archive *, void *, int64_t, int);
+typedef int archive_close_callback(struct archive *, void *);
+int archive_read_set_seek_callback(struct archive *, archive_seek_callback *);
+int archive_read_open2(struct archive *, void *, archive_open_callback *,
+                       archive_read_callback *, archive_skip_callback *, archive_close_callback *);
 int archive_read_next_header(struct archive *, struct archive_entry **);
 ssize_t archive_read_data(struct archive *, void *, size_t);
 int archive_read_data_skip(struct archive *);
 int archive_read_free(struct archive *);
 const char *archive_error_string(struct archive *);
+void archive_set_error(struct archive *, int, const char *, ...);
+
+static inline void muk_archive_set_error(struct archive *archive, int code, const char *message) {
+    archive_set_error(archive, code, "%s", message);
+}
 
 struct archive *archive_write_new(void);
 int archive_write_set_format_zip(struct archive *);

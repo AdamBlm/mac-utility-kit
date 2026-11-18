@@ -179,19 +179,20 @@ public enum ArchiveTools {
         return shortened + suffix + safeExtension
     }
 
-    private static func withReader<T>(
+    static func withReader<T>(
         _ input: URL, password: String?, _ operation: (OpaquePointer) throws -> T
     ) throws -> T {
         guard input.isFileURL else { throw ToolError.invalid("Choose a local archive file.") }
         let fd = open(input.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard fd >= 0 else { throw ArchivePublication.error(errno, path: input.lastPathComponent) }
         defer { close(fd) }
-        guard let reader = archive_read_new() else { throw ToolError.invalid("Could not allocate the archive reader.") }
-        defer { archive_read_free(reader) }
         var info = stat()
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
             throw ToolError.invalid("Choose a regular archive file.")
         }
+        let source = ArchiveReadFile(fd: fd)
+        guard let reader = archive_read_new() else { throw ToolError.invalid("Could not allocate the archive reader.") }
+        defer { withExtendedLifetime(source) { _ = archive_read_free(reader) } }
         try check(archive_read_support_filter_gzip(reader), reader)
         try check(archive_read_support_filter_bzip2(reader), reader)
         try check(archive_read_support_filter_xz(reader), reader)
@@ -204,8 +205,16 @@ public enum ArchiveTools {
             guard !password.utf8.contains(0) else { throw ToolError.invalid("The archive password contains an invalid character.") }
             try check(archive_read_add_passphrase(reader, password), reader)
         }
-        try check(archive_read_open_fd(reader, fd, 128 * 1024), reader)
-        return try operation(reader)
+        do {
+            try Task.checkCancellation()
+            try source.open(reader)
+            let result = try operation(reader)
+            try Task.checkCancellation()
+            return result
+        } catch {
+            try Task.checkCancellation()
+            throw error
+        }
     }
 
     private static func visit(_ reader: OpaquePointer, _ member: (ArchiveEntry) throws -> Void) throws {

@@ -1,3 +1,4 @@
+import CSystemArchive
 import Foundation
 import Testing
 @testable import UtilityCore
@@ -95,6 +96,26 @@ struct ArchiveToolsTests {
         }
     }
 
+    @Test func cancellationInterruptsAnInProgressArchiveSkip() async throws {
+        let stage = try staging()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let archive = stage.appending(path: "Fixture.tar")
+        let size = 512 * 1024
+        try (member("large.bin", size: size) + Data(repeating: 0, count: size + 1024)).write(to: archive)
+
+        let task = Task.detached {
+            try ArchiveTools.withReader(archive, password: nil) { reader in
+                var entry: OpaquePointer?
+                try ArchiveTools.check(archive_read_next_header(reader, &entry), reader)
+                try #require(archive_entry_size(entry) == Int64(size))
+
+                withUnsafeCurrentTask { $0?.cancel() }
+                #expect(archive_read_data_skip(reader) < ARCHIVE_OK)
+            }
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+    }
+
     @Test func extractsUpstreamRAR5FixtureWhenAvailable() async throws {
         guard let path = ProcessInfo.processInfo.environment["MAC_UTILITY_RAR_TEST"] else { return }
         let stage = try staging()
@@ -113,7 +134,7 @@ struct ArchiveToolsTests {
         return stage
     }
 
-    private func member(_ path: String, type: Character = "0", link: String = "") -> Data {
+    private func member(_ path: String, type: Character = "0", link: String = "", size: Int = 0) -> Data {
         var header = Array(repeating: UInt8(0), count: 512)
         func field(_ value: String, at index: Int) {
             header.replaceSubrange(index..<(index + value.utf8.count), with: value.utf8)
@@ -122,7 +143,7 @@ struct ArchiveToolsTests {
         field("0000644", at: 100)
         field("0000000", at: 108)
         field("0000000", at: 116)
-        field("00000000000", at: 124)
+        field(String(format: "%011o", size), at: 124)
         field("00000000000", at: 136)
         field("        ", at: 148)
         field(String(type), at: 156)
