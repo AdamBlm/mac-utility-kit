@@ -84,8 +84,7 @@ public enum ReplaceAudio {
 
     public static func sample(_ input: URL, options: ReplaceAudioOptions, preview: Preview) async throws -> Sample {
         let graph = try await makeGraph(input, options: options, preview: preview)
-        let firstSound = min(max(0, options.offsetSeconds), graph.duration.seconds)
-        let start = min(max(0, firstSound - 0.5), max(0, graph.duration.seconds - 1))
+        let start = min(max(0, graph.previewAnchor.seconds - 0.5), max(0, graph.duration.seconds - 1))
         let width = min(5, graph.duration.seconds - start)
         let range = CMTimeRange(start: CMTime(seconds: start, preferredTimescale: 48_000),
                                 duration: CMTime(seconds: width, preferredTimescale: 48_000))
@@ -112,38 +111,22 @@ public enum ReplaceAudio {
         let mix: AVMutableAudioMix
         let duration: CMTime
         let audioTracks: [AVMutableCompositionTrack]
+        let previewAnchor: CMTime
     }
 
     private static func makeGraph(
         _ input: URL, options: ReplaceAudioOptions, preview: Preview?
     ) async throws -> Graph {
-        guard let replacement = options.source else { throw ToolError.invalid("Choose an audio file.") }
-        guard options.offsetSeconds.isFinite, abs(options.offsetSeconds) <= 86_400,
-              (0...1).contains(options.originalVolume), (0...1).contains(options.newVolume) else {
-            throw ToolError.invalid("Choose volumes from 0% to 100% and an offset within 24 hours.")
-        }
         let videoAsset = try localAsset(input)
-        let soundtrack = try localAsset(replacement)
-        let sourceTracks = try await soundtrack.loadTracks(withMediaType: .audio)
-        guard sourceTracks.indices.contains(options.sourceTrackIndex) else {
-            throw ToolError.invalid("The selected replacement track is unavailable.")
-        }
-        let source = sourceTracks[options.sourceTrackIndex]
-        let sourceRange = try await source.load(.timeRange)
         guard let video = try await enabledVideo(in: videoAsset) else {
             throw ToolError.invalid("Choose a file with a video track.")
         }
         let videoRange = try await video.load(.timeRange)
-        guard sourceRange.duration.isNumeric, sourceRange.duration > .zero,
-              videoRange.duration.isNumeric, videoRange.duration > .zero else {
-            throw ToolError.invalid("The track has no readable duration.")
+        guard videoRange.duration.isNumeric, videoRange.duration > .zero else {
+            throw ToolError.invalid("The video track has no readable duration.")
         }
-        let offset = CMTime(seconds: options.offsetSeconds, preferredTimescale: 48_000)
-        let duration = options.durationPolicy == .shortest ? min(videoRange.duration, offset + sourceRange.duration) : videoRange.duration
-        guard duration > .zero, offset < duration,
-              options.durationPolicy == .loop || offset + sourceRange.duration > .zero else {
-            throw ToolError.invalid("The new audio does not overlap the video at this offset.")
-        }
+        let replacement = preview == .original ? nil : try await replacementTrack(options, videoDuration: videoRange.duration)
+        let duration = replacement?.duration ?? videoRange.duration
         let composition = AVMutableComposition()
         if preview == nil {
             let newVideo = try addTrack(to: composition, type: .video)
@@ -152,6 +135,7 @@ public enum ReplaceAudio {
         }
         var audio: [AVMutableCompositionTrack] = []
         var parameters: [AVAudioMixInputParameters] = []
+        var previewAnchor = max(.zero, replacement?.offset ?? .zero)
         if preview == .original || options.mode == .mix {
             let tracks = try await videoAsset.loadTracks(withMediaType: .audio)
             let selection = options.originalTracks[input, default: 0]
@@ -162,17 +146,28 @@ public enum ReplaceAudio {
             let originalRange = try await original.load(.timeRange)
                 .intersection(CMTimeRange(start: videoRange.start, duration: duration))
             guard !originalRange.isEmpty else { throw ToolError.invalid("The original audio does not overlap the video.") }
+            let originalStart = originalRange.start - videoRange.start
+            if preview == .original {
+                // A track's range can include leading empty edits.
+                let firstMediaRange = try await original.load(.segments)
+                    .lazy.filter { !$0.isEmpty }
+                    .map { $0.timeMapping.target.intersection(originalRange) }
+                    .first { !$0.isEmpty && $0.duration > .zero }
+                previewAnchor = (firstMediaRange?.start ?? originalRange.start) - videoRange.start
+            }
             let target = try addTrack(to: composition, type: .audio)
-            try target.insertTimeRange(originalRange, of: original, at: originalRange.start - videoRange.start)
+            try target.insertTimeRange(originalRange, of: original, at: originalStart)
             let levels = AVMutableAudioMixInputParameters(track: target)
             levels.setVolume(preview == .original ? 1 : Float(options.originalVolume), at: .zero)
             audio.append(target)
             parameters.append(levels)
         }
-        if preview != .original {
+        if let replacement {
             let target = try addTrack(to: composition, type: .audio)
-            try place(source, range: sourceRange, on: target, offset: offset, duration: duration,
-                      repeats: options.durationPolicy == .loop)
+            try withExtendedLifetime(replacement.asset) {
+                try place(replacement.track, range: replacement.range, on: target, offset: replacement.offset,
+                          duration: duration, repeats: options.durationPolicy == .loop)
+            }
             let levels = AVMutableAudioMixInputParameters(track: target)
             levels.setVolume(Float(options.newVolume), at: .zero)
             audio.append(target)
@@ -184,7 +179,34 @@ public enum ReplaceAudio {
         }
         let mix = AVMutableAudioMix()
         mix.inputParameters = parameters
-        return Graph(composition: composition, mix: mix, duration: duration, audioTracks: audio)
+        return Graph(composition: composition, mix: mix, duration: duration, audioTracks: audio, previewAnchor: previewAnchor)
+    }
+
+    private static func replacementTrack(
+        _ options: ReplaceAudioOptions, videoDuration: CMTime
+    ) async throws -> (asset: AVURLAsset, track: AVAssetTrack, range: CMTimeRange, offset: CMTime, duration: CMTime) {
+        guard let replacement = options.source else { throw ToolError.invalid("Choose an audio file.") }
+        guard options.offsetSeconds.isFinite, abs(options.offsetSeconds) <= 86_400,
+              (0...1).contains(options.originalVolume), (0...1).contains(options.newVolume) else {
+            throw ToolError.invalid("Choose volumes from 0% to 100% and an offset within 24 hours.")
+        }
+        let asset = try localAsset(replacement)
+        let tracks = try await asset.loadTracks(withMediaType: .audio)
+        guard tracks.indices.contains(options.sourceTrackIndex) else {
+            throw ToolError.invalid("The selected replacement track is unavailable.")
+        }
+        let track = tracks[options.sourceTrackIndex]
+        let range = try await track.load(.timeRange)
+        guard range.duration.isNumeric, range.duration > .zero else {
+            throw ToolError.invalid("The replacement audio has no readable duration.")
+        }
+        let offset = CMTime(seconds: options.offsetSeconds, preferredTimescale: 48_000)
+        let end = offset + range.duration
+        let duration = options.durationPolicy == .shortest ? min(videoDuration, end) : videoDuration
+        guard duration > .zero, offset < duration, options.durationPolicy == .loop || end > .zero else {
+            throw ToolError.invalid("The new audio does not overlap the video at this offset.")
+        }
+        return (asset, track, range, offset, duration)
     }
 
     private static func place(

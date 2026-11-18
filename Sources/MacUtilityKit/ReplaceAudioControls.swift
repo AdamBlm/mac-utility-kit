@@ -140,8 +140,9 @@ struct ReplaceAudioControls: View {
                            systemImage: isActive ? "stop.circle" : "play.circle") {
                         if isActive { stop() } else { start(variant) }
                     }
-                    .disabled(activeInput == nil || replacementTracks?.isEmpty != false
-                              || (variant == .original && activeInput.flatMap { originalTracks[$0] }?.isEmpty != false))
+                    .disabled(activeInput == nil || (variant == .original
+                              ? activeInput.flatMap { originalTracks[$0] }?.isEmpty != false
+                              : replacementTracks?.isEmpty != false))
                 }
                 if request != nil && player == nil {
                     ProgressView().controlSize(.small)
@@ -203,6 +204,7 @@ struct ReplaceAudioControls: View {
     }
 
     private func setReplacement(_ url: URL?) {
+        guard options.source != url else { return }
         replacementTracks = nil
         replacementIssue = nil
         options.sourceTrackIndex = 0

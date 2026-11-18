@@ -71,6 +71,36 @@ struct ReplaceAudioTests {
         #expect(!FileManager.default.fileExists(atPath: absent.path))
     }
 
+    @Test func previewsOriginalWithoutReplacementAndIgnoresReplacementTiming() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let silent = try await VideoResizeTests.makePortraitVideo(in: directory)
+        let tone = try Self.writeTone("tone.wav", in: directory, length: 1, frequency: 550)
+        let source = try await Self.attachAudio([tone], to: silent, in: directory)
+        var options = ReplaceAudioOptions()
+        options.durationPolicy = .shortest
+        options.offsetSeconds = 10
+
+        let original = try await ReplaceAudio.sample(source, options: options, preview: .original)
+        #expect(original.startSeconds == 0)
+        #expect(try Self.readSample(original, in: directory).magnitude(at: 550) > 0.7)
+        await #expect(throws: ToolError.self) {
+            try await ReplaceAudio.sample(source, options: options, preview: .result)
+        }
+    }
+
+    @Test func originalAuditionFindsAudioThatStartsLate() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let silent = try await VideoResizeTests.makePortraitVideo(in: directory)
+        let tone = try Self.writeTone("tone.wav", in: directory, length: 1, frequency: 550)
+        let source = try await Self.attachAudio([tone], to: silent, in: directory, delay: CMTime(value: 6, timescale: 1))
+
+        let original = try await ReplaceAudio.sample(source, options: .init(), preview: .original)
+        #expect(abs(original.startSeconds - 5.5) < 0.1)
+        #expect(original.peak > 0.7)
+    }
+
     private static func orientedFrame(_ asset: AVURLAsset) async throws -> CGImage {
         let generator = AVAssetImageGenerator(asset: asset)
         generator.appliesPreferredTrackTransform = true
@@ -125,14 +155,22 @@ struct ReplaceAudioTests {
         return Samples(values: Array(UnsafeBufferPointer(start: channel, count: Int(pcm.frameLength))), rate: pcm.format.sampleRate)
     }
 
-    private static func attachAudio(_ tracks: [URL], to picture: URL, in directory: URL) async throws -> URL {
+    private static func attachAudio(
+        _ tracks: [URL], to picture: URL, in directory: URL, delay: CMTime = .zero
+    ) async throws -> URL {
         let composition = AVMutableComposition()
         for (file, type) in [(picture, AVMediaType.video)] + tracks.map({ ($0, .audio) }) {
             let asset = AVURLAsset(url: file)
             let source = try #require(try await asset.loadTracks(withMediaType: type).first)
             let track = try #require(composition.addMutableTrack(withMediaType: type, preferredTrackID: kCMPersistentTrackID_Invalid))
-            try await track.insertTimeRange(source.load(.timeRange), of: source, at: .zero)
-            if type == .video { track.preferredTransform = try await source.load(.preferredTransform) }
+            let range = try await source.load(.timeRange)
+            try track.insertTimeRange(range, of: source, at: type == .video ? .zero : delay)
+            if type == .video {
+                track.preferredTransform = try await source.load(.preferredTransform)
+                if delay > .zero {
+                    track.scaleTimeRange(CMTimeRange(start: .zero, duration: range.duration), toDuration: range.duration + delay)
+                }
+            }
         }
         let output = directory.appending(path: "original.mov")
         let export = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
