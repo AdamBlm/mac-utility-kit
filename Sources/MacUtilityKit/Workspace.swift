@@ -4,7 +4,8 @@ import UtilityCore
 
 struct Workspace: View {
     let keepAwakeController: KeepAwakeController
-    @State private var selection: Tool? = .resizeImages
+    @State private var selection = Destination.tool(.resizeImages)
+    @State private var readerSource: URL?
     @State private var search = ""
     @State private var collapsedCategories: Set<ToolCategory> = []
     @FocusState private var searching: Bool
@@ -21,6 +22,15 @@ struct Workspace: View {
         return ToolCategory.allCases.compactMap { category in
             grouped[category].map { ToolGroup(category: category, tools: $0) }
         }
+    }
+
+    private enum Destination: Equatable {
+        case tool(Tool)
+        case pdfReader
+    }
+
+    private var matchesReader: Bool {
+        search.isEmpty || "PDF Reader".localizedCaseInsensitiveContains(search)
     }
 
     private struct ToolGroup: Identifiable {
@@ -42,7 +52,10 @@ struct Workspace: View {
                         .focused($searching)
                         .onSubmit {
                             if let first = visibleGroups.first?.tools.first {
-                                selection = first
+                                selection = .tool(first)
+                                searching = false
+                            } else if matchesReader {
+                                selection = .pdfReader
                                 searching = false
                             }
                         }
@@ -60,7 +73,11 @@ struct Workspace: View {
                 .padding(.vertical, 8)
                 .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
 
-                if visibleGroups.isEmpty {
+                if matchesReader {
+                    readerButton
+                }
+
+                if visibleGroups.isEmpty && !matchesReader {
                     Text("No matching tools")
                         .font(.callout).foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
@@ -89,7 +106,10 @@ struct Workspace: View {
             .navigationSplitViewColumnWidth(min: 170, ideal: 184, max: 220)
         } detail: {
             Group {
-                if let selection {
+                switch selection {
+                case .pdfReader:
+                    PDFReaderView(source: $readerSource, onHandoff: handoffPDF)
+                case .tool(let selection):
                     ToolWorkspace(
                         tool: selection,
                         draft: Binding(
@@ -100,8 +120,6 @@ struct Workspace: View {
                         keepAwakeController: keepAwakeController
                     )
                     .id(selection)
-                } else {
-                    ContentUnavailableView("Choose a tool", systemImage: "wrench.and.screwdriver")
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -132,6 +150,21 @@ struct Workspace: View {
         .tint(palette.accent)
     }
 
+    private var readerButton: some View {
+        sidebarButton("PDF Reader", icon: "book", destination: .pdfReader)
+    }
+
+    private func handoffPDF(to tool: Tool, input: URL) {
+        var draft = session.drafts[tool, default: ToolDraft()]
+        if tool.requiresSinglePDF {
+            if draft.inputs.first != input { draft.replacePDF(with: input) }
+        } else if !draft.inputs.contains(input) {
+            draft.inputs.append(input)
+        }
+        session.drafts[tool] = draft
+        selection = .tool(tool)
+    }
+
     @ViewBuilder
     private func categoryHeading(_ category: ToolCategory) -> some View {
         if search.isEmpty {
@@ -158,21 +191,26 @@ struct Workspace: View {
     }
 
     private func toolButton(_ tool: Tool) -> some View {
-        Button {
-            selection = tool
+        sidebarButton(tool.title, icon: tool.symbol, destination: .tool(tool))
+    }
+
+    private func sidebarButton(_ title: String, icon: String, destination: Destination) -> some View {
+        let isSelected = selection == destination
+        return Button {
+            selection = destination
         } label: {
-            Label(tool.title, systemImage: tool.symbol)
-                .font(.system(size: 13, weight: selection == tool ? .semibold : .regular))
+            Label(title, systemImage: icon)
+                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
                 .labelStyle(.fixedIcon)
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .padding(.horizontal, 10)
                 .padding(.vertical, 9)
-                .foregroundStyle(selection == tool ? palette.accent : .primary)
-                .background(selection == tool ? palette.wash : .clear, in: RoundedRectangle(cornerRadius: 8))
+                .foregroundStyle(isSelected ? palette.accent : .primary)
+                .background(isSelected ? palette.wash : .clear, in: RoundedRectangle(cornerRadius: 8))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityAddTraits(selection == tool ? .isSelected : [])
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 }
 
