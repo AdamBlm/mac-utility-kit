@@ -95,6 +95,7 @@ extension Tool {
         case .signPDF: "signature"
         case .makePDFSearchable: "doc.text.magnifyingglass"
         case .compressPDF: "doc.zipper"
+        case .cropPDF: "crop"
         case .markdownToPDF: "text.document"
         case .addPassword: "lock.doc"
         case .removePassword: "lock.open"
@@ -157,6 +158,7 @@ extension Tool {
         case .signPDF: "Place a visible signature on a PDF copy."
         case .makePDFSearchable: "Add selectable text to scanned PDF pages."
         case .compressPDF: "Estimate savings and make a smaller PDF copy."
+        case .cropPDF: "Adjust the visible area of selected PDF pages."
         case .markdownToPDF: "Preview and export Markdown as a paginated PDF."
         case .addPassword: "Encrypt a PDF copy and choose viewer permissions."
         case .removePassword: "Unlock a PDF with its password and export a decrypted copy."
@@ -198,7 +200,7 @@ extension Tool {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .removeBackground: "or drop images anywhere in this pane"
         case .mergePDFs: "or drop PDFs and images anywhere in this pane"
-        case .makePDFSearchable, .compressPDF: "or drop PDFs anywhere in this pane"
+        case .makePDFSearchable, .compressPDF, .cropPDF: "or drop PDFs anywhere in this pane"
         case .watermark: "or drop images, PDFs, and videos anywhere in this pane"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "or drop one PDF anywhere in this pane"
         case .imagesToPDF: "or drop images anywhere in this pane"
@@ -216,7 +218,7 @@ extension Tool {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .removeBackground: "Drop images here"
         case .mergePDFs: "Drop PDFs or images here"
-        case .makePDFSearchable, .compressPDF: "Drop PDFs here"
+        case .makePDFSearchable, .compressPDF, .cropPDF: "Drop PDFs here"
         case .watermark: "Drop images, PDFs, or videos here"
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: "Drop one PDF here"
         case .imagesToPDF: "Drop images here"

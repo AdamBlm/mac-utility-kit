@@ -54,6 +54,7 @@ public struct ToolOptions: Sendable {
     public var pdfSignature = PDFSignatureOptions()
     public var searchablePDF = SearchablePDFOptions()
     public var pdfCompression = PDFCompressionOptions()
+    public var pdfCrop = PDFCropOptions()
     public var textExtraction = TextExtractionOptions()
     public var pdfExtract = PDFExtractOptions()
     public var imagesToPDF = ImagesToPDFOptions()

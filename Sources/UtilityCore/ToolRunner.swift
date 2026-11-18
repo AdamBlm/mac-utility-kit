@@ -139,7 +139,7 @@ public enum ToolRunner {
                     case .watermark: try Watermark.outputExtension(input)
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
-                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF, .makePDFSearchable, .compressPDF: "pdf"
+                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF, .makePDFSearchable, .compressPDF, .cropPDF: "pdf"
                     case .extractText: "txt"
                     case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
                         throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
@@ -260,6 +260,11 @@ public enum ToolRunner {
                         try await PDFPageEditing.extract(input, to: output, options: options.pdfExtract, progress: progress)
                     case .signPDF:
                         try await PDFSigning.sign(input, to: output, options: options.pdfSignature, progress: progress)
+                    case .cropPDF:
+                        let summary = try await PDFCrop.export(input, to: output, options: options.pdfCrop) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
                     case .compressPDF:
                         let summary = try await PDFCompression.export(input, to: output, options: options.pdfCompression) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))

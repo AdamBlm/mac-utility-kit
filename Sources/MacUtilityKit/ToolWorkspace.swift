@@ -194,6 +194,9 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .makePDFSearchable:
                             SearchablePDFControls(inputs: draft.inputs, options: $draft.options.searchablePDF)
+                        case .cropPDF:
+                            PDFCropControls(input: draft.inputs.first, options: $draft.options.pdfCrop)
+                                .id(draft.pdfSourceRevision)
                         case .compressPDF:
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:

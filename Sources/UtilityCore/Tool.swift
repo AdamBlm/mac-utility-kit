@@ -23,7 +23,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
-    case makePDFSearchable, markdownToPDF, addPassword, removePassword, compressPDF
+    case makePDFSearchable, markdownToPDF, addPassword, removePassword, compressPDF, cropPDF
     case recordScreen, downloadVideo
     case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 
@@ -36,7 +36,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var requiresSinglePDF: Bool {
         switch self {
-        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: true
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF, .cropPDF: true
         default: false
         }
     }
@@ -67,6 +67,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .signPDF: "Sign PDF"
         case .makePDFSearchable: "Make PDF Searchable"
         case .compressPDF: "Compress PDF"
+        case .cropPDF: "Crop PDF"
         case .markdownToPDF: "Markdown to PDF"
         case .addPassword: "Add Password"
         case .removePassword: "Remove Password"
@@ -109,7 +110,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     public var group: ToolCategory {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage, .annotateScreenshot, .removeBackground, .colorPicker, .watermark: .images
-        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .addPassword, .removePassword, .compressPDF: .documents
+        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .addPassword, .removePassword, .compressPDF, .cropPDF: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
@@ -131,7 +132,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .batchRename, .base64, .hashGenerator: [.data]
         case .jsonFormatter: [.json]
         case .keepAwake, .captureText, .recordAudio, .screenshot, .recordScreen, .downloadVideo, .colorPicker: []
-        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF, .makePDFSearchable, .addPassword, .removePassword, .compressPDF: [.pdf]
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF, .makePDFSearchable, .addPassword, .removePassword, .compressPDF, .cropPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo, .transcribe, .cleanUpAudio: [.movie, .audio]
         case .trimAudio, .convertAudio: [.audio]
