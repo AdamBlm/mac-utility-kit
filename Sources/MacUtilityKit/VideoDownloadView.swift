@@ -9,6 +9,11 @@ struct VideoDownloadDraft {
     var destination = URL.downloadsDirectory
     var inspected: InspectedVideo?
     var result: URL?
+    var task: Task<Void, Never>?
+    var downloading = false
+    var activeDownload: UUID?
+    var fraction = 0.0
+    var error: String?
 }
 
 struct InspectedVideo {
@@ -19,11 +24,6 @@ struct InspectedVideo {
 
 struct VideoDownloadView: View {
     @Binding var draft: VideoDownloadDraft
-    @State private var task: Task<Void, Never>?
-    @State private var downloading = false
-    @State private var fraction = 0.0
-    @State private var error: String?
-
     private var inspected: InspectedVideo? {
         guard let value = draft.inspected, value.source == (try? VideoDownload.sourceURL(draft.address)),
               value.executable == draft.executable else { return nil }
@@ -40,26 +40,26 @@ struct VideoDownloadView: View {
                 Button("Inspect Link", systemImage: "list.bullet", action: inspect)
                     .disabled(draft.executable == nil || (try? VideoDownload.sourceURL(draft.address)) == nil)
             }
-            .disabled(task != nil)
+            .disabled(draft.task != nil)
             if let inspected {
                 WorkspaceSection("Download", palette: palette) {
                     options(inspected)
                 }
-                .disabled(task != nil)
+                .disabled(draft.task != nil)
             }
-            if task != nil {
+            if draft.task != nil {
                 HStack {
-                    if downloading, fraction > 0 {
-                        ProgressView("Downloading…", value: fraction)
+                    if draft.downloading, draft.fraction > 0 {
+                        ProgressView("Downloading…", value: draft.fraction)
                     } else {
-                        ProgressView(downloading ? "Starting download…" : "Inspecting link…")
+                        ProgressView(draft.downloading ? "Starting download…" : "Inspecting link…")
                             .controlSize(.small)
                     }
                     Spacer()
-                    Button("Cancel") { task?.cancel() }
+                    Button("Cancel") { draft.task?.cancel() }
                 }
             }
-            if let error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
+            if let error = draft.error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
             if let result = draft.result {
                 WorkspaceSection("Saved File", palette: palette) {
                     Text(result.lastPathComponent).textSelection(.enabled)
@@ -70,8 +70,8 @@ struct VideoDownloadView: View {
                 }
             }
         }
-        .onDisappear { task?.cancel() }
-        .onChange(of: draft.address) { error = nil }
+        .onDisappear { if !draft.downloading { draft.task?.cancel() } }
+        .onChange(of: draft.address) { draft.error = nil }
     }
 
     private func options(_ inspected: InspectedVideo) -> some View {
@@ -133,12 +133,12 @@ struct VideoDownloadView: View {
     }
 
     private func inspect() {
-        guard task == nil, let executable = draft.executable,
+        guard draft.task == nil, let executable = draft.executable,
               let source = try? VideoDownload.sourceURL(draft.address) else { return }
-        error = nil
-        downloading = false
-        task = Task {
-            defer { task = nil }
+        draft.error = nil
+        draft.downloading = false
+        draft.task = Task {
+            defer { draft.task = nil }
             do {
                 let info = try await VideoDownload.inspect(source, executable: executable)
                 try Task.checkCancellation()
@@ -148,35 +148,48 @@ struct VideoDownloadView: View {
             } catch is CancellationError {
                 return
             } catch {
-                self.error = error.localizedDescription
+                draft.error = error.localizedDescription
             }
         }
     }
 
     private func download(_ inspected: InspectedVideo) {
-        guard task == nil else { return }
+        guard draft.task == nil else { return }
         var selection = draft.selection
         if !selection.output.audioOnly,
            inspected.info.formats.contains(where: { $0.id == selection.videoID && $0.hasAudio }) {
             selection.audioID = nil
         }
         let destination = draft.destination
-        error = nil
-        downloading = true
-        fraction = 0
-        task = Task {
-            defer { task = nil }
+        draft.error = nil
+        draft.downloading = true
+        draft.fraction = 0
+        let center = ExportActivityCenter.shared
+        let job = center.start(.downloadVideo) { draft.task?.cancel() }
+        draft.activeDownload = job
+        draft.task = Task {
+            defer {
+                center.finish(job)
+                draft.task = nil
+                draft.downloading = false
+                draft.activeDownload = nil
+            }
             do {
                 draft.result = try await VideoDownload.download(
                     inspected.source, info: inspected.info, executable: inspected.executable,
                     selection: selection, destination: destination
                 ) { value in
-                    await MainActor.run { fraction = max(fraction, value) }
+                    await MainActor.run {
+                        guard draft.activeDownload == job else { return }
+                        draft.fraction = max(draft.fraction, value)
+                        center.update(job, fraction: value)
+                    }
                 }
+                center.postCompletion(.downloadVideo, outputs: 1)
             } catch is CancellationError {
                 return
             } catch {
-                self.error = error.localizedDescription
+                draft.error = error.localizedDescription
             }
         }
     }

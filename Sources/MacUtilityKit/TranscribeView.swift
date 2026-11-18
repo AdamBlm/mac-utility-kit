@@ -9,15 +9,15 @@ struct TranscribeDraft {
     var cues: [SubtitleCue] = []
     var resultInput: URL?
     var format = TranscriptFormat.txt
+    var task: Task<Void, Never>?
+    var progress = 0.0
+    var error: String?
 }
 
 struct TranscribeView: View {
     @Binding var draft: TranscribeDraft
     let onCaptionHandoff: (URL, String) -> Void
 
-    @State private var task: Task<Void, Never>?
-    @State private var progress = 0.0
-    @State private var error: String?
     @State private var inputSummary: InputSummary?
     @State private var startText: String?
     @State private var endText: String?
@@ -55,7 +55,7 @@ struct TranscribeView: View {
                     Text("Enter seconds, MM:SS, or HH:MM:SS.").foregroundStyle(.red).font(.callout)
                 }
             }
-            .disabled(task != nil)
+            .disabled(draft.task != nil)
             WorkspaceSection("Local transcription", palette: palette) {
                 executablePicker("whisper-cli", selection: $draft.options.executable)
                 SettingRow("Model") {
@@ -73,18 +73,18 @@ struct TranscribeView: View {
                     .labelsHidden()
                 }
             }
-            .disabled(task != nil)
+            .disabled(draft.task != nil)
             HStack {
                 Button("Transcribe", systemImage: "waveform", action: run)
-                    .disabled(task != nil || draft.input == nil || draft.options.executable == nil ||
+                    .disabled(draft.task != nil || draft.input == nil || draft.options.executable == nil ||
                               draft.options.model == nil || invalidTimecode)
                     .buttonStyle(.borderedProminent)
-                if task != nil {
-                    ProgressView(value: progress).controlSize(.small)
-                    Button("Cancel") { task?.cancel() }
+                if draft.task != nil {
+                    ProgressView(value: draft.progress).controlSize(.small)
+                    Button("Cancel") { draft.task?.cancel() }
                 }
             }
-            if let error { Text(error).font(.callout).foregroundStyle(.red) }
+            if let error = draft.error { Text(error).font(.callout).foregroundStyle(.red) }
             if let source = draft.resultInput, source == draft.input {
                 WorkspaceSection("Transcript", palette: palette) {
                     if draft.cues.isEmpty {
@@ -93,16 +93,15 @@ struct TranscribeView: View {
                         transcriptControls(source: source)
                     }
                 }
-                .disabled(task != nil)
+                .disabled(draft.task != nil)
             }
         }
         .task(id: draft.input) { await inspect(draft.input) }
         .dropDestination(for: URL.self) { urls, _ in
-            guard task == nil, urls.count == 1, let url = urls.first, url.isFileURL else { return false }
+            guard draft.task == nil, urls.count == 1, let url = urls.first, url.isFileURL else { return false }
             replaceInput(url)
             return true
         }
-        .onDisappear { task?.cancel() }
     }
 
     private static let languages: [(code: String, name: String)] = [
@@ -179,9 +178,9 @@ struct TranscribeView: View {
                 do {
                     let text = Transcription.render(draft.cues, format: draft.format)
                     try DeveloperToolFiles.save(Data(text.utf8), as: "transcript.\(draft.format.fileExtension)")
-                    error = nil
+                    draft.error = nil
                 } catch {
-                    self.error = error.localizedDescription
+                    draft.error = error.localizedDescription
                 }
             }
             if activeSource?.hasVideo == true {
@@ -202,7 +201,7 @@ struct TranscribeView: View {
         draft.options.end = nil
         startText = nil
         endText = nil
-        error = nil
+        draft.error = nil
     }
 
     private func inspect(_ input: URL?) async {
@@ -219,23 +218,32 @@ struct TranscribeView: View {
     }
 
     private func run() {
-        guard task == nil, let input = draft.input else { return }
+        guard draft.task == nil, let input = draft.input else { return }
         let options = draft.options
-        progress = 0.02
-        error = nil
-        task = Task {
-            defer { task = nil }
+        draft.progress = 0.02
+        draft.error = nil
+        let center = ExportActivityCenter.shared
+        let job = center.start(.transcribe) { draft.task?.cancel() }
+        draft.task = Task {
+            defer {
+                center.finish(job)
+                draft.task = nil
+            }
             do {
                 let cues = try await Transcription.run(input, options: options) { fraction in
-                    await MainActor.run { progress = fraction }
+                    await MainActor.run {
+                        guard draft.input == input else { return }
+                        draft.progress = fraction
+                        center.update(job, fraction: fraction)
+                    }
                 }
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, draft.input == input else { return }
                 draft.cues = cues
                 draft.resultInput = input
             } catch is CancellationError {
                 return
             } catch {
-                if !Task.isCancelled { self.error = error.localizedDescription }
+                if !Task.isCancelled, draft.input == input { draft.error = error.localizedDescription }
             }
         }
     }

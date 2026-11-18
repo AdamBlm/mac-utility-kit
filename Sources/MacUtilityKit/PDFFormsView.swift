@@ -8,6 +8,8 @@ struct PDFFormsDraft {
     var python: URL?
     var mode = PDFFormMode.editable
     var session: PDFForms?
+    var exportTask: Task<Void, Never>?
+    var exportIssue: String?
 }
 
 struct PDFFormsView: View {
@@ -21,7 +23,7 @@ struct PDFFormsView: View {
     @State private var kind = PDFForms.Kind.text
     @State private var placing = false
     @State private var revision = 0
-    @State private var exporting = false
+    private var exporting: Bool { draft.exportTask != nil }
     @State private var issue: String?
 
     private var session: PDFForms? { draft.session }
@@ -157,7 +159,13 @@ struct PDFFormsView: View {
                     }
                 }
                 .disabled(exporting)
-                if exporting { ProgressView("Verifying PDF…").controlSize(.small) }
+                if exporting {
+                    ProgressView("Verifying PDF…").controlSize(.small)
+                    Button("Cancel Export") { draft.exportTask?.cancel() }
+                }
+                if let exportIssue = draft.exportIssue {
+                    Text(exportIssue).font(.callout).foregroundStyle(.secondary)
+                }
             }
             if let issue { Label(issue, systemImage: "exclamationmark.circle").font(.callout) }
         }
@@ -236,6 +244,7 @@ struct PDFFormsView: View {
     private func detectedPage() -> PDFPage? { session?.document.page(at: page) }
 
     private func picked(_ location: CGPoint) {
+        guard !exporting else { return }
         guard edit == originalEdit else { return }
         if !placing {
             if let field = fields.last(where: { $0.bounds.contains(location) }) { select(field) }
@@ -309,19 +318,32 @@ struct PDFFormsView: View {
         let suffix = mode == .editable ? "-editable.pdf" : "-flattened.pdf"
         panel.nameFieldStringValue = session.source.deletingPathExtension().lastPathComponent + suffix
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        guard destination.resolvingSymlinksInPath().standardizedFileURL != session.source.resolvingSymlinksInPath().standardizedFileURL else {
-            issue = "Choose a different filename to preserve the source PDF."
+        guard !exporting else { return }
+        let output: PDFFormDestination
+        do {
+            output = try PDFFormDestination(destination, preserving: session.source)
+        } catch {
+            issue = error.localizedDescription
             return
         }
-        exporting = true
         issue = nil
-        Task {
-            defer { exporting = false }
+        draft.exportIssue = nil
+        let center = ExportActivityCenter.shared
+        let job = center.start(.fillFlattenForms) { draft.exportTask?.cancel() }
+        draft.exportTask = Task {
+            defer {
+                center.finish(job)
+                draft.exportTask = nil
+            }
             do {
                 let data = try await session.export(mode, python: python)
-                try data.write(to: destination, options: .atomic)
+                try Task.checkCancellation()
+                try output.publish(data)
+                center.postCompletion(.fillFlattenForms, outputs: 1)
+            } catch is CancellationError {
+                draft.exportIssue = "Export canceled."
             } catch {
-                issue = error.localizedDescription
+                draft.exportIssue = error.localizedDescription
             }
         }
     }

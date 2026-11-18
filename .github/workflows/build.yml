@@ -7,6 +7,22 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
-      - run: swift test
+      - run: swift test --no-parallel
       - run: ./scripts/build-app.sh
-      - run: codesign --verify --strict 'build/Mac Utility Kit.app'
+      - run: codesign --verify --deep --strict 'build/Mac Utility Kit.app'
+      - name: Verify the packaged tool catalog
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import re
+          import subprocess
+          from pathlib import Path
+
+          catalog = json.loads(subprocess.check_output(["build/Mac Utility Kit.app/Contents/MacOS/muk", "catalog"]))
+          inventory = re.findall(r"^- \*\*(.+?)\*\*", Path("docs/feature-inventory.md").read_text(), re.MULTILINE)
+          titles = [entry["title"] for entry in catalog]
+          assert len(titles) == len(inventory) == 102
+          assert len({entry["id"] for entry in catalog}) == len(catalog), "Duplicate tool IDs"
+          assert sorted(titles) == sorted(inventory), "The app catalog and roadmap inventory differ"
+          PYTHON
+      - run: ./scripts/build-dmg.sh

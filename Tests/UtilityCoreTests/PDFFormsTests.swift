@@ -7,6 +7,31 @@ import UtilityCore
 
 @MainActor
 struct PDFFormsTests {
+    @Test func refusesRedirectedAndNewlyOccupiedSaveDestinations() throws {
+        let (source, directory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let original = try Data(contentsOf: source)
+        let manager = FileManager.default
+        let output = directory.appending(path: "Output")
+        try manager.createDirectory(at: output, withIntermediateDirectories: false)
+        let redirected = output.appending(path: source.lastPathComponent)
+        let accepted = try PDFFormDestination(redirected, preserving: source)
+        try manager.moveItem(at: output, to: directory.appending(path: "Moved"))
+        try manager.createSymbolicLink(at: output, withDestinationURL: directory)
+        #expect(throws: (any Error).self) { try accepted.publish(Data("replacement".utf8)) }
+        #expect(try Data(contentsOf: source) == original)
+
+        let occupied = directory.appending(path: "New export.pdf")
+        let pending = try PDFFormDestination(occupied, preserving: source)
+        try Data("existing".utf8).write(to: occupied)
+        #expect(throws: ToolError.self) { try pending.publish(original) }
+        #expect(try Data(contentsOf: occupied) == Data("existing".utf8))
+
+        let confirmed = try PDFFormDestination(occupied, preserving: source)
+        try confirmed.publish(original)
+        #expect(try Data(contentsOf: occupied) == original)
+    }
+
     @Test func placesEditsAndRemovesFieldsWithoutChangingSource() throws {
         let (url, directory) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }

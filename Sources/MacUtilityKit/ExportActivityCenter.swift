@@ -1,30 +1,49 @@
 import AppKit
+import Observation
 import SwiftUI
 import UserNotifications
 import UtilityCore
 
 @MainActor
+@Observable
 final class ExportActivityCenter {
     static let shared = ExportActivityCenter()
 
+    struct Status {
+        let id: UUID
+        let title: String
+        let progress: Double
+    }
+
     private struct Job {
+        let tool: Tool
         var progress: Double = 0
         let activity: NSObjectProtocol
         let cancel: () -> Void
     }
 
     private var jobs: [UUID: Job] = [:]
-    private var dockView: ExportDockProgressView?
+    @ObservationIgnored private var dockView: ExportDockProgressView?
 
     var count: Int { jobs.count }
+
+    var active: Status? {
+        jobs.min(by: { $0.key.uuidString < $1.key.uuidString }).map {
+            Status(id: $0.key, title: $0.value.tool.title, progress: $0.value.progress)
+        }
+    }
+
+    func cancel(_ id: UUID) {
+        jobs[id]?.cancel()
+    }
 
     func start(_ tool: Tool, cancel: @escaping () -> Void) -> UUID {
         let id = UUID()
         let activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiatedAllowingIdleSystemSleep, .idleSystemSleepDisabled],
-            reason: "Exporting with " + tool.title
+            reason: "Processing with " + tool.title
         )
-        jobs[id] = Job(activity: activity, cancel: cancel)
+        jobs[id] = Job(tool: tool, activity: activity, cancel: cancel)
         refreshDock()
         return id
     }
@@ -46,9 +65,11 @@ final class ExportActivityCenter {
     }
 
     func postCompletion(_ tool: Tool, report: JobReport) {
+        postCompletion(tool, outputs: report.outputs.count, failures: report.failures.count)
+    }
+
+    func postCompletion(_ tool: Tool, outputs count: Int, failures: Int = 0) {
         guard !NSApp.isActive, UserDefaults.standard.bool(forKey: "exports.completionNotifications") else { return }
-        let count = report.outputs.count
-        let failures = report.failures.count
         let content = UNMutableNotificationContent()
         content.title = tool.title
         content.body = failures == 0

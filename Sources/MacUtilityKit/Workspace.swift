@@ -139,22 +139,9 @@ struct Workspace: View {
             }
             .safeAreaInset(edge: .top, spacing: 0) {
                 if let runningTool = session.runningTool {
-                    HStack(spacing: 12) {
-                        Text(runningTool.title)
-                            .lineLimit(1)
-                        Spacer(minLength: 8)
-                        if session.progress > 0 {
-                            ProgressView(value: session.progress).frame(width: 88)
-                        } else {
-                            ProgressView().controlSize(.small)
-                        }
-                        Button("Cancel") { session.cancel() }
-                    }
-                    .font(.callout)
-                    .padding(.horizontal, 20)
-                    .padding(.vertical, 8)
-                    .background(palette.surface)
-                    .overlay(alignment: .bottom) { Divider() }
+                    jobBanner(runningTool.title, progress: session.progress) { session.cancel() }
+                } else if let active = ExportActivityCenter.shared.active {
+                    jobBanner(active.title, progress: active.progress) { ExportActivityCenter.shared.cancel(active.id) }
                 }
             }
         }
@@ -182,6 +169,24 @@ struct Workspace: View {
         }
     }
 
+    private func jobBanner(_ title: String, progress: Double, cancel: @escaping () -> Void) -> some View {
+        HStack(spacing: 12) {
+            Text(title).lineLimit(1)
+            Spacer(minLength: 8)
+            if progress > 0 {
+                ProgressView(value: progress).frame(width: 88)
+            } else {
+                ProgressView().controlSize(.small)
+            }
+            Button("Cancel", action: cancel)
+        }
+        .font(.callout)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 8)
+        .background(palette.surface)
+        .overlay(alignment: .bottom) { Divider() }
+    }
+
     private var readerButton: some View {
         sidebarButton("PDF Reader", icon: "book", destination: .pdfReader)
     }
@@ -205,6 +210,8 @@ struct Workspace: View {
     private func openTranscription(_ input: URL) {
         var draft = session.drafts[.transcribe, default: ToolDraft()]
         if draft.transcribe.input != input {
+            draft.transcribe.task?.cancel()
+            draft.transcribe.error = nil
             draft.transcribe.input = input
             draft.transcribe.cues = []
             draft.transcribe.resultInput = nil
