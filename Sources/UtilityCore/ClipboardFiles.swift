@@ -9,6 +9,12 @@ package enum ClipboardFiles {
             .urlReadingContentsConformToTypes: allowedTypes.map(\.identifier)
         ]
         return (board.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? [])
-            .filter { $0.isFileURL && (try? $0.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true }
+            .filter { file in
+                let host = file.host()?.lowercased() ?? ""
+                guard file.isFileURL, host.isEmpty || host == "localhost",
+                      file.user() == nil, file.password() == nil, file.port == nil,
+                      file.query() == nil, file.fragment() == nil else { return false }
+                return (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            }
     }
 }

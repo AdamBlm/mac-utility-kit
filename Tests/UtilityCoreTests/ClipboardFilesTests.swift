@@ -18,7 +18,10 @@ struct ClipboardFilesTests {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
         let remote = try #require(URL(string: "https://example.test/remote.pdf"))
-        #expect(board.writeObjects([image as NSURL, remote as NSURL, text as NSURL, pdf as NSURL]))
+        var fileOnServer = try #require(URLComponents(url: image, resolvingAgainstBaseURL: false))
+        fileOnServer.host = "server.example.test"
+        let networkFileURL = try #require(fileOnServer.url)
+        #expect(board.writeObjects([image as NSURL, remote as NSURL, networkFileURL as NSURL, text as NSURL, pdf as NSURL]))
         #expect(ClipboardFiles.read(from: board, allowedTypes: [.image, .pdf]) == [image, pdf])
         #expect(ClipboardFiles.read(from: board, allowedTypes: [.pdf]) == [pdf])
 

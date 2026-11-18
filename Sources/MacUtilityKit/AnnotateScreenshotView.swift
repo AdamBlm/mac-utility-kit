@@ -36,7 +36,9 @@ struct AnnotateScreenshotView: View {
                 Button("Open Image…", systemImage: "folder") {
                     if let url = DeveloperToolFiles.choose(allowedTypes: [.image]) { load(url) }
                 }
+                .disabled(busy != nil)
                 ClipboardFileButton(allowedTypes: [.image], onPasteFile: load)
+                    .disabled(busy != nil)
                 if let image = draft.image {
                     Text("\(image.width) × \(image.height) pixels")
                         .font(.callout).monospacedDigit().foregroundStyle(.secondary)
