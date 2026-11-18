@@ -30,4 +30,5 @@ jobs:
               isinstance(kind, str) and kind for kind in entry["inputTypes"]
           ) for entry in catalog), "The catalog is missing accepted input type identifiers"
           PYTHON
+      - run: python3 scripts/check-mcp.py 'build/Mac Utility Kit.app/Contents/MacOS/muk'
       - run: ./scripts/build-dmg.sh
