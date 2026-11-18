@@ -73,6 +73,8 @@ struct ToolWorkspace: View {
             draft.options.audioCleanup.executable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        case .blurFaces:
+            draft.inputs.contains { !draft.options.blurFaces.isReviewed($0) }
         case .convertImages:
             draft.options.imageConversion.format.requiresImageMagick && draft.options.imageConversion.imageMagickExecutable == nil
         case .compressImages:
@@ -112,6 +114,8 @@ struct ToolWorkspace: View {
                             ImageRotateControls(inputs: draft.inputs, options: $draft.options.rotation)
                         case .beautifyScreenshot:
                             BeautifyScreenshotSettings(input: draft.inputs.first, options: $draft.options.beautify)
+                        case .blurFaces:
+                            BlurFacesControls(inputs: draft.inputs, options: $draft.options.blurFaces)
                         case .compressImages:
                             imageCompressionControls()
                         case .removeMetadata:

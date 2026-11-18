@@ -134,6 +134,7 @@ public enum ToolRunner {
                     case .convertImages: options.imageConversion.format.rawValue
                     case .rotateImages: try ImageRotate.outputExtension(input, options: options.rotation)
                     case .beautifyScreenshot: options.beautify.format.fileExtension
+                    case .blurFaces: "png"
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
@@ -230,6 +231,8 @@ public enum ToolRunner {
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
+                    case .blurFaces:
+                        summaries.append(try BlurFaces.export(input, to: output, options: options.blurFaces))
                     case .convertImages:
                         summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
                     case .compressImages:

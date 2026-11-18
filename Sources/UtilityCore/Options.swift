@@ -86,6 +86,7 @@ public struct ToolOptions: Sendable {
     public var imageConversion = ImageConversionOptions()
     public var rotation = ImageRotateOptions()
     public var beautify = BeautifyScreenshotOptions()
+    public var blurFaces = BlurFacesOptions()
     public var imageCompression = ImageCompressionOptions()
     public var imageMetadata = ImageMetadataOptions()
     public var imageMagickExecutable: URL?

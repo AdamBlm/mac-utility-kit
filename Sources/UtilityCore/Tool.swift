@@ -16,7 +16,7 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
-    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot
+    case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
@@ -46,6 +46,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .convertImages: "Convert Images"
         case .rotateImages: "Rotate Images"
         case .beautifyScreenshot: "Beautify Screenshot"
+        case .blurFaces: "Blur Faces"
         case .compressImages: "Compress Images"
         case .removeMetadata: "Remove Metadata"
         case .mergePDFs: "Merge PDFs"
@@ -91,7 +92,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var group: ToolCategory {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot: .images
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
@@ -104,7 +105,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var inputTypes: [UTType] {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .imagesToPDF: [.image]
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .wordCounter: [.plainText]
         case .textToSpeech: [.plainText, .rtf, .pdf]

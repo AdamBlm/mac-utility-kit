@@ -86,6 +86,24 @@ import UtilityCore
         await #expect(throws: ToolError.self) { try await BeautifyScreenshot.preview(source, options: options) }
     }
 
+    @Test func rejectsMultiframeImagesBeforeWritingOutput() async throws {
+        let directory = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try sourceImage(in: directory)
+        let sourceReader = try #require(CGImageSourceCreateWithURL(source as CFURL, nil))
+        let frame = try #require(CGImageSourceCreateImageAtIndex(sourceReader, 0, nil))
+        let multi = directory.appendingPathComponent("two-pages.tiff")
+        let writer = try #require(CGImageDestinationCreateWithURL(multi as CFURL, UTType.tiff.identifier as CFString, 2, nil))
+        CGImageDestinationAddImage(writer, frame, nil)
+        CGImageDestinationAddImage(writer, frame, nil)
+        try #require(CGImageDestinationFinalize(writer))
+        let output = directory.appendingPathComponent("unwanted.png")
+        await #expect(throws: ToolError.self) {
+            try await BeautifyScreenshot.export(multi, to: output, options: .init()) { _ in }
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
+
     private func makeFolder() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)

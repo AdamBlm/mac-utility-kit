@@ -162,17 +162,30 @@ public enum BeautifyScreenshot {
         guard (160...4096).contains(options.longestEdge), input.isFileURL,
               try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
               let source = CGImageSourceCreateWithURL(input as CFURL, nil),
-              let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true,
-              let image = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceShouldCacheImmediately: true,
-                  kCGImageSourceThumbnailMaxPixelSize: options.longestEdge
-              ] as CFDictionary) else {
+              let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true else {
             throw ToolError.invalid("Could not open the screenshot or prepare the selected resolution.")
         }
-
-        let layout = try layout(sourceSize: CGSize(width: image.width, height: image.height), options: options)
+        guard CGImageSourceGetCount(source) == 1 else {
+            throw ToolError.invalid("Choose a single-frame image. Animated and multipage images cannot be composed.")
+        }
+        let index = CGImageSourceGetPrimaryImageIndex(source)
+        guard let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any],
+              let width = properties[kCGImagePropertyPixelWidth] as? Int,
+              let height = properties[kCGImagePropertyPixelHeight] as? Int else {
+            throw ToolError.invalid("Could not read the screenshot dimensions.")
+        }
+        let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
+        let orientedSize = (5...8).contains(orientation)
+            ? CGSize(width: height, height: width) : CGSize(width: width, height: height)
+        let layout = try layout(sourceSize: orientedSize, options: options)
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceShouldCacheImmediately: true,
+            kCGImageSourceThumbnailMaxPixelSize: options.longestEdge
+        ] as CFDictionary) else {
+            throw ToolError.invalid("Could not decode the screenshot.")
+        }
         let bounds = CGRect(x: 0, y: 0, width: layout.width, height: layout.height)
         guard let context = CGContext(data: nil, width: layout.width, height: layout.height,
                                       bitsPerComponent: 8, bytesPerRow: 0, space: colorSpace,

@@ -62,6 +62,28 @@ private func imageFixture(in folder: URL) throws -> URL {
     return url
 }
 
+@Test func blurFacesPublishesOnlyReviewedSourcesThroughSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let reviewed = try imageFixture(in: folder)
+    let unreviewed = folder.appendingPathComponent("unreviewed.png")
+    try FileManager.default.copyItem(at: reviewed, to: unreviewed)
+    var options = ToolOptions()
+    let source = try ImageRedaction.load(reviewed)
+    options.blurFaces.regions[reviewed] = [ImageMaskRegion(rect: CGRect(x: 0.2, y: 0.2, width: 0.6, height: 0.6))]
+    options.blurFaces.confirmReview(reviewed, source: source)
+    let report = try await ToolRunner.run(
+        .blurFaces, inputs: [reviewed, unreviewed], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.hasPrefix("unreviewed.png") == true)
+    #expect(report.outputs.count == 1)
+    let output = try #require(report.outputs.first)
+    #expect(output.pathExtension == "png")
+    #expect(CGImageSourceCreateWithURL(output as CFURL, nil) != nil)
+    #expect(try Data(contentsOf: reviewed) == Data(contentsOf: unreviewed))
+}
+
 @Test func compressWritesSmallerPlayableMP4() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
