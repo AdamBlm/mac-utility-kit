@@ -114,3 +114,85 @@ private func writeVideoFixture(to url: URL) async throws {
     await writer.finishWriting()
     try #require(writer.status == .completed)
 }
+
+@Test func pageRangesPreserveUserOrderAndRejectInvalidPages() throws {
+    #expect(try PageSelection.indices("5, 1, 3–4, 1", pageCount: 5) == [4, 0, 2, 3])
+    #expect(try PageSelection.indices("none", pageCount: 5).isEmpty)
+    #expect(throws: ToolError.self) { try PageSelection.indices("6", pageCount: 5) }
+    #expect(throws: ToolError.self) { try PageSelection.indices("4-2", pageCount: 5) }
+}
+
+@Test func mergeAppliesSelectionPerSource() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appendingPathComponent("first.pdf")
+    let second = folder.appendingPathComponent("second.pdf")
+    try writePDF(widths: [100, 150, 200], to: first)
+    try writePDF(widths: [300, 400], to: second)
+    var options = ToolOptions()
+    options.pageRanges = ["3, 1", "2"]
+    options.pdfOutputName = "Chosen"
+    let report = try await ToolRunner.run(
+        .mergePDFs, inputs: [first, second], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let output = try #require(report.outputs.first)
+    let pdf = try #require(PDFDocument(url: output))
+    #expect(output.lastPathComponent == "Chosen.pdf")
+    #expect(pdf.pageCount == 3)
+    let widths = (0..<pdf.pageCount).compactMap { pdf.page(at: $0)?.bounds(for: .mediaBox).width }
+    #expect(widths == [200, 100, 400])
+}
+
+private func writePDF(widths: [Int], to url: URL) throws {
+    let context = try #require(CGContext(url as CFURL, mediaBox: nil, nil))
+    for width in widths {
+        var box = CGRect(x: 0, y: 0, width: width, height: 100)
+        let data = Data(bytes: &box, count: MemoryLayout<CGRect>.size)
+        context.beginPDFPage([kCGPDFContextMediaBox: data] as CFDictionary)
+        context.fill(box)
+        context.endPDFPage()
+    }
+    context.closePDF()
+}
+
+@Test func exactImageFillMatchesPreviewAndSelectedFormat() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try imageFixture(in: folder)
+    var options = ToolOptions()
+    options.imageSizing = .dimensions
+    options.imageFit = .fill
+    options.imageWidth = 30
+    options.imageHeight = 30
+    options.imageFormat = .jpg
+    #expect(try ToolRunner.imagePreview(source, longestEdge: 0, options: options) == "30 × 30")
+    let report = try await ToolRunner.run(
+        .resizeImages, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let output = try #require(report.outputs.first)
+    let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+    #expect(output.pathExtension == "jpg")
+    #expect(image.width == 30 && image.height == 30)
+}
+
+@Test func videoSampleAndExportUseSelectedFormat() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.mov")
+    try await writeVideoFixture(to: source)
+    var options = ToolOptions()
+    options.videoFormat = .mov
+    options.videoQuality = .smaller
+    options.keepLargerVideos = true
+    let sample = try await ToolRunner.sampleVideo(source, destination: folder, options: options)
+    #expect(sample.url.pathExtension == "mov")
+    #expect(sample.estimatedBytes != nil)
+    let report = try await ToolRunner.run(
+        .compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let output = try #require(report.outputs.first)
+    #expect(output.pathExtension == "mov")
+    #expect(try await AVURLAsset(url: output).load(.isPlayable))
+    #expect(report.summaries.count == 1)
+}
