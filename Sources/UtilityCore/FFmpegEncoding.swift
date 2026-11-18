@@ -23,8 +23,10 @@ enum FFmpegEncoding {
         if container == .webm {
             // Opus mapping family 1 uses Vorbis speaker positions. Normalize
             // side-surround aliases to its standard layouts before encoding.
+            // Put the resampler first so it can absorb changes between the
+            // probed layout and the decoder's actual frames on older FFmpeg.
             arguments += ["-mapping_family", "1", "-af",
-                          "aformat=channel_layouts=mono|stereo|3.0|quad|5.0|5.1|6.1|7.1"]
+                          "aresample,aformat=channel_layouts=mono|stereo|3.0|quad|5.0|5.1|6.1|7.1"]
         }
         switch advanced.rateControl {
         case .preset:
