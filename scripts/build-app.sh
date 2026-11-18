@@ -4,7 +4,8 @@ cd "$(dirname "$0")/.."
 swift build -c release
 binary_directory="$(swift build -c release --show-bin-path)"
 app="build/Mac Utility Kit.app"
-mkdir -p "$app/Contents/MacOS"
+mkdir -p "$app/Contents/MacOS" "$app/Contents/Resources"
+./scripts/build-icon.sh assets/branding/mac-utility-kit.svg "$app/Contents/Resources/AppIcon.icns"
 cp "$binary_directory/MacUtilityKit" "$app/Contents/MacOS/"
 cat > "$app/Contents/Info.plist" <<'PLIST'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -14,6 +15,7 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
     <key>CFBundleExecutable</key><string>MacUtilityKit</string>
     <key>CFBundleIdentifier</key><string>app.macutilitykit.preview</string>
     <key>CFBundleName</key><string>Mac Utility Kit</string>
+    <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleShortVersionString</key><string>0.0.1</string>
     <key>CFBundleVersion</key><string>1</string>

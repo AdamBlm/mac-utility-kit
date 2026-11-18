@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="1024" viewBox="0 0 1024 1024" role="img" aria-labelledby="title description">
+  <title id="title">Mac Utility Kit</title>
+  <desc id="description">A folded ivory U with a removable lavender tile on an indigo field.</desc>
+  <defs>
+    <linearGradient id="field" x1="0" y1="0" x2="85%" y2="100%" gradientUnits="objectBoundingBox">
+      <stop stop-color="#7779CA"/>
+      <stop offset=".52" stop-color="#5355A8"/>
+      <stop offset="1" stop-color="#393B7B"/>
+    </linearGradient>
+    <linearGradient id="face" x2="32%" y2="100%">
+      <stop stop-color="#FFFFFF"/>
+      <stop offset="1" stop-color="#ECECFC"/>
+    </linearGradient>
+    <linearGradient id="fold" x2="100%" y2="40%">
+      <stop stop-color="#AAADDE"/>
+      <stop offset="1" stop-color="#D5D7F7"/>
+    </linearGradient>
+  </defs>
+  <rect x="80" y="82" width="864" height="864" rx="196" fill="#33346C"/>
+  <rect x="80" y="78" width="864" height="864" rx="196" fill="url(#field)"/>
+  <rect x="82" y="80" width="860" height="860" rx="194" fill="none" stroke="#FFFFFF" stroke-opacity=".14" stroke-width="3"/>
+  <g transform="translate(0 42)">
+    <path fill="url(#fold)" d="M505 604 654 519V413l116-67v199q0 27-23 40L534 708q-22 13-44 0l-74-43z"/>
+    <path fill="url(#face)" d="M254 325q0-12 11-18l87-50q17-10 17 10v236q0 17 15 26l154 89v75q0 24-20 22-9-1-19-7L278 581q-24-14-24-42z"/>
+    <path fill="#C9CAFF" d="m654 362 116-67v-78q0-16-14-8l-91 53q-11 6-11 19z"/>
+  </g>
+</svg>

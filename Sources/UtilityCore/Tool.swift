@@ -1,5 +1,15 @@
 import UniformTypeIdentifiers
 
+public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
+    case images = "Images"
+    case documents = "Documents"
+    case video = "Video"
+    case audio = "Audio"
+
+    public var id: Self { self }
+    public var title: String { rawValue }
+}
+
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
     case convertImages, compressImages, removeMetadata
@@ -31,12 +41,14 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         }
     }
 
-    public var category: String {
+    public var category: String { group.title }
+
+    public var group: ToolCategory {
         switch self {
-        case .resizeImages, .convertImages, .compressImages, .removeMetadata: "Images"
-        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages: "Documents"
-        case .compressVideo, .convertVideo, .mediaInfo: "Video"
-        case .extractAudio: "Audio"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata: .images
+        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages: .documents
+        case .compressVideo, .convertVideo, .mediaInfo: .video
+        case .extractAudio: .audio
         }
     }
 
