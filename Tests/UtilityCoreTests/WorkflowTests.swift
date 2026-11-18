@@ -267,3 +267,28 @@ func ffmpegConstantQualityKeeps4KAndOrientation() async throws {
         }
     }
 }
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
+func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try imageFixture(in: folder)
+    let original = try Data(contentsOf: source)
+    var options = ToolOptions()
+    options.imageMagickExecutable = URL(fileURLWithPath: executable)
+    options.imageSizing = .dimensions
+    options.imageFit = .fill
+    options.imageWidth = 30
+    options.imageHeight = 30
+    let report = try await ToolRunner.run(
+        .resizeImages, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+    #expect(image.width == 30 && image.height == 30)
+    #expect(try Data(contentsOf: source) == original)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: output.deletingLastPathComponent().path) == [output.lastPathComponent])
+}

@@ -59,6 +59,7 @@ public struct ToolOptions: Sendable {
     public var videoCodec: VideoCodec = .automatic
     public var videoQuality: VideoQuality = .balanced
     public var keepLargerVideos = false
+    public var imageMagickExecutable: URL?
     public var imageSizing: ImageSizing = .longestEdge
     public var imageFit: ImageFit = .fit
     public var imageFormat: ImageFormat = .png

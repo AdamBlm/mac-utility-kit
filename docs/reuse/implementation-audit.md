@@ -1,0 +1,13 @@
+# Upstream reuse in the current app
+
+| Area | Reuse decision | Remaining app responsibility |
+| --- | --- | --- |
+| Resize Images | The native path delegates decoding, EXIF orientation, raster drawing, and file writing to Image I/O and Core Graphics. The optional ImageMagick 7 path delegates resizing, center-crop, and encoding directly to ImageMagick. | Share the sizing rules and preview between both engines. Validate the output dimensions before publishing. Keep input and output staging in the app. |
+| Merge PDFs | PDFKit loads, unlocks, renders, and merges pages in one workflow that also accepts images. qpdf remains a candidate for PDF-only document structure operations. Introducing it for this workflow would still require an image-to-PDF path and PDFKit thumbnails, plus a new executable and parity tests for locked and mixed inputs. | The app owns selection syntax, source order, names, and preview. Whole-document structure such as outlines and tags needs dedicated evaluation before making preservation claims. |
+| Compress Video | FFmpeg directly encodes with x264 and x265 when the user selects it. The native AVFoundation path gives a no-setup option with source-size encoding. HandBrake informs the separate sizing and quality controls. | Select codec and quality, orchestrate local batches and previews, and validate output resolution before publishing. |
+| UI and jobs | SwiftUI, AppKit, and Foundation supply navigation, file pickers, Finder integration, process launch, and file operations. | Keep per-tool UI, job state, staging, and result reporting in the app. These behaviors connect the engines and user workflows. |
+| Build and tests | SwiftPM builds and runs Swift Testing fixtures. GitHub Actions and Apple tooling build and verify the local app bundle. | Maintain representative output fixtures and CI wiring. No third-party engine is bundled. |
+
+References include [ImageMagick resize and crop geometry](https://usage.imagemagick.org/resize/), [PDFKit](https://developer.apple.com/documentation/pdfkit), [qpdf page selection](https://qpdf.readthedocs.io/en/stable/cli.html#page-selection), [FFmpeg codec options](https://ffmpeg.org/ffmpeg-codecs.html), and [HandBrake quality settings](https://handbrake.fr/docs/en/latest/technical/video-cq-vs-abr.html).
+
+To run the engine integration fixtures, set `MAC_UTILITY_MAGICK_TEST` to the installed `magick` binary and `MAC_UTILITY_FFMPEG_TEST` to an FFmpeg binary that includes libx264 and libx265, then run `swift test`. The fixtures verify actual output sizes, PDF page order, video resolution and orientation, original-file preservation, and staging cleanup.

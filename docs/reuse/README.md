@@ -14,6 +14,9 @@ A repository can supply a ready-made operation, an implementation to study, or a
 
 The map is based on upstream source and documentation. Candidates have yet to be built or tested together.
 
+See the [implementation audit](implementation-audit.md) for the engines the current app uses and the reasoning behind those choices.
+
+
 ## Upstream maturity
 
 The [candidate audit](upstream-audit.md) records adoption, forks, last push, and release or tag evidence. This pass uses roughly 500 GitHub stars as an adoption signal, alongside ownership, release history, and fit. Smaller repositories qualify when they ship as part of an established project or have a clear specialist role and maintenance evidence. A recent push alone can be a mirror sync, and a popular repo can still be dormant or unsuitable for embedding.

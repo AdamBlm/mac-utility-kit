@@ -155,12 +155,7 @@ private struct Workspace: View {
                         } else {
                             Text("macOS encoder")
                         }
-                        Button("Choose FFmpeg…") {
-                            let panel = NSOpenPanel()
-                            if panel.runModal() == .OK {
-                                drafts[tool, default: Draft()].options.ffmpegExecutable = panel.url
-                            }
-                        }
+                        Button("Choose FFmpeg…") { chooseExecutable(tool, \.ffmpegExecutable) }
                     }
                     Text(draft.options.ffmpegExecutable == nil
                          ? "Quality sets a target bitrate. Exports keep the source resolution."
@@ -274,6 +269,15 @@ private struct Workspace: View {
             }
         }
         Toggle("Allow upscaling", isOn: option(tool, \.upscale))
+        HStack {
+            if draft.options.imageMagickExecutable != nil {
+                Text("ImageMagick")
+                Button("Use macOS image engine") { drafts[tool, default: Draft()].options.imageMagickExecutable = nil }
+            } else {
+                Text("macOS image engine")
+            }
+            Button("Choose ImageMagick…") { chooseExecutable(tool, \.imageMagickExecutable) }
+        }
         Picker("Output format", selection: option(tool, \.imageFormat)) {
             ForEach(ImageFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
         }
@@ -281,6 +285,13 @@ private struct Workspace: View {
             Slider(value: option(tool, \.imageQuality), in: 0.1...1) {
                 Text("Quality \(draft.options.imageQuality.formatted(.percent.precision(.fractionLength(0))))")
             }
+        }
+    }
+
+    private func chooseExecutable(_ tool: Tool, _ path: WritableKeyPath<ToolOptions, URL?>) {
+        let panel = NSOpenPanel()
+        if panel.runModal() == .OK {
+            drafts[tool, default: Draft()].options[keyPath: path] = panel.url
         }
     }
 
