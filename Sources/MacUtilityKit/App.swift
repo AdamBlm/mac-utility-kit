@@ -6,7 +6,8 @@ import UtilityCore
 @main
 struct MacUtilityKitApp: App {
     var body: some Scene {
-        WindowGroup { Workspace() }
+        WindowGroup("Mac Utility Kit") { Workspace() }
+            .windowToolbarStyle(.unified(showsTitle: true))
             .defaultSize(width: 940, height: 690)
     }
 }
@@ -46,12 +47,7 @@ private struct Workspace: View {
 
     var body: some View {
         NavigationSplitView {
-            VStack(alignment: .leading, spacing: 18) {
-                Label("Mac Utility Kit", systemImage: "square.stack.3d.up")
-                    .font(.system(size: 15, weight: .semibold))
-                    .padding(.horizontal, 6)
-                    .accessibilityAddTraits(.isHeader)
-
+            VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass")
                         .foregroundStyle(.secondary)
@@ -108,7 +104,7 @@ private struct Workspace: View {
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)
-            .padding(.top, 20)
+            .padding(.top, 12)
             .navigationSplitViewColumnWidth(min: 170, ideal: 184, max: 220)
         } detail: {
             if let selection {
