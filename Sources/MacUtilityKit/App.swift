@@ -7,7 +7,7 @@ import UtilityCore
 struct MacUtilityKitApp: App {
     var body: some Scene {
         WindowGroup { Workspace() }
-            .defaultSize(width: 860, height: 600)
+            .defaultSize(width: 940, height: 690)
     }
 }
 
@@ -24,6 +24,7 @@ private struct Draft {
 private struct Workspace: View {
     @State private var selection: Tool? = .resizeImages
     @State private var search = ""
+    @State private var dropTarget: Tool?
     @FocusState private var searching: Bool
     @State private var drafts: [Tool: Draft] = [:]
     @State private var job: Task<Void, Never>?
@@ -33,32 +34,81 @@ private struct Workspace: View {
     @State private var reports: [Tool: JobReport] = [:]
     @State private var errors: [Tool: String] = [:]
 
+    @Environment(\.colorScheme) private var colorScheme
+    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
+    private var visibleTools: [Tool] {
+        Tool.allCases.filter {
+            search.isEmpty || $0.title.localizedCaseInsensitiveContains(search)
+                || $0.category.localizedCaseInsensitiveContains(search)
+        }
+    }
+
     var body: some View {
         NavigationSplitView {
-            VStack(alignment: .leading) {
-                HStack {
-                    TextField("Search tools", text: $search)
+            VStack(alignment: .leading, spacing: 18) {
+                Label("Mac Utility Kit", systemImage: "square.stack.3d.up")
+                    .font(.system(size: 15, weight: .semibold))
+                    .padding(.horizontal, 6)
+                    .accessibilityAddTraits(.isHeader)
+
+                HStack(spacing: 7) {
+                    Image(systemName: "magnifyingglass")
+                        .foregroundStyle(.secondary)
+                        .accessibilityHidden(true)
+                    TextField("Find a tool", text: $search)
+                        .textFieldStyle(.plain)
                         .focused($searching)
-                    Button { searching = true } label: {
-                        Image(systemName: "magnifyingglass")
-                    }
-                    .keyboardShortcut("k")
-                    .help("Search tools")
-                }
-                .padding(12)
-                List(selection: $selection) {
-                    ForEach(Tool.allCases.filter {
-                        search.isEmpty || $0.title.localizedCaseInsensitiveContains(search)
-                    }) { tool in
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(tool.title)
-                            Text(tool.category).font(.caption).foregroundStyle(.secondary)
+                        .onSubmit {
+                            if let first = visibleTools.first {
+                                selection = first
+                                searching = false
+                            }
                         }
-                        .tag(tool)
+                    Button {
+                        searching = true
+                    } label: {
+                        Text("⌘K").font(.system(size: 10, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.plain)
+                    .keyboardShortcut("k")
+                    .accessibilityLabel("Focus tool search")
+                }
+                .padding(.horizontal, 9)
+                .padding(.vertical, 8)
+                .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+
+                if visibleTools.isEmpty {
+                    Text("No matching tools")
+                        .font(.callout).foregroundStyle(.secondary)
+                        .padding(.horizontal, 6)
+                } else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        ForEach(visibleTools) { tool in
+                            Button {
+                                selection = tool
+                            } label: {
+                                Label(tool.title, systemImage: tool.symbol)
+                                    .font(.system(size: 13, weight: selection == tool ? .semibold : .regular))
+                                    .labelStyle(.fixedIcon)
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .padding(.horizontal, 10)
+                                    .padding(.vertical, 9)
+                                    .foregroundStyle(selection == tool ? palette.accent : .primary)
+                                    .background(selection == tool ? palette.wash : .clear,
+                                                in: RoundedRectangle(cornerRadius: 8))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityAddTraits(selection == tool ? .isSelected : [])
+                        }
                     }
                 }
+                Spacer(minLength: 0)
             }
-            .navigationSplitViewColumnWidth(min: 190, ideal: 220)
+            .padding(.horizontal, 14)
+            .padding(.top, 20)
+            .navigationSplitViewColumnWidth(min: 190, ideal: 215, max: 245)
         } detail: {
             if let selection {
                 editor(for: selection)
@@ -66,6 +116,7 @@ private struct Workspace: View {
                 ContentUnavailableView("Choose a tool", systemImage: "wrench.and.screwdriver")
             }
         }
+        .tint(palette.accent)
         .toolbar {
             if let runningTool {
                 ToolbarItem {
@@ -81,144 +132,199 @@ private struct Workspace: View {
 
     private func editor(for tool: Tool) -> some View {
         let draft = drafts[tool, default: Draft()]
-        return ScrollView {
-            VStack(alignment: .leading, spacing: 20) {
-                Text(tool.title).font(.largeTitle.weight(.semibold))
-                    .accessibilityAddTraits(.isHeader)
-                VStack(alignment: .leading, spacing: 12) {
-                    Button("Choose files…") { chooseInputs(for: tool) }
-                    if draft.inputs.isEmpty {
-                        Label("Drop files here to get started", systemImage: "tray.and.arrow.down")
+        return VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    HStack(spacing: 15) {
+                        ToolEmblem(tool: tool, palette: palette)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(tool.title)
+                                .font(.system(size: 29, weight: .semibold))
+                                .tracking(-0.65)
+                                .accessibilityAddTraits(.isHeader)
+                            Text(tool.subtitle).foregroundStyle(.secondary)
+                        }
+                    }
+                    .padding(.bottom, 4)
+
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack {
+                            Text(draft.inputs.isEmpty ? "Source files" : "Source files · \(draft.inputs.count)")
+                                .font(.system(size: 13, weight: .semibold))
+                                .accessibilityAddTraits(.isHeader)
+                            Spacer()
+                            if !draft.inputs.isEmpty {
+                                Button("Add files…", systemImage: "plus") { chooseInputs(for: tool) }
+                                    .buttonStyle(.plain)
+                                    .foregroundStyle(palette.accent)
+                            }
+                        }
+                        VStack(alignment: .leading, spacing: 0) {
+                            if draft.inputs.isEmpty {
+                                dropWell(for: tool)
+                            } else {
+                                ForEach(Array(draft.inputs.enumerated()), id: \.offset) { index, input in
+                                    VStack(alignment: .leading, spacing: 8) {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: tool.symbol)
+                                                .foregroundStyle(palette.accent)
+                                                .frame(width: 20)
+                                                .accessibilityHidden(true)
+                                            VStack(alignment: .leading, spacing: 4) {
+                                                Text(input.lastPathComponent).lineLimit(1)
+                                                if tool == .resizeImages {
+                                                    Text((try? ToolRunner.imagePreview(input, longestEdge: draft.pixels, options: draft.options)) ?? "Check image or sizing options")
+                                                        .font(.caption).foregroundStyle(.secondary)
+                                                }
+                                            }
+                                            Spacer()
+                                            if tool == .mergePDFs {
+                                                Button("Move up", systemImage: "arrow.up") {
+                                                    var draft = drafts[tool, default: Draft()]
+                                                    draft.inputs.swapAt(index, index - 1)
+                                                    let current = draft.ranges[index]
+                                                    draft.ranges[index] = draft.ranges[index - 1]
+                                                    draft.ranges[index - 1] = current
+                                                    let password = draft.passwords[index]
+                                                    draft.passwords[index] = draft.passwords[index - 1]
+                                                    draft.passwords[index - 1] = password
+                                                    drafts[tool] = draft
+                                                }.labelStyle(.iconOnly).disabled(index == 0)
+                                            }
+                                            Button("Remove", systemImage: "minus.circle") {
+                                                var draft = drafts[tool, default: Draft()]
+                                                draft.inputs.remove(at: index)
+                                                draft.ranges = afterRemoving(index, from: draft.ranges)
+                                                draft.passwords = afterRemoving(index, from: draft.passwords)
+                                                drafts[tool] = draft
+                                            }.labelStyle(.iconOnly)
+                                        }
+                                        if tool == .mergePDFs {
+                                            pageControls(input, index: index, tool: tool)
+                                                .padding(.leading, 30)
+                                        }
+                                    }
+                                    .padding(.horizontal, 14)
+                                    .padding(.vertical, 10)
+                                    if index < draft.inputs.count - 1 { Divider().padding(.leading, 44) }
+                                }
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(draft.inputs.isEmpty ? palette.wash : palette.surface,
+                                    in: RoundedRectangle(cornerRadius: 16))
+                        .overlay {
+                            RoundedRectangle(cornerRadius: 16)
+                                .strokeBorder(dropTarget == tool ? palette.accent : palette.line,
+                                              style: StrokeStyle(lineWidth: 1, dash: draft.inputs.isEmpty ? [5, 4] : []))
+                                .allowsHitTesting(false)
+                        }
+                        .dropDestination(for: URL.self) { urls, _ in
+                            let files = urls.filter(\.isFileURL)
+                            drafts[tool, default: Draft()].inputs.append(contentsOf: files)
+                            return !files.isEmpty
+                        } isTargeted: { targeted in
+                            if targeted { dropTarget = tool }
+                            else if dropTarget == tool { dropTarget = nil }
+                        }
+                    }
+
+                    WorkspaceSection("Settings", palette: palette) {
+                        switch tool {
+                        case .resizeImages:
+                            imageControls(tool, draft: draft)
+                        case .compressVideo:
+                            videoControls(tool, draft: draft)
+                        case .mergePDFs:
+                            SettingRow("Output filename") {
+                                TextField("Output filename", text: Binding(
+                                    get: { drafts[tool, default: Draft()].outputName },
+                                    set: { drafts[tool, default: Draft()].outputName = $0 }
+                                ))
+                                .labelsHidden()
+                            }
+                        }
+                    }
+                    if let error = errors[tool] {
+                        Label(error, systemImage: "info.circle")
                             .foregroundStyle(.secondary)
-                    } else {
-                        ForEach(Array(draft.inputs.enumerated()), id: \.offset) { index, input in
-                            HStack {
-                                VStack(alignment: .leading) {
-                                    Text(input.lastPathComponent).lineLimit(1)
-                                    if tool == .resizeImages {
-                                        Text((try? ToolRunner.imagePreview(input, longestEdge: draft.pixels, options: draft.options)) ?? "Check image or sizing options")
-                                            .font(.caption).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                    }
+                    if let report = reports[tool] {
+                        WorkspaceSection("Results", palette: palette) {
+                            ForEach(Array(report.summaries.enumerated()), id: \.offset) { _, summary in
+                                Text(summary).font(.callout).textSelection(.enabled)
+                            }
+                            ForEach(report.outputs, id: \.self) { output in
+                                HStack {
+                                    Image(systemName: "checkmark.circle.fill")
+                                        .foregroundStyle(palette.accent)
+                                        .accessibilityHidden(true)
+                                    Text(output.lastPathComponent).lineLimit(1)
+                                    Spacer()
+                                    Button("Open") { NSWorkspace.shared.open(output) }
+                                    Button("Reveal") {
+                                        NSWorkspace.shared.activateFileViewerSelecting([output])
                                     }
                                 }
-                                Spacer()
-                                if tool == .mergePDFs {
-                                    Button("Move up", systemImage: "arrow.up") {
-                                        var draft = drafts[tool, default: Draft()]
-                                        draft.inputs.swapAt(index, index - 1)
-                                        let current = draft.ranges[index]
-                                        draft.ranges[index] = draft.ranges[index - 1]
-                                        draft.ranges[index - 1] = current
-                                        let password = draft.passwords[index]
-                                        draft.passwords[index] = draft.passwords[index - 1]
-                                        draft.passwords[index - 1] = password
-                                        drafts[tool] = draft
-                                    }.labelStyle(.iconOnly).disabled(index == 0)
-                                }
-                                Button("Remove", systemImage: "minus.circle") {
-                                    var draft = drafts[tool, default: Draft()]
-                                    draft.inputs.remove(at: index)
-                                    draft.ranges = afterRemoving(index, from: draft.ranges)
-                                    draft.passwords = afterRemoving(index, from: draft.passwords)
-                                    drafts[tool] = draft
-                                }.labelStyle(.iconOnly)
                             }
-                            if tool == .mergePDFs {
-                                pageControls(input, index: index, tool: tool)
+                            ForEach(Array(report.failures.enumerated()), id: \.offset) { _, failure in
+                                Label(failure, systemImage: "exclamationmark.circle")
+                                    .foregroundStyle(.secondary).textSelection(.enabled)
                             }
                         }
                     }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(16)
-                .background(.quaternary.opacity(0.45), in: RoundedRectangle(cornerRadius: 12))
-                .dropDestination(for: URL.self) { urls, _ in
-                    let files = urls.filter(\.isFileURL)
-                    drafts[tool, default: Draft()].inputs.append(contentsOf: files)
-                    return !files.isEmpty
-                }
-
-                if tool == .resizeImages { imageControls(tool, draft: draft) }
-                if tool == .compressVideo {
-                    Picker("Output format", selection: option(tool, \.videoFormat)) {
-                        ForEach(VideoFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
-                    }
-                    Picker("Codec", selection: option(tool, \.videoCodec)) {
-                        ForEach(VideoCodec.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    Picker("Compression quality", selection: option(tool, \.videoQuality)) {
-                        ForEach(VideoQuality.allCases, id: \.self) { Text($0.rawValue).tag($0) }
-                    }
-                    HStack {
-                        if draft.options.ffmpegExecutable != nil {
-                            Text("FFmpeg · Constant quality")
-                            Button("Use macOS encoder") { drafts[tool, default: Draft()].options.ffmpegExecutable = nil }
-                        } else {
-                            Text("macOS encoder")
-                        }
-                        Button("Choose FFmpeg…") { chooseExecutable(tool, \.ffmpegExecutable) }
-                    }
-                    Text(draft.options.ffmpegExecutable == nil
-                         ? "Quality sets a target bitrate. Exports keep the source resolution."
-                         : "Quality sets a constant-quality target. Requires FFmpeg with libx264 or libx265.")
-                        .font(.caption).foregroundStyle(.secondary)
-                    Toggle("Keep exports that are not smaller", isOn: option(tool, \.keepLargerVideos))
-                    HStack {
-                        Button("Create 5-second sample") { startSample(draft) }
-                            .disabled(draft.inputs.isEmpty || job != nil)
-                        if let sample {
-                            Button("Open sample") { NSWorkspace.shared.open(sample.url) }
-                            if let bytes = sample.estimatedBytes {
-                                Text("Estimated full size: " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
-                                    .foregroundStyle(.secondary)
-                            }
-                        }
-                    }
-                }
-                if tool == .mergePDFs {
-                    TextField("Output name", text: Binding(
-                        get: { drafts[tool, default: Draft()].outputName },
-                        set: { drafts[tool, default: Draft()].outputName = $0 }
-                    ))
-                }
-
-                HStack {
-                    Button("Run") { start(tool, draft: draft) }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(draft.inputs.isEmpty || job != nil)
-                    if tool == .mergePDFs {
-                        Button("Preview merge") { start(tool, draft: draft, preview: true) }
-                            .disabled(draft.inputs.isEmpty || job != nil)
-                    }
-                    Button("Output folder…") { chooseDestination(for: tool) }
-                    Text(draft.destination.lastPathComponent).foregroundStyle(.secondary)
-                }
-                if let error = errors[tool] {
-                    Text(error).foregroundStyle(.secondary)
-                        .textSelection(.enabled)
-                }
-                if let report = reports[tool] {
-                    ForEach(Array(report.summaries.enumerated()), id: \.offset) { _, summary in
-                        Text(summary).font(.callout).textSelection(.enabled)
-                    }
-                    ForEach(report.outputs, id: \.self) { output in
-                        HStack {
-                            Text(output.lastPathComponent)
-                            Spacer()
-                            Button("Open") { NSWorkspace.shared.open(output) }
-                            Button("Reveal") {
-                                NSWorkspace.shared.activateFileViewerSelecting([output])
-                            }
-                        }
-                    }
-                    ForEach(Array(report.failures.enumerated()), id: \.offset) { _, failure in
-                        Text(failure).foregroundStyle(.secondary).textSelection(.enabled)
-                    }
-                }
+                .frame(maxWidth: 660, alignment: .leading)
+                .padding(.horizontal, 32)
+                .padding(.vertical, 30)
+                .frame(maxWidth: .infinity, alignment: .top)
             }
-            .frame(maxWidth: 740, alignment: .leading)
-            .padding(28)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .background(palette.canvas)
+            Divider()
+            HStack(spacing: 12) {
+                Button {
+                    chooseDestination(for: tool)
+                } label: {
+                    Label(draft.destination.lastPathComponent, systemImage: "folder")
+                        .lineLimit(1)
+                }
+                .help("Choose output folder")
+                .accessibilityLabel("Output folder: \(draft.destination.lastPathComponent)")
+                Spacer()
+                if tool == .mergePDFs {
+                    Button("Preview") { start(tool, draft: draft, preview: true) }
+                        .disabled(draft.inputs.isEmpty || job != nil)
+                }
+                Button(tool.title) { start(tool, draft: draft) }
+                    .buttonStyle(.borderedProminent)
+                    .keyboardShortcut(.return, modifiers: .command)
+                    .disabled(draft.inputs.isEmpty || job != nil)
+            }
+            .controlSize(.large)
+            .frame(maxWidth: 660)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity)
+            .background(palette.surface)
         }
+    }
+
+    private func dropWell(for tool: Tool) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: "tray.and.arrow.down")
+                .font(.system(size: 25, weight: .medium))
+                .foregroundStyle(palette.accent)
+                .accessibilityHidden(true)
+            Text(tool.dropTitle).font(.system(size: 14, weight: .semibold))
+            Button("Choose files…") { chooseInputs(for: tool) }
+                .foregroundStyle(palette.accent)
+                .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 23)
+        .background(dropTarget == tool ? palette.accent.opacity(0.12) : .clear,
+                    in: RoundedRectangle(cornerRadius: 16))
     }
 
     private func afterRemoving(_ index: Int, from values: [Int: String]) -> [Int: String] {
@@ -248,44 +354,133 @@ private struct Workspace: View {
 
     @ViewBuilder
     private func imageControls(_ tool: Tool, draft: Draft) -> some View {
-        Picker("Resize by", selection: option(tool, \.imageSizing)) {
-            ForEach(ImageSizing.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+        SettingRow("Resize by") {
+            Picker("Resize by", selection: option(tool, \.imageSizing)) {
+                ForEach(ImageSizing.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
         }
+
         switch draft.options.imageSizing {
         case .longestEdge:
-            TextField("Longest edge (pixels)", value: Binding(
-                get: { drafts[tool, default: Draft()].pixels },
-                set: { drafts[tool, default: Draft()].pixels = $0 }
-            ), format: .number.grouping(.never))
+            SettingRow("Longest edge") {
+                HStack {
+                    TextField("Longest edge (pixels)", value: Binding(
+                        get: { drafts[tool, default: Draft()].pixels },
+                        set: { drafts[tool, default: Draft()].pixels = $0 }
+                    ), format: .number.grouping(.never))
+                    .labelsHidden()
+                    Text("px").foregroundStyle(.secondary)
+                }
+            }
         case .percentage:
-            TextField("Percentage", value: option(tool, \.imagePercentage), format: .number)
+            SettingRow("Scale") {
+                HStack {
+                    TextField("Percentage", value: option(tool, \.imagePercentage), format: .number)
+                        .labelsHidden()
+                    Text("%").foregroundStyle(.secondary)
+                }
+            }
         case .dimensions:
-            HStack {
-                TextField("Width", value: option(tool, \.imageWidth), format: .number)
-                TextField("Height", value: option(tool, \.imageHeight), format: .number)
+            SettingRow("Dimensions") {
+                HStack {
+                    TextField("Width", value: option(tool, \.imageWidth), format: .number)
+                        .accessibilityLabel("Width in pixels")
+                    Text("×").foregroundStyle(.secondary)
+                    TextField("Height", value: option(tool, \.imageHeight), format: .number)
+                        .accessibilityLabel("Height in pixels")
+                    Text("px").foregroundStyle(.secondary)
+                }
             }
-            Picker("Aspect ratio", selection: option(tool, \.imageFit)) {
-                ForEach(ImageFit.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            SettingRow("Aspect ratio") {
+                Picker("Aspect ratio", selection: option(tool, \.imageFit)) {
+                    ForEach(ImageFit.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+                .pickerStyle(.segmented)
             }
         }
-        Toggle("Allow upscaling", isOn: option(tool, \.upscale))
-        HStack {
-            if draft.options.imageMagickExecutable != nil {
-                Text("ImageMagick")
-                Button("Use macOS image engine") { drafts[tool, default: Draft()].options.imageMagickExecutable = nil }
-            } else {
-                Text("macOS image engine")
+
+        SettingRow("Output format") {
+            Picker("Output format", selection: option(tool, \.imageFormat)) {
+                ForEach(ImageFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
             }
-            Button("Choose ImageMagick…") { chooseExecutable(tool, \.imageMagickExecutable) }
-        }
-        Picker("Output format", selection: option(tool, \.imageFormat)) {
-            ForEach(ImageFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
+            .labelsHidden()
+            .pickerStyle(.segmented)
         }
         if draft.options.imageFormat == .jpg || draft.options.imageFormat == .heic {
-            Slider(value: option(tool, \.imageQuality), in: 0.1...1) {
-                Text("Quality \(draft.options.imageQuality.formatted(.percent.precision(.fractionLength(0))))")
+            SettingRow("Quality") {
+                HStack {
+                    Slider(value: option(tool, \.imageQuality), in: 0.1...1) { Text("Quality") }
+                        .labelsHidden()
+                    Text(draft.options.imageQuality.formatted(.percent.precision(.fractionLength(0))))
+                        .monospacedDigit().foregroundStyle(.secondary)
+                }
             }
         }
+
+        Divider()
+        Toggle("Allow upscaling", isOn: option(tool, \.upscale))
+        engineControls(tool, path: \.imageMagickExecutable, name: "ImageMagick", current: draft.options.imageMagickExecutable)
+    }
+
+    @ViewBuilder
+    private func videoControls(_ tool: Tool, draft: Draft) -> some View {
+        SettingRow("Output format") {
+            Picker("Output format", selection: option(tool, \.videoFormat)) {
+                ForEach(VideoFormat.allCases, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        }
+        SettingRow("Codec") {
+            Picker("Codec", selection: option(tool, \.videoCodec)) {
+                ForEach(VideoCodec.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        }
+        SettingRow("Quality") {
+            Picker("Compression quality", selection: option(tool, \.videoQuality)) {
+                ForEach(VideoQuality.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+            }
+            .labelsHidden()
+            .pickerStyle(.segmented)
+        }
+        Divider()
+        Toggle("Keep exports that are not smaller", isOn: option(tool, \.keepLargerVideos))
+        engineControls(tool, path: \.ffmpegExecutable, name: "FFmpeg", current: draft.options.ffmpegExecutable)
+        if draft.options.ffmpegExecutable != nil {
+            Text("Constant quality requires FFmpeg with libx264 or libx265.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        Divider()
+        HStack {
+            Button("Create 5-second sample", systemImage: "play.rectangle") { startSample(draft) }
+                .disabled(draft.inputs.isEmpty || job != nil)
+            if let sample {
+                Button("Open sample") { NSWorkspace.shared.open(sample.url) }
+                if let bytes = sample.estimatedBytes {
+                    Text("Estimated size: " + ByteCountFormatter.string(fromByteCount: bytes, countStyle: .file))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+            }
+        }
+    }
+
+    private func engineControls(
+        _ tool: Tool, path: WritableKeyPath<ToolOptions, URL?>, name: String, current: URL?
+    ) -> some View {
+        HStack(spacing: 10) {
+            Label(current == nil ? "macOS engine" : name, systemImage: "gearshape")
+                .foregroundStyle(.secondary)
+            Spacer(minLength: 0)
+            if current != nil {
+                Button("Use macOS") { drafts[tool, default: Draft()].options[keyPath: path] = nil }
+            }
+            Button("Choose \(name)…") { chooseExecutable(tool, path) }
+        }
+        .font(.callout)
     }
 
     private func chooseExecutable(_ tool: Tool, _ path: WritableKeyPath<ToolOptions, URL?>) {
