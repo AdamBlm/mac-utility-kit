@@ -51,6 +51,9 @@ public enum ImageFormat: String, CaseIterable, Sendable {
 }
 
 public struct ToolOptions: Sendable {
+    public var pdfSplit = PDFSplitOptions()
+    public var pdfOrganize = PDFOrganizeOptions()
+    public var pdfDelete = PDFDeleteOptions()
     public var pdfOutputName = "Merged"
     public var pdfPasswords: [String] = []
     public var pageRanges: [String] = []

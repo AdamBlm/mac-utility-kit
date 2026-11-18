@@ -1,0 +1,279 @@
+import AppKit
+import PDFKit
+import SwiftUI
+import UtilityCore
+
+struct PDFOrganizerView: View {
+    let document: PDFDocument
+    @Binding var pages: [PDFPageEdit]?
+    private let persistedHistory: Binding<PDFOrganizerHistory>?
+
+    @State private var localHistory = PDFOrganizerHistory()
+    @State private var selection: Set<Int> = []
+    @State private var showsRemoved = false
+    @State private var dragScope = UUID().uuidString
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(document: PDFDocument, pages: Binding<[PDFPageEdit]?>, history: Binding<PDFOrganizerHistory>? = nil) {
+        self.document = document
+        _pages = pages
+        persistedHistory = history
+    }
+
+    private var history: PDFOrganizerHistory {
+        get { persistedHistory?.wrappedValue ?? localHistory }
+        nonmutating set {
+            if let persistedHistory {
+                persistedHistory.wrappedValue = newValue
+            } else {
+                localHistory = newValue
+            }
+        }
+    }
+
+    private var layout: [OrganizerPage] {
+        if let current = history.current { return current }
+        let original = (0..<document.pageCount).map { OrganizerPage(number: $0 + 1) }
+        guard let pages else { return original }
+        let retained = pages.map { OrganizerPage(number: $0.pageNumber, quarterTurns: $0.quarterTurns) }
+        let numbers = Set(retained.map(\.number))
+        return retained + original.filter { !numbers.contains($0.number) }.map {
+            OrganizerPage(number: $0.number, removed: true)
+        }
+    }
+
+    var body: some View {
+        let retained = layout.filter { !$0.removed }
+        let removed = layout.filter(\.removed)
+        VStack(alignment: .leading, spacing: 10) {
+            ViewThatFits(in: .horizontal) {
+                HStack {
+                    historyButtons
+                    Spacer(minLength: 8)
+                    editButtons(retained: retained)
+                }
+                VStack(alignment: .leading, spacing: 6) {
+                    historyButtons
+                    editButtons(retained: retained)
+                }
+            }
+            if retained.isEmpty {
+                Text("Restore at least one page to export.")
+                    .foregroundStyle(.secondary)
+                    .font(.caption)
+            } else {
+                pageStrip(retained, acceptsReordering: true)
+            }
+            if !removed.isEmpty {
+                DisclosureGroup("\(removed.count) removed", isExpanded: $showsRemoved) {
+                    pageStrip(removed, acceptsReordering: false)
+                        .padding(.top, 6)
+                }
+            }
+            Text("\(retained.count) of \(document.pageCount) pages in output")
+                .font(.caption)
+                .foregroundStyle(.secondary)
+        }
+        .onChange(of: ObjectIdentifier(document)) { _, _ in
+            selection = []
+            showsRemoved = false
+            dragScope = UUID().uuidString
+        }
+    }
+
+    private var historyButtons: some View {
+        HStack(spacing: 6) {
+            Button("Undo", systemImage: "arrow.uturn.backward", action: undo)
+                .disabled(history.undo.isEmpty)
+            Button("Redo", systemImage: "arrow.uturn.forward", action: redo)
+                .disabled(history.redo.isEmpty)
+        }
+        .controlSize(.small)
+    }
+
+    private func editButtons(retained: [OrganizerPage]) -> some View {
+        let selectedIndex = selection.count == 1
+            ? retained.firstIndex { selection.contains($0.number) } : nil
+        let hasSelectedRetained = retained.contains { selection.contains($0.number) }
+        let hasSelectedRemoved = layout.contains { $0.removed && selection.contains($0.number) }
+
+        return HStack(spacing: 6) {
+            Button("Move earlier", systemImage: "arrow.left") {
+                moveSelection(by: -1)
+            }
+            .labelStyle(.iconOnly)
+            .help("Move selected page earlier")
+            .disabled(selectedIndex.map { $0 == 0 } ?? true)
+
+            Button("Move later", systemImage: "arrow.right") {
+                moveSelection(by: 1)
+            }
+            .labelStyle(.iconOnly)
+            .help("Move selected page later")
+            .disabled(selectedIndex.map { $0 == retained.count - 1 } ?? true)
+
+            Button("Rotate left", systemImage: "rotate.left") { rotate(by: -1) }
+                .labelStyle(.iconOnly)
+                .help("Rotate selected pages left")
+                .disabled(!hasSelectedRetained)
+
+            Button("Rotate right", systemImage: "rotate.right") { rotate(by: 1) }
+                .labelStyle(.iconOnly)
+                .help("Rotate selected pages right")
+                .disabled(!hasSelectedRetained)
+
+            if hasSelectedRemoved {
+                Button("Restore") { setRemoved(false) }
+            } else {
+                Button("Remove") { setRemoved(true) }
+                    .disabled(!hasSelectedRetained)
+            }
+        }
+        .controlSize(.small)
+    }
+
+    private func pageStrip(_ strip: [OrganizerPage], acceptsReordering: Bool) -> some View {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 8) {
+                ForEach(strip) { page in
+                    if acceptsReordering {
+                        thumbnail(page)
+                            .draggable("\(dragScope):\(page.number)")
+                            .dropDestination(for: String.self) { items, _ in
+                                guard items.count == 1,
+                                      let item = items.first, item.hasPrefix(dragScope + ":"),
+                                      let number = Int(item.dropFirst(dragScope.count + 1)),
+                                      number != page.number else { return false }
+                                return move(number, to: page.number)
+                            }
+                    } else {
+                        thumbnail(page)
+                    }
+                }
+            }
+            .padding(3)
+        }
+        .frame(height: 104)
+    }
+
+    private func thumbnail(_ page: OrganizerPage) -> some View {
+        let selected = selection.contains(page.number)
+        let palette = WorkspacePalette(dark: colorScheme == .dark)
+        let image = document.page(at: page.number - 1)?
+            .thumbnail(of: NSSize(width: 68, height: 68), for: .cropBox)
+
+        return Button {
+            if NSEvent.modifierFlags.contains(.command) {
+                if !selection.insert(page.number).inserted { selection.remove(page.number) }
+            } else {
+                selection = selection == [page.number] ? [] : [page.number]
+            }
+        } label: {
+            VStack(spacing: 4) {
+                if let image {
+                    Image(nsImage: image)
+                        .rotationEffect(.degrees(Double(page.quarterTurns) * 90))
+                        .frame(width: 68, height: 68)
+                }
+                Text("Page \(page.number)")
+                    .font(.caption)
+            }
+            .frame(width: 84, height: 94)
+            .background(selected ? palette.wash : palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8)
+                    .strokeBorder(selected ? palette.accent : palette.line)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Page \(page.number)\(page.removed ? ", removed" : "")")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .help("Click to select. Command-click to extend selection.")
+    }
+
+    private func moveSelection(by step: Int) {
+        guard selection.count == 1, let number = selection.first else { return }
+        let retained = layout.filter { !$0.removed }
+        guard let index = retained.firstIndex(where: { $0.number == number }),
+              retained.indices.contains(index + step) else { return }
+        _ = move(number, to: retained[index + step].number)
+    }
+
+    private func move(_ number: Int, to target: Int) -> Bool {
+        var next = layout
+        guard let from = next.firstIndex(where: { $0.number == number && !$0.removed }),
+              let to = next.firstIndex(where: { $0.number == target && !$0.removed }),
+              from != to else { return false }
+        next.insert(next.remove(at: from), at: to)
+        apply(next)
+        return true
+    }
+
+    private func rotate(by turns: Int) {
+        apply(layout.map { page in
+            var next = page
+            if !page.removed && selection.contains(page.number) {
+                next.quarterTurns = ((page.quarterTurns + turns) % 4 + 4) % 4
+            }
+            return next
+        })
+    }
+
+    private func setRemoved(_ removed: Bool) {
+        apply(layout.map { page in
+            var next = page
+            if selection.contains(page.number) { next.removed = removed }
+            return next
+        })
+        if removed { showsRemoved = true }
+    }
+
+    private func apply(_ next: [OrganizerPage]) {
+        let previous = layout
+        guard next != previous else { return }
+        var updated = history
+        updated.undo.append(previous)
+        updated.redo.removeAll()
+        publish(next, history: updated)
+    }
+
+    private func undo() {
+        let previous = layout
+        var updated = history
+        guard let next = updated.undo.popLast() else { return }
+        updated.redo.append(previous)
+        publish(next, history: updated)
+    }
+
+    private func redo() {
+        let previous = layout
+        var updated = history
+        guard let next = updated.redo.popLast() else { return }
+        updated.undo.append(previous)
+        publish(next, history: updated)
+    }
+
+    private func publish(_ next: [OrganizerPage], history updated: PDFOrganizerHistory) {
+        var updated = updated
+        updated.current = next
+        history = updated
+        pages = next.filter { !$0.removed }.map {
+            PDFPageEdit(pageNumber: $0.number, quarterTurns: $0.quarterTurns)
+        }
+    }
+}
+
+struct PDFOrganizerHistory {
+    fileprivate var current: [OrganizerPage]?
+    fileprivate var undo: [[OrganizerPage]] = []
+    fileprivate var redo: [[OrganizerPage]] = []
+
+    init() {}
+}
+
+private struct OrganizerPage: Equatable, Identifiable {
+    let number: Int
+    var quarterTurns = 0
+    var removed = false
+    var id: Int { number }
+}

@@ -7,6 +7,7 @@ struct ToolWorkspace: View {
     @Binding var draft: ToolDraft
     let session: WorkspaceSession
     @State private var dropTarget: Tool?
+    @State private var pdfEditorReady = false
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
@@ -79,6 +80,13 @@ struct ToolWorkspace: View {
                             inspectionControls()
                         case .extractAudio:
                             extractionControls()
+                        case .splitPDF, .organizePDF, .deletePDFPages:
+                            PDFEditingSettings(
+                                tool: tool, input: draft.inputs.first, options: $draft.options,
+                                organizerHistory: $draft.pdfOrganizerHistory, ready: $pdfEditorReady,
+                                canEdit: !session.isRunning
+                            )
+                            .id(draft.pdfSourceRevision)
                         case .mergePDFs:
                             SettingRow("Output filename") {
                                 TextField("Output filename", text: Binding(
@@ -155,7 +163,8 @@ struct ToolWorkspace: View {
                 Button(tool == .mediaInfo ? "Inspect media" : tool.title) { session.start(tool, draft: draft) }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
-                    .disabled(draft.inputs.isEmpty || session.isRunning || requiresMissingEngine)
+                    .disabled(draft.inputs.isEmpty || session.isRunning || requiresMissingEngine
+                              || (tool.editsOnePDF && !pdfEditorReady))
             }
             .controlSize(.large)
             .frame(maxWidth: 660)
@@ -174,7 +183,7 @@ struct ToolWorkspace: View {
                     .accessibilityAddTraits(.isHeader)
                 Spacer()
                 if !draft.inputs.isEmpty {
-                    Button("Add files…", systemImage: "plus") { chooseInputs(for: tool) }
+                    Button(tool.editsOnePDF ? "Replace PDF…" : "Add files…", systemImage: tool.editsOnePDF ? "arrow.triangle.2.circlepath" : "plus") { chooseInputs(for: tool) }
                         .buttonStyle(.plain)
                         .foregroundStyle(palette.accent)
                 }
@@ -280,8 +289,15 @@ struct ToolWorkspace: View {
 
     private func addDroppedFiles(_ urls: [URL], to tool: Tool) -> Bool {
         let files = urls.filter(\.isFileURL)
-        draft.inputs.append(contentsOf: files)
-        return !files.isEmpty
+        guard !files.isEmpty else { return false }
+        if tool.editsOnePDF {
+            guard files.count == 1 else { return false }
+            pdfEditorReady = false
+            draft.replacePDF(with: files[0])
+        } else {
+            draft.inputs.append(contentsOf: files)
+        }
+        return true
     }
 
     private func updateDropTarget(for tool: Tool, targeted: Bool) {
@@ -328,9 +344,9 @@ struct ToolWorkspace: View {
     private func chooseInputs(for tool: Tool) {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = tool.inputTypes
-        panel.allowsMultipleSelection = true
+        panel.allowsMultipleSelection = !tool.editsOnePDF
         if panel.runModal() == .OK {
-            draft.inputs.append(contentsOf: panel.urls)
+            _ = addDroppedFiles(panel.urls, to: tool)
         }
     }
 

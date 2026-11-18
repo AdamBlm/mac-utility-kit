@@ -10,7 +10,18 @@ struct ToolDraft {
     var ranges: [Int: String] = [:]
     var passwords: [Int: String] = [:]
     var outputName = "Merged"
+    var pdfSourceRevision = UUID()
+    var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory
+
+    mutating func replacePDF(with input: URL) {
+        inputs = [input]
+        pdfSourceRevision = UUID()
+        pdfOrganizerHistory = PDFOrganizerHistory()
+        options.pdfSplit.password = ""
+        options.pdfOrganize = PDFOrganizeOptions()
+        options.pdfDelete = PDFDeleteOptions()
+    }
 
     mutating func moveInputUp(at index: Int) {
         guard inputs.indices.contains(index), index > 0 else { return }

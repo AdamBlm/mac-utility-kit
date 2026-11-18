@@ -45,6 +45,9 @@ public enum ToolRunner {
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> JobReport {
         guard !inputs.isEmpty else { throw ToolError.invalid("Choose at least one file.") }
+        if tool.editsOnePDF, inputs.count != 1 {
+            throw ToolError.invalid("Choose one PDF for this operation.")
+        }
         if tool == .resizeImages, options.imageSizing == .longestEdge, !(1...16_384).contains(imageSize) {
             throw ToolError.invalid("Enter an image size between 1 and 16,384 pixels.")
         }
@@ -70,6 +73,8 @@ public enum ToolRunner {
             let output = staging.appendingPathComponent(name.lowercased().hasSuffix(".pdf") ? name : name + ".pdf")
             try await PDFOperations.merge(inputs, ranges: options.pageRanges, passwords: options.pdfPasswords, into: output, progress: progress)
             outputs.append(output)
+        } else if tool == .splitPDF {
+            outputs = try await PDFPageEditing.split(inputs[0], into: staging, options: options.pdfSplit, progress: progress)
         } else {
             for (index, input) in inputs.enumerated() {
                 try Task.checkCancellation()
@@ -84,7 +89,7 @@ public enum ToolRunner {
                     case .convertImages: options.imageConversion.format.rawValue
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
-                    case .mergePDFs: "pdf"
+                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages: "pdf"
                     }
                     let output = staging.appendingPathComponent(
                         "\(index + 1) - \(input.deletingPathExtension().lastPathComponent).\(ext)"
@@ -120,7 +125,11 @@ public enum ToolRunner {
                     case .removeMetadata:
                         let removal = try await ImageMetadata.remove(input, to: output, options: options.imageMetadata)
                         metadataResults.append(ImageMetadataResult(filename: input.lastPathComponent, removal: removal))
-                    case .mergePDFs: break
+                    case .organizePDF:
+                        try await PDFPageEditing.organize(input, to: output, options: options.pdfOrganize, progress: progress)
+                    case .deletePDFPages:
+                        try await PDFPageEditing.delete(input, to: output, options: options.pdfDelete, progress: progress)
+                    case .mergePDFs, .splitPDF: break
                     }
                     outputs.append(output)
                 } catch {

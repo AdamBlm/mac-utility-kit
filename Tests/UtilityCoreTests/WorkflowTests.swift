@@ -339,3 +339,39 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(FileManager.default.fileExists(atPath: comparison.output.path))
     #expect(try Data(contentsOf: source) == original)
 }
+
+@Test func pdfEditingToolsPublishExpectedPagesAndKeepInputIntact() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("Source.pdf")
+    try writePDF(widths: [100, 150, 200], to: source)
+    let original = try Data(contentsOf: source)
+
+    var options = ToolOptions()
+    options.pdfSplit.mode = .everyN
+    options.pdfSplit.pagesPerFile = 2
+    let split = try await ToolRunner.run(
+        .splitPDF, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(split.outputs.map(\.lastPathComponent) == ["Source-1.pdf", "Source-2.pdf"])
+    #expect(split.outputs.compactMap { PDFDocument(url: $0)?.pageCount } == [2, 1])
+
+    options.pdfOrganize.pages = [PDFPageEdit(pageNumber: 3, quarterTurns: 1), PDFPageEdit(pageNumber: 1)]
+    let organized = try await ToolRunner.run(
+        .organizePDF, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let organizedURL = try #require(organized.outputs.first)
+    let organizedPDF = try #require(PDFDocument(url: organizedURL))
+    #expect(organizedPDF.pageCount == 2)
+    #expect(organizedPDF.page(at: 0)?.rotation == 90)
+
+    options.pdfDelete.range = "2"
+    let deleted = try await ToolRunner.run(
+        .deletePDFPages, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let deletedURL = try #require(deleted.outputs.first)
+    let deletedPDF = try #require(PDFDocument(url: deletedURL))
+    #expect(deletedPDF.pageCount == 2)
+    #expect(deletedPDF.page(at: 1)?.bounds(for: .mediaBox).width == 200)
+    #expect(try Data(contentsOf: source) == original)
+}
