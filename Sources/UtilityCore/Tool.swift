@@ -22,7 +22,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
-    case changeSpeed, extractFrames, trimVideo, muteVideo
+    case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo
 
     public var usesInteractiveEditor: Bool {
         switch self {
@@ -65,6 +65,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .extractFrames: "Extract Frames"
         case .trimVideo: "Trim Video"
         case .muteVideo: "Mute Video"
+        case .resizeVideo: "Resize Video"
+        case .videoToGIF: "Video to GIF"
+        case .cropRotateVideo: "Crop & Rotate Video"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
@@ -82,7 +85,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
-        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo: .video
+        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo: .video
         case .extractAudio: .audio
         }
     }
@@ -97,7 +100,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .jsonFormatter: [.json]
         case .keepAwake: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
-        case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo: [.movie]
+        case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo: [.movie]
         case .mediaInfo: [.movie, .audio]
         }
     }

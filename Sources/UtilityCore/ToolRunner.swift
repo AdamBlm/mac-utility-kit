@@ -115,7 +115,8 @@ public enum ToolRunner {
                     case .resizeImages: options.imageFormat.rawValue
                     case .compressVideo: options.videoFormat.rawValue
                     case .convertVideo: options.conversion.format.rawValue
-                    case .changeSpeed: "mp4"
+                    case .changeSpeed, .resizeVideo, .cropRotateVideo: "mp4"
+                    case .videoToGIF: "gif"
                     case .trimVideo: options.trim.fileExtension
                     case .muteVideo: try MuteVideo.outputExtension(input, options: options.mute)
                     case .extractFrames: throw ToolError.invalid("Frame extraction requires an output directory.")
@@ -158,6 +159,21 @@ public enum ToolRunner {
                         summaries.append(summary)
                     case .muteVideo:
                         let summary = try await MuteVideo.export(input, to: output, options: options.mute) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .resizeVideo:
+                        let summary = try await VideoResize.export(input, to: output, options: options.videoResize) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .videoToGIF:
+                        let summary = try await VideoGIF.export(input, to: output, options: options.videoGIF) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .cropRotateVideo:
+                        let summary = try await VideoCrop.export(input, to: output, options: options.crop) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)

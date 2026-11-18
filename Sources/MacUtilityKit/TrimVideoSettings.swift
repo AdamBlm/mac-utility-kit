@@ -17,6 +17,8 @@ struct TrimVideoSettings: View {
     @Binding var options: TrimVideoOptions
     @State private var player = AVPlayer()
     @State private var scrubTime = 0.0
+    @State private var startText: String?
+    @State private var endText: String?
     @State private var loadedDuration: Double?
     @State private var playbackError: String?
 
@@ -55,27 +57,50 @@ struct TrimVideoSettings: View {
             HStack {
                 Text("\(scrubTime.formatted(format)) s").monospacedDigit()
                 Spacer()
-                Button("Set In") { options.start = scrubTime }
-                Button("Set Out") { options.end = scrubTime }
+                Button("Set In") {
+                    startText = nil
+                    options.start = scrubTime
+                }
+                Button("Set Out") {
+                    endText = nil
+                    options.end = scrubTime
+                }
             }
         }
         SettingRow("In point") {
-            TextField("In point in seconds", value: $options.start, format: format)
-                .frame(width: 88)
-            Text("seconds").foregroundStyle(.secondary)
+            TextField("In point timecode", text: Binding(
+                get: { startText ?? fieldText(options.start) },
+                set: {
+                    startText = $0
+                    options.start = VideoTimecode.seconds(from: $0) ?? -1
+                }
+            ))
+            .frame(width: 98)
+            .help("Seconds, MM:SS, or HH:MM:SS")
         }
         SettingRow("Out point") {
             if let end = options.end {
-                TextField("Out point in seconds", value: Binding(
-                    get: { options.end ?? end }, set: { options.end = $0 }
-                ), format: format)
-                .frame(width: 88)
-                Text("seconds").foregroundStyle(.secondary)
-                Button("Use End") { options.end = nil }
+                TextField("Out point timecode", text: Binding(
+                    get: { endText ?? fieldText(end) },
+                    set: {
+                        endText = $0
+                        options.end = VideoTimecode.seconds(from: $0) ?? -1
+                    }
+                ))
+                .frame(width: 98)
+                .help("Seconds, MM:SS, or HH:MM:SS")
+                Button("Use End") {
+                    endText = nil
+                    options.end = nil
+                }
             } else {
                 Text("End of video").foregroundStyle(.secondary)
                 Button("Set Time") { options.end = loadedDuration ?? options.start + 1 }
             }
+        }
+        if options.start < 0 || (options.end ?? 0) < 0 {
+            Text("Enter seconds, MM:SS, or HH:MM:SS.")
+                .font(.callout).foregroundStyle(.red)
         }
         if options.mode == .lossless {
             Text("Copies video and audio codecs to MKV. The start moves to the previous keyframe and the end moves to the next keyframe or the end of the video.")
@@ -112,6 +137,10 @@ struct TrimVideoSettings: View {
                 player.pause()
                 player.currentItem?.cancelPendingSeeks()
             }
+    }
+
+    private func fieldText(_ value: Double) -> String {
+        value < 0 ? "" : value.formatted(format)
     }
 
     private func executable(_ label: String, path: Binding<URL?>) -> some View {

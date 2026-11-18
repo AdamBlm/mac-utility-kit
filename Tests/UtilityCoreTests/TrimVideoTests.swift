@@ -4,6 +4,15 @@ import Testing
 import UtilityCore
 
 @Suite struct TrimVideoTests {
+    @Test func parsesTimecodesWithoutAcceptingTrailingText() {
+        #expect(VideoTimecode.seconds(from: "00:01:23.5") == 83.5)
+        #expect(VideoTimecode.seconds(from: "3:12,5") == 192.5)
+        #expect(VideoTimecode.seconds(from: "90.5") == 90.5)
+        #expect(VideoTimecode.seconds(from: "1 garbage") == nil)
+        #expect(VideoTimecode.seconds(from: "1:60") == nil)
+        #expect(VideoTimecode.seconds(from: "1e4") == nil)
+    }
+
     @Test func alignsOutwardAndValidatesTime() throws {
         let range = try VideoTrimRange.validate(start: 1.4, end: 3.2, duration: 5)
         let aligned = try VideoTrimRange.align(range, to: [0, 1, 2, 3, 4], duration: 5)

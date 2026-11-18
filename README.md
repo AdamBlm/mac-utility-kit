@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 28 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 31 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -35,6 +35,11 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 - **Trim Video** previews an in/out range, re-encodes a precise MP4 cut, or copies video and audio streams to MKV at keyframe-aligned boundaries with selected FFmpeg and ffprobe executables.
 - **Mute Video** previews the audio track list and removes selected tracks or all audio. It copies encoded video through AVFoundation when the chosen MOV, MP4, or M4V container supports the retained streams.
+
+- **Resize Video** previews fit, fill, or stretch framing and exports aligned MP4 dimensions. Choose a preset from 480p through 2160p, a percentage, or exact dimensions with optional aspect lock.
+- **Video to GIF** previews a clip sample and estimates its size, then uses a selected FFmpeg executable to export an animated GIF with width, frame rate, palette, dithering, and loop controls.
+
+- **Crop & Rotate Video** uses draggable crop handles, aspect presets, exact coordinates, quarter-turn rotations, and mirroring. Preview the edited frame before exporting MP4.
 
 ### Image tools
 

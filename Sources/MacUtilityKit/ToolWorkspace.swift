@@ -53,6 +53,8 @@ struct ToolWorkspace: View {
         case .trimVideo:
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
                 || trimReview?.permitsExport != true
+        case .videoToGIF:
+            draft.options.videoGIF.ffmpegExecutable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .convertImages:
@@ -106,6 +108,12 @@ struct ToolWorkspace: View {
                             TrimVideoSettings(inputs: draft.inputs, review: $trimReview, options: $draft.options.trim)
                         case .muteVideo:
                             MuteVideoControls(inputs: draft.inputs, options: $draft.options.mute)
+                        case .resizeVideo:
+                            VideoResizeControls(inputs: draft.inputs, options: $draft.options.videoResize)
+                        case .videoToGIF:
+                            VideoGIFSettings(input: draft.inputs.first, options: $draft.options.videoGIF)
+                        case .cropRotateVideo:
+                            VideoCropControls(inputs: draft.inputs, options: $draft.options.crop)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:

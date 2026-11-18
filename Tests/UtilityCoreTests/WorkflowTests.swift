@@ -252,6 +252,26 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(!names.contains { $0.hasPrefix(".MacUtilityKit-") })
 }
 
+@Test func resizeVideoPublishesAlignedMP4ThroughSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.mov")
+    try await writeVideoFixture(to: source)
+    var options = ToolOptions()
+    options.videoResize.sizing = .percentage
+    options.videoResize.percentage = 50
+    let report = try await ToolRunner.run(
+        .resizeVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    #expect(output.pathExtension == "mp4")
+    let asset = AVURLAsset(url: output)
+    let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
+    #expect(try await track.load(.naturalSize) == CGSize(width: 320, height: 240))
+    #expect(FileManager.default.fileExists(atPath: source.path))
+}
+
 @Test func balancedKeeps4KResolutionInExportAndSample() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
