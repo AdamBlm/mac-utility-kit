@@ -50,7 +50,9 @@ public enum ToolRunner {
         _ tool: Tool, inputs: [URL], destination: URL, imageSize: Int, options: ToolOptions = ToolOptions(),
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> JobReport {
-        guard tool != .wordCounter else { throw ToolError.invalid("Use the live text editor to count words.") }
+        guard !tool.usesInteractiveEditor else {
+            throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
+        }
         guard !inputs.isEmpty else { throw ToolError.invalid("Choose at least one file.") }
         if tool.requiresSinglePDF, inputs.count != 1 {
             throw ToolError.invalid("Choose one PDF for this operation.")
@@ -104,7 +106,9 @@ public enum ToolRunner {
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
                     case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
-                    case .extractText, .wordCounter: "txt"
+                    case .extractText: "txt"
+                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator:
+                        throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
                     let output = staging.appendingPathComponent(
@@ -164,7 +168,9 @@ public enum ToolRunner {
                         try Data(extracted.text.utf8).write(to: output)
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
-                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .wordCounter: break
+                    case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages,
+                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator:
+                        break
                     }
                     outputs.append(output)
                 } catch {

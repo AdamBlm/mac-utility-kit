@@ -6,6 +6,7 @@ struct ToolWorkspace: View {
     let tool: Tool
     @Binding var draft: ToolDraft
     let session: WorkspaceSession
+    let keepAwakeController: KeepAwakeController
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var comparison: ImageComparisonResult?
@@ -15,8 +16,8 @@ struct ToolWorkspace: View {
 
     var body: some View {
         Group {
-            if tool == .wordCounter {
-                WordCounterView(draft: $draft.wordCounter)
+            if tool.usesInteractiveEditor {
+                interactiveEditor
             } else if draft.inputs.isEmpty, session.reports[tool] == nil,
                session.errors[tool] == nil, session.runningTool != tool {
                 emptyWorkspace(for: tool)
@@ -26,6 +27,20 @@ struct ToolWorkspace: View {
         }
         .sheet(isPresented: Binding(get: { comparison != nil }, set: { if !$0 { comparison = nil } })) {
             if let comparison { ImageComparisonView(pair: comparison) }
+        }
+    }
+
+    @ViewBuilder
+    private var interactiveEditor: some View {
+        switch tool {
+        case .wordCounter: WordCounterView(draft: $draft.wordCounter)
+        case .qrCode: QRToolsView(draft: $draft.qrTools)
+        case .batchRename: BatchRenameView(draft: $draft.batchRename)
+        case .keepAwake: KeepAwakeView(controller: keepAwakeController)
+        case .jsonFormatter: JSONFormatterView(draft: $draft.jsonFormatter)
+        case .base64: Base64ToolView(draft: $draft.base64)
+        case .hashGenerator: HashGeneratorView(draft: $draft.hashGenerator)
+        default: EmptyView()
         }
     }
 
@@ -97,7 +112,7 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

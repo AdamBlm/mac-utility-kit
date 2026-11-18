@@ -10,7 +10,6 @@ struct WordCounterDraft {
 
 struct WordCounterView: View {
     @Binding var draft: WordCounterDraft
-    @Environment(\.colorScheme) private var colorScheme
     @State private var count = WordCount.empty
     @State private var isCounting = false
     @State private var importError: String?
@@ -21,91 +20,75 @@ struct WordCounterView: View {
         let options: WordCounterOptions
     }
 
-    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
-
     var body: some View {
         let input = AnalysisInput(text: draft.text, options: draft.options)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 24) {
-                HStack(spacing: 15) {
-                    ToolEmblem(tool: .wordCounter, palette: palette)
-                    Text("Word Counter")
-                        .font(.system(size: 29, weight: .semibold))
-                        .tracking(-0.65)
-                        .accessibilityAddTraits(.isHeader)
+        InteractiveToolLayout(tool: .wordCounter) { palette in
+            WorkspaceSection("Text", palette: palette) {
+                TextEditor(text: Binding(get: { draft.text }, set: replaceText))
+                    .font(.body)
+                    .frame(minHeight: 150, idealHeight: 205)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .accessibilityLabel("Text to count")
+                HStack {
+                    Button("Open text file…", systemImage: "folder") { chooseFile() }
+                    Button("Paste", systemImage: "doc.on.clipboard") {
+                        if let text = NSPasteboard.general.string(forType: .string) {
+                            replaceText(text)
+                        }
+                    }
+                    Spacer()
+                    Button("Clear") {
+                        replaceText("")
+                    }
+                    .disabled(draft.text.isEmpty)
                 }
-                WorkspaceSection("Text", palette: palette) {
-                    TextEditor(text: Binding(get: { draft.text }, set: replaceText))
-                        .font(.body)
-                        .frame(minHeight: 150, idealHeight: 205)
-                        .scrollContentBackground(.hidden)
-                        .padding(6)
-                        .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
-                        .accessibilityLabel("Text to count")
-                    HStack {
-                        Button("Open text file…", systemImage: "folder") { chooseFile() }
-                        Button("Paste", systemImage: "doc.on.clipboard") {
-                            if let text = NSPasteboard.general.string(forType: .string) {
-                                replaceText(text)
+                if let importError {
+                    Text(importError).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            WorkspaceSection("Counts", palette: palette) {
+                if isCounting {
+                    ProgressView("Counting…").controlSize(.small)
+                }
+                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 16) {
+                    GridRow {
+                        statistic("Words", count.words.formatted())
+                        statistic("Characters", count.characters.formatted())
+                        statistic("Sentences", count.sentences.formatted())
+                    }
+                    GridRow {
+                        statistic("Paragraphs", count.paragraphs.formatted())
+                        statistic("Reading time", readingTime)
+                    }
+                }
+                Divider()
+                Toggle("Exclude whitespace from character count", isOn: $draft.options.excludesWhitespace)
+                SettingRow("Reading speed") {
+                    HStack(spacing: 7) {
+                        TextField("Words per minute", value: $draft.options.wordsPerMinute, format: .number.grouping(.never))
+                            .frame(width: 64)
+                            .onSubmit {
+                                if draft.options.wordsPerMinute < 1 { draft.options.wordsPerMinute = 1 }
                             }
-                        }
-                        Spacer()
-                        Button("Clear") {
-                            replaceText("")
-                        }
-                        .disabled(draft.text.isEmpty)
-                    }
-                    if let importError {
-                        Text(importError).font(.callout).foregroundStyle(.secondary)
-                    }
-                }
-                WorkspaceSection("Counts", palette: palette) {
-                    if isCounting {
-                        ProgressView("Counting…").controlSize(.small)
-                    }
-                    Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 16) {
-                        GridRow {
-                            statistic("Words", count.words.formatted())
-                            statistic("Characters", count.characters.formatted())
-                            statistic("Sentences", count.sentences.formatted())
-                        }
-                        GridRow {
-                            statistic("Paragraphs", count.paragraphs.formatted())
-                            statistic("Reading time", readingTime)
-                        }
-                    }
-                    Divider()
-                    Toggle("Exclude whitespace from character count", isOn: $draft.options.excludesWhitespace)
-                    SettingRow("Reading speed") {
-                        HStack(spacing: 7) {
-                            TextField("Words per minute", value: $draft.options.wordsPerMinute, format: .number.grouping(.never))
-                                .frame(width: 64)
-                                .onSubmit {
-                                    if draft.options.wordsPerMinute < 1 { draft.options.wordsPerMinute = 1 }
-                                }
-                            Text("words/min").font(.callout).foregroundStyle(.secondary)
-                        }
-                    }
-                }
-                if !count.frequentWords.isEmpty {
-                    WorkspaceSection("Frequent words", palette: palette) {
-                        ForEach(count.frequentWords) { item in
-                            HStack {
-                                Text(item.word).textSelection(.enabled)
-                                Spacer()
-                                Text(item.count.formatted()).monospacedDigit().foregroundStyle(.secondary)
-                            }
-                            .font(.callout)
-                        }
+                        Text("words/min").font(.callout).foregroundStyle(.secondary)
                     }
                 }
             }
-            .frame(maxWidth: 660, alignment: .leading)
-            .padding(.horizontal, 32)
-            .padding(.vertical, 30)
-            .frame(maxWidth: .infinity, alignment: .top)
+            if !count.frequentWords.isEmpty {
+                WorkspaceSection("Frequent words", palette: palette) {
+                    ForEach(count.frequentWords) { item in
+                        HStack {
+                            Text(item.word).textSelection(.enabled)
+                            Spacer()
+                            Text(item.count.formatted()).monospacedDigit().foregroundStyle(.secondary)
+                        }
+                        .font(.callout)
+                    }
+                }
+            }
         }
-        .background(palette.canvas)
         .dropDestination(for: URL.self) { files, _ in
             guard files.count == 1, let file = files.first, file.isFileURL else { return false }
             loadFile(file)

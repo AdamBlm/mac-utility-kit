@@ -11,6 +11,11 @@ struct ToolDraft {
     var passwords: [Int: String] = [:]
     var outputName = "Merged"
     var wordCounter = WordCounterDraft()
+    var qrTools = QRToolsDraft()
+    var batchRename = BatchRenameDraft()
+    var jsonFormatter = JSONFormatterDraft()
+    var base64 = Base64ToolDraft()
+    var hashGenerator = HashGeneratorDraft()
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory

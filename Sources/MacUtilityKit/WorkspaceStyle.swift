@@ -86,6 +86,12 @@ extension Tool {
         case .signPDF: "signature"
         case .extractText: "text.viewfinder"
         case .wordCounter: "number"
+        case .qrCode: "qrcode"
+        case .batchRename: "rectangle.and.pencil.and.ellipsis"
+        case .keepAwake: "moon.zzz"
+        case .jsonFormatter: "curlybraces"
+        case .base64: "arrow.left.arrow.right"
+        case .hashGenerator: "number.square"
         case .compressVideo: "film"
         case .convertVideo: "arrow.triangle.2.circlepath"
         case .mediaInfo: "info.circle"
@@ -109,6 +115,12 @@ extension Tool {
         case .signPDF: "Place a visible signature on a PDF copy."
         case .extractText: "Turn text in images and PDFs into editable text."
         case .wordCounter: "Count words, characters, and reading time as you type."
+        case .qrCode: "Generate and scan QR codes."
+        case .batchRename: "Preview and apply filename rules in batches."
+        case .keepAwake: "Keep your Mac awake for a session."
+        case .jsonFormatter: "Validate, format, or minify JSON."
+        case .base64: "Encode and decode text and binary files."
+        case .hashGenerator: "Generate and verify local checksums."
         case .compressVideo: "Make videos smaller while keeping their resolution."
         case .convertVideo: "Save a video in another format."
         case .mediaInfo: "Inspect the streams and properties of a media file."
@@ -124,6 +136,7 @@ extension Tool {
         case .imagesToPDF: "or drop images anywhere in this pane"
         case .extractText: "or drop images and PDFs anywhere in this pane"
         case .wordCounter: "or drop a text file anywhere in this pane"
+        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: ""
         case .compressVideo: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
         case .mediaInfo: "or drop audio or video anywhere in this pane"
@@ -138,6 +151,7 @@ extension Tool {
         case .imagesToPDF: "Drop images here"
         case .extractText: "Drop images or PDFs here"
         case .wordCounter: "Drop a text file here"
+        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: ""
         case .compressVideo: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"
         case .mediaInfo: "Drop media files here"
@@ -177,5 +191,37 @@ struct SettingRow<Content: View>: View {
                 .frame(maxWidth: 310, alignment: .leading)
             Spacer(minLength: 0)
         }
+    }
+}
+
+struct InteractiveToolLayout<Content: View>: View {
+    let tool: Tool
+    let content: (WorkspacePalette) -> Content
+    @Environment(\.colorScheme) private var colorScheme
+
+    init(tool: Tool, @ViewBuilder content: @escaping (WorkspacePalette) -> Content) {
+        self.tool = tool
+        self.content = content
+    }
+
+    var body: some View {
+        let palette = WorkspacePalette(dark: colorScheme == .dark)
+        ScrollView {
+            VStack(alignment: .leading, spacing: 24) {
+                HStack(spacing: 15) {
+                    ToolEmblem(tool: tool, palette: palette)
+                    Text(tool.title)
+                        .font(.system(size: 29, weight: .semibold))
+                        .tracking(-0.65)
+                        .accessibilityAddTraits(.isHeader)
+                }
+                content(palette)
+            }
+            .frame(maxWidth: 660, alignment: .leading)
+            .padding(.horizontal, 32)
+            .padding(.vertical, 30)
+            .frame(maxWidth: .infinity, alignment: .top)
+        }
+        .background(palette.canvas)
     }
 }

@@ -3,6 +3,7 @@ import SwiftUI
 import UtilityCore
 
 struct Workspace: View {
+    let keepAwakeController: KeepAwakeController
     @State private var selection: Tool? = .resizeImages
     @State private var search = ""
     @State private var collapsedCategories: Set<ToolCategory> = []
@@ -95,7 +96,8 @@ struct Workspace: View {
                             get: { session.drafts[selection, default: ToolDraft()] },
                             set: { session.drafts[selection] = $0 }
                         ),
-                        session: session
+                        session: session,
+                        keepAwakeController: keepAwakeController
                     )
                     .id(selection)
                 } else {

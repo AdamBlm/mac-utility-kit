@@ -6,6 +6,9 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
     case video = "Video"
     case audio = "Audio"
     case text = "Text"
+    case files = "Files"
+    case mac = "Mac"
+    case developer = "Developer"
 
     public var id: Self { self }
     public var title: String { rawValue }
@@ -18,6 +21,14 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter
+    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
+
+    public var usesInteractiveEditor: Bool {
+        switch self {
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator: true
+        default: false
+        }
+    }
 
     public var requiresSinglePDF: Bool {
         switch self {
@@ -43,6 +54,12 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .signPDF: "Sign PDF"
         case .extractText: "Extract Text"
         case .wordCounter: "Word Counter"
+        case .qrCode: "QR Code"
+        case .batchRename: "Batch Rename"
+        case .keepAwake: "Keep Awake"
+        case .jsonFormatter: "JSON Formatter"
+        case .base64: "Base64"
+        case .hashGenerator: "Hash Generator"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
@@ -57,6 +74,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
         case .extractText, .wordCounter: .text
+        case .qrCode, .batchRename: .files
+        case .keepAwake: .mac
+        case .jsonFormatter, .base64, .hashGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo: .video
         case .extractAudio: .audio
         }
@@ -67,6 +87,10 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .wordCounter: [.plainText]
+        case .qrCode: [.image]
+        case .batchRename, .base64, .hashGenerator: [.data]
+        case .jsonFormatter: [.json]
+        case .keepAwake: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio: [.movie]
         case .mediaInfo: [.movie, .audio]
