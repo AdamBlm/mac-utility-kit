@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 90 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 93 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -146,6 +146,9 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Translate** uses Apple’s on-device language packs for text, SRT, and VTT. Translated subtitle files retain cue timing.
 - **Ask a Document** retrieves source passages locally and uses Apple Intelligence to answer with verified quotations linked to pages or sections.
 - **Reset Permissions** asks macOS to reset one chosen privacy permission for the selected app’s bundle identifier.
+- **Scan Document** imports photos or scans, corrects selectable corners, rotates or recolors pages, and saves the ordered pages as a PDF.
+- **Fix “App Is Damaged”** inspects signing integrity, quarantine status, and current macOS policy through read-only checks.
+- **Login & Background Items** reviews discoverable system entries and opens the native settings for managing them.
 - **Launcher settings** offer an optional menu bar item, Dock icon visibility, a configurable global shortcut, and launch at login.
 
 

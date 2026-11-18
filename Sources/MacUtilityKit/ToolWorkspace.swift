@@ -72,6 +72,9 @@ struct ToolWorkspace: View {
         case .storageExplorer: StorageExplorerView(draft: $draft.storageExplorer)
         case .clipboardHistory: ClipboardHistoryView(controller: clipboardHistoryController)
         case .resetPermissions: ResetPermissionsView()
+        case .appDamageDiagnosis: AppDamageDiagnosisView()
+        case .loginBackgroundItems: LoginBackgroundItemsView()
+        case .scanDocument: DocumentScannerView(draft: $draft.scanner)
         case .deadPixelTest: DeadPixelTestView()
         case .ejectAllDisks: EjectDisksView(draft: $draft.ejectDisks)
         case .zipUnzip: ArchiveToolsView(draft: $draft.archiveTools)
@@ -241,7 +244,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

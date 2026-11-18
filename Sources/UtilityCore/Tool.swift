@@ -21,9 +21,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter, summarize, caseConverter, translate, askDocument
-    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, jwtDecoder, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, ejectAllDisks, presentationMode, networkSpeedTest, storageExplorer, clipboardHistory, resetPermissions, findDuplicates, zipUnzip
+    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, jwtDecoder, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, ejectAllDisks, presentationMode, networkSpeedTest, storageExplorer, clipboardHistory, resetPermissions, appDamageDiagnosis, loginBackgroundItems, findDuplicates, zipUnzip
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
-    case makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
+    case scanDocument, makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
     case recordScreen, downloadVideo
     case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 
@@ -38,7 +38,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
         default: false
         }
     }
@@ -124,6 +124,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .storageExplorer: "Storage Explorer"
         case .clipboardHistory: "Clipboard History"
         case .resetPermissions: "Reset Permissions"
+        case .appDamageDiagnosis: "Fix “App Is Damaged”"
+        case .loginBackgroundItems: "Login & Background Items"
+        case .scanDocument: "Scan Document"
         case .zipUnzip: "Zip & Unzip"
         case .findDuplicates: "Find Duplicates"
         case .changeSpeed: "Change Speed"
@@ -151,10 +154,10 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     public var group: ToolCategory {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage, .annotateScreenshot, .removeBackground, .colorPicker, .watermark: .images
-        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF, .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF: .documents
+        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF, .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF, .scanDocument: .documents
         case .extractText, .wordCounter, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename, .findDuplicates, .zipUnzip: .files
-        case .keepAwake, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions: .mac
+        case .keepAwake, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems: .mac
         case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
         case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
@@ -177,9 +180,10 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .convertDocuments:
             [.rtf, .html, .plainText] + ["doc", "docx", "odt", "md", "markdown"].compactMap { UTType(filenameExtension: $0) }
         case .markdownToPDF: [.plainText]
-        case .webPageToPDF, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .clipboardHistory, .caseConverter: []
+        case .webPageToPDF, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .clipboardHistory, .loginBackgroundItems, .caseConverter: []
         case .findDuplicates, .storageExplorer: [.directory]
-        case .resetPermissions: [.applicationBundle]
+        case .resetPermissions, .appDamageDiagnosis: [.applicationBundle]
+        case .scanDocument: [.image, .pdf]
         case .zipUnzip: [.data, .directory]
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]

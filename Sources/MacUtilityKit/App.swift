@@ -24,6 +24,7 @@ struct MacUtilityKitApp: App {
         }
             .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 940, height: 690)
+        .commands { ImportFromDevicesCommands() }
 
         Window("Tool Launcher", id: LauncherController.launcherID) {
             ToolLauncherView(controller: launcherController)

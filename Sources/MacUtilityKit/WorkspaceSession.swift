@@ -30,6 +30,7 @@ struct ToolDraft {
     var caseConverter = CaseConverterDraft()
     var translate = TranslateDraft()
     var askDocument = AskDocumentDraft()
+    var scanner = DocumentScannerDraft()
     var ejectDisks = EjectDisksDraft()
     var findDuplicates = FindDuplicatesDraft()
     var storageExplorer = StorageExplorerDraft()
