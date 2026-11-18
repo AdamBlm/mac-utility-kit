@@ -1,77 +1,109 @@
 import AppKit
 import PDFKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
+
+struct PDFMergeInspection {
+    let stamp: PDFMergeSourceStamp?
+    let input: URL
+    let document: PDFDocument?
+    let requiresPassword: Bool
+    let acceptedPassword: String?
+    let issue: String?
+
+    func count(password: String) -> Int? {
+        guard !requiresPassword || acceptedPassword == password else { return nil }
+        return document?.pageCount
+    }
+
+    static func load(_ input: URL, password: String) -> Self {
+        guard let before = try? PDFMergeSourceStamp.read(input) else {
+            return unavailable(input)
+        }
+        let loaded = open(input, password: password, stamp: before)
+        return (try? PDFMergeSourceStamp.read(input)) == before ? loaded : unavailable(input)
+    }
+
+    private static func unavailable(_ input: URL) -> Self {
+        Self(stamp: nil, input: input, document: nil, requiresPassword: false,
+             acceptedPassword: nil, issue: "This source could not be verified. Refresh source previews to try again.")
+    }
+
+    private static func open(_ input: URL, password: String, stamp: PDFMergeSourceStamp) -> Self {
+        if (try? input.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
+            || input.pathExtension.lowercased() == "pdf" {
+            guard let pdf = PDFDocument(url: input) else {
+                return Self(stamp: stamp, input: input, document: nil, requiresPassword: false, acceptedPassword: nil, issue: "This PDF could not be opened.")
+            }
+            let locked = pdf.isLocked
+            if locked && (password.isEmpty || !pdf.unlock(withPassword: password)) {
+                return Self(stamp: stamp, input: input, document: nil, requiresPassword: true, acceptedPassword: nil,
+                            issue: password.isEmpty ? nil : "Incorrect PDF password.")
+            }
+            return Self(stamp: stamp, input: input, document: pdf.pageCount > 0 ? pdf : nil, requiresPassword: locked,
+                        acceptedPassword: locked ? password : nil, issue: pdf.pageCount > 0 ? nil : "This PDF has no pages.")
+        }
+        guard let image = NSImage(contentsOf: input), let page = PDFPage(image: image) else {
+            return Self(stamp: stamp, input: input, document: nil, requiresPassword: false, acceptedPassword: nil, issue: "This image could not be opened.")
+        }
+        let pdf = PDFDocument()
+        pdf.insert(page, at: 0)
+        return Self(stamp: stamp, input: input, document: pdf, requiresPassword: false, acceptedPassword: nil, issue: nil)
+    }
+}
 
 struct PDFPageControls: View {
     let input: URL
     @Binding var range: String
     @Binding var password: String
-    @State private var document: PDFDocument?
+    @Binding var inspection: PDFMergeInspection?
     @State private var expanded = false
-    @State private var protectedDocument = false
-    @State private var unlockFailed = false
+    @State private var anchor: Int?
 
     var body: some View {
-        let count = document?.pageCount ?? 0
-        let selected = try? PageSelection.indices(range, pageCount: count)
+        let current = inspection?.input == input ? inspection : nil
+        let count = current?.count(password: password)
+        let selected = count.flatMap { try? PageSelection.indices(range, pageCount: $0) }
+        let excluded = range.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "none"
         VStack(alignment: .leading, spacing: 6) {
             TextField("Pages (all, none, or e.g. 1, 3–5)", text: $range)
-            if protectedDocument {
+                .accessibilityLabel("Selected pages for \(input.lastPathComponent)")
+            if current?.requiresPassword == true {
                 HStack {
-                    SecureField("PDF password", text: $password)
-                    Button("Unlock preview") {
-                        guard let fresh = PDFDocument(url: input), fresh.unlock(withPassword: password) else {
-                            unlockFailed = true
-                            return
-                        }
-                        document = fresh
-                        unlockFailed = false
-                    }
+                    SecureField("PDF password", text: $password).onSubmit(unlock)
+                    Button("Unlock", action: unlock)
                 }
-                if unlockFailed { Text("Could not unlock PDF preview.").font(.caption) }
             }
-            if count > 0 {
+            if let issue = current?.issue, !excluded { Text(issue).font(.caption).foregroundStyle(.secondary) }
+            if let count {
                 if let selected {
                     Text("\(selected.count) of \(count) pages selected").font(.caption).foregroundStyle(.secondary)
-                    if !selected.isEmpty, selected.count <= 40 {
-                        Text("Export order: " + selected.map { String($0 + 1) }.joined(separator: ", "))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }
                 } else {
-                    Text("Check the page range. This file has \(count) pages.").font(.caption)
+                    Text("Check the page range. This file has \(count) pages.").font(.caption).foregroundStyle(.secondary)
                 }
                 DisclosureGroup("Page thumbnails", isExpanded: $expanded) {
-                    if expanded {
-                        HStack {
-                            Button("All") { range = "" }
-                            Button("Clear") { range = "none" }
-                        }
-                        ScrollView(.horizontal) {
-                            LazyHStack {
-                                ForEach(0..<count, id: \.self) { index in
-                                    Button {
-                                        var pages = selected ?? []
-                                        if let position = pages.firstIndex(of: index) {
-                                            pages.remove(at: position)
-                                        } else {
-                                            pages.append(index)
+                    HStack {
+                        Button("All") { range = ""; anchor = nil }
+                        Button("Clear") { range = "none"; anchor = nil }
+                    }
+                    ScrollView(.horizontal) {
+                        LazyHStack {
+                            ForEach(0..<count, id: \.self) { index in
+                                Button {
+                                    select(index, from: selected ?? [])
+                                } label: {
+                                    VStack {
+                                        if let thumbnail = current?.document?.page(at: index)?.thumbnail(
+                                            of: NSSize(width: 64, height: 82), for: .cropBox
+                                        ) {
+                                            Image(nsImage: thumbnail)
                                         }
-                                        range = pages.isEmpty ? "none" : pages.map { String($0 + 1) }.joined(separator: ", ")
-                                    } label: {
-                                        VStack {
-                                            if let thumbnail = document?.page(at: index)?.thumbnail(
-                                                of: NSSize(width: 64, height: 82), for: .cropBox
-                                            ) {
-                                                Image(nsImage: thumbnail)
-                                            }
-                                            Label("Page \(index + 1)", systemImage: selected?.contains(index) == true
-                                                  ? "checkmark.circle.fill" : "circle")
-                                                .font(.caption)
-                                        }
+                                        Label("Page \(index + 1)", systemImage: selected?.contains(index) == true
+                                              ? "checkmark.circle.fill" : "circle").font(.caption)
                                     }
-                                    .accessibilityAddTraits(selected?.contains(index) == true ? .isSelected : [])
                                 }
+                                .accessibilityAddTraits(selected?.contains(index) == true ? .isSelected : [])
                             }
                         }
                     }
@@ -79,13 +111,23 @@ struct PDFPageControls: View {
             }
         }
         .task(id: input) {
-            if (try? input.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true {
-                document = PDFDocument(url: input)
-                protectedDocument = document?.isLocked == true
-                if protectedDocument, !password.isEmpty {
-                    _ = document?.unlock(withPassword: password)
-                }
-            }
+            if inspection?.input != input { unlock() }
         }
+    }
+
+    private func unlock() { inspection = PDFMergeInspection.load(input, password: password) }
+
+    private func select(_ index: Int, from selected: [Int]) {
+        var pages = selected
+        if NSEvent.modifierFlags.contains(.shift), let anchor {
+            var existing = Set(pages)
+            pages += (min(anchor, index)...max(anchor, index)).filter { existing.insert($0).inserted }
+        } else if let position = pages.firstIndex(of: index) {
+            pages.remove(at: position)
+        } else {
+            pages.append(index)
+        }
+        anchor = index
+        range = pages.isEmpty ? "none" : pages.map { String($0 + 1) }.joined(separator: ", ")
     }
 }

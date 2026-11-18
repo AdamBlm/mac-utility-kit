@@ -4,42 +4,68 @@ import UniformTypeIdentifiers
 
 enum PDFOperations {
     static func merge(
-        _ inputs: [URL], ranges: [String], passwords: [String], into output: URL, progress: @Sendable (Double) async -> Void
+        _ inputs: [URL], ranges: [String], passwords: [String], order: [PDFMergePageReference]? = nil,
+        stamps: [Int: PDFMergeSourceStamp]? = nil, into output: URL, progress: @Sendable (Double) async -> Void
     ) async throws {
-        let result = PDFDocument()
+        var sources: [PDFDocument?] = []
         for (index, input) in inputs.enumerated() {
             try Task.checkCancellation()
-            try append(input, range: ranges.indices.contains(index) ? ranges[index] : "",
-                       password: passwords.indices.contains(index) ? passwords[index] : "", to: result)
-            await progress(Double(index + 1) / Double(inputs.count + 1))
+            let range = ranges.indices.contains(index) ? ranges[index] : ""
+            let password = passwords.indices.contains(index) ? passwords[index] : ""
+            let excluded = range.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "none"
+            if !excluded, let stamps {
+                guard let reviewed = stamps[index] else {
+                    throw ToolError.invalid("Refresh the preview for \(input.lastPathComponent) before merging.")
+                }
+                try reviewed.validate(input)
+            }
+            let source = excluded ? nil : try open(input, password: password)
+            sources.append(source)
+            await progress(0.25 * Double(index + 1) / Double(inputs.count))
         }
-        guard result.pageCount > 0 else { throw ToolError.invalid("Select at least one page to merge.") }
+        let counts = sources.map { $0?.pageCount ?? 0 }
+        let selected = try PDFMergePlan.selectedPages(counts: counts, ranges: ranges)
+        let pages = try PDFMergePlan.validate(order, against: selected)
+        let result = PDFDocument()
+        for (index, reference) in pages.enumerated() {
+            try Task.checkCancellation()
+            guard let page = sources[reference.source]?.page(at: reference.page)?.copy() as? PDFPage else {
+                throw ToolError.invalid("Could not read a page in \(inputs[reference.source].lastPathComponent).")
+            }
+            result.insert(page, at: result.pageCount)
+            await progress(0.25 + 0.65 * Double(index + 1) / Double(pages.count))
+        }
+        try Task.checkCancellation()
+        try validate(stamps, inputs: inputs, selected: pages)
         guard result.write(to: output) else { throw ToolError.invalid("Could not write the PDF.") }
+        try validate(stamps, inputs: inputs, selected: pages)
         await progress(1)
     }
 
-    private static func append(_ input: URL, range: String, password: String, to result: PDFDocument) throws {
-        if range.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "none" { return }
+    private static func validate(
+        _ stamps: [Int: PDFMergeSourceStamp]?, inputs: [URL], selected: [PDFMergePageReference]
+    ) throws {
+        guard let stamps else { return }
+        for index in Set(selected.map(\.source)) {
+            try stamps[index]?.validate(inputs[index])
+        }
+    }
+
+    static func open(_ input: URL, password: String) throws -> PDFDocument {
         let type = try input.resourceValues(forKeys: [.contentTypeKey]).contentType
-        if type?.conforms(to: .pdf) == true {
+        if type?.conforms(to: .pdf) == true || input.pathExtension.lowercased() == "pdf" {
             guard let document = PDFDocument(url: input),
                   !document.isLocked || document.unlock(withPassword: password),
                   document.pageCount > 0 else {
                 throw ToolError.invalid("Could not open \(input.lastPathComponent) as an unlocked PDF.")
             }
-            for pageIndex in try PageSelection.indices(range, pageCount: document.pageCount) {
-                try Task.checkCancellation()
-                guard let page = document.page(at: pageIndex) else {
-                    throw ToolError.invalid("Could not read a page in \(input.lastPathComponent).")
-                }
-                result.insert(page, at: result.pageCount)
-            }
-        } else if let image = NSImage(contentsOf: input), let page = PDFPage(image: image) {
-            if try !PageSelection.indices(range, pageCount: 1).isEmpty {
-                result.insert(page, at: result.pageCount)
-            }
-        } else {
+            return document
+        }
+        guard let image = NSImage(contentsOf: input), let page = PDFPage(image: image) else {
             throw ToolError.invalid("Could not read \(input.lastPathComponent). Check whether it is damaged or locked.")
         }
+        let document = PDFDocument()
+        document.insert(page, at: 0)
+        return document
     }
 }

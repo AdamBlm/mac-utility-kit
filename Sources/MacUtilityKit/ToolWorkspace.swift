@@ -125,6 +125,8 @@ struct ToolWorkspace: View {
             draft.options.audioCleanup.executable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        case .mergePDFs:
+            draft.mergePages?.isEmpty != false
         case .pdfToWord:
             draft.inputs.allSatisfy { PDFToWord.optionIssue($0, options: draft.options.pdfToWord) != nil }
         case .compressPDF:
@@ -259,6 +261,7 @@ struct ToolWorkspace: View {
                         case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
+                            PDFMergeOrderView(draft: $draft)
                             SettingRow("Output filename") {
                                 TextField("Output filename", text: Binding(
                                     get: { draft.outputName },
@@ -332,7 +335,7 @@ struct ToolWorkspace: View {
                 Spacer()
                 if tool == .mergePDFs {
                     Button("Preview") { session.start(tool, draft: draft, preview: true) }
-                        .disabled(draft.inputs.isEmpty || session.isRunning)
+                        .disabled(draft.inputs.isEmpty || session.isRunning || exportSettingsIncomplete)
                 }
                 Button(tool == .mediaInfo ? "Inspect media" : tool.title) { session.start(tool, draft: draft) }
                     .buttonStyle(.borderedProminent)
@@ -512,7 +515,11 @@ struct ToolWorkspace: View {
             get: { draft.passwords[index, default: ""] },
             set: { draft.passwords[index] = $0 }
         )
-        return PDFPageControls(input: input, range: range, password: password).id(input)
+        let inspection = Binding(
+            get: { draft.mergeInspections[index] },
+            set: { draft.mergeInspections[index] = $0 }
+        )
+        return PDFPageControls(input: input, range: range, password: password, inspection: inspection).id(input)
     }
 
     private func chooseInputs(for tool: Tool) {

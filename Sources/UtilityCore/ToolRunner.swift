@@ -81,7 +81,9 @@ public enum ToolRunner {
                 throw ToolError.invalid("Enter a valid PDF filename.")
             }
             let output = staging.appendingPathComponent(name.lowercased().hasSuffix(".pdf") ? name : name + ".pdf")
-            try await PDFOperations.merge(inputs, ranges: options.pageRanges, passwords: options.pdfPasswords, into: output, progress: progress)
+            try await PDFOperations.merge(inputs, ranges: options.pageRanges, passwords: options.pdfPasswords,
+                                          order: options.pdfMergeOrder, stamps: options.pdfMergeSourceStamps,
+                                          into: output, progress: progress)
             outputs.append(output)
         } else if tool == .mergeVideos {
             let output = staging.appendingPathComponent("Merged.\(options.videoMerge.format.rawValue)")

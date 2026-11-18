@@ -9,6 +9,9 @@ struct ToolDraft {
     var options = ToolOptions()
     var ranges: [Int: String] = [:]
     var passwords: [Int: String] = [:]
+    var mergeInspections: [Int: PDFMergeInspection] = [:]
+    var mergeOrder: [PDFMergePageReference]?
+    var mergeSourceRevision = UUID()
     var outputName = "Merged"
     var wordCounter = WordCounterDraft()
     var qrTools = QRToolsDraft()
@@ -76,6 +79,14 @@ struct ToolDraft {
         let password = passwords[index]
         passwords[index] = passwords[index - 1]
         passwords[index - 1] = password
+        mergeSourceRevision = UUID()
+        let inspection = mergeInspections[index]
+        mergeInspections[index] = mergeInspections[index - 1]
+        mergeInspections[index - 1] = inspection
+        mergeOrder = mergeOrder?.map { page in
+            let source = page.source == index ? index - 1 : (page.source == index - 1 ? index : page.source)
+            return PDFMergePageReference(source: source, page: page.page)
+        }
     }
 
     mutating func removeInput(at index: Int) {
@@ -84,9 +95,32 @@ struct ToolDraft {
         if !inputs.contains(removed) { captureAttachments.removeAll { $0.url == removed } }
         ranges = afterRemoving(index, from: ranges)
         passwords = afterRemoving(index, from: passwords)
+        mergeSourceRevision = UUID()
+        mergeInspections = afterRemoving(index, from: mergeInspections)
+        mergeOrder = mergeOrder?.compactMap { page in
+            guard page.source != index else { return nil }
+            return PDFMergePageReference(source: page.source > index ? page.source - 1 : page.source, page: page.page)
+        }
     }
 
-    private func afterRemoving(_ index: Int, from values: [Int: String]) -> [Int: String] {
+    var mergePages: [PDFMergePageReference]? {
+        let selectedRanges = inputs.indices.map { ranges[$0, default: ""] }
+        var counts: [Int] = []
+        for (index, input) in inputs.enumerated() {
+            if selectedRanges[index].trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "none" {
+                counts.append(0)
+            } else if let inspection = mergeInspections[index], inspection.input == input,
+                      let count = inspection.count(password: passwords[index, default: ""]) {
+                counts.append(count)
+            } else {
+                return nil
+            }
+        }
+        guard let selected = try? PDFMergePlan.selectedPages(counts: counts, ranges: selectedRanges) else { return nil }
+        return PDFMergePlan.reconcile(selected: selected, custom: mergeOrder)
+    }
+
+    private func afterRemoving<T>(_ index: Int, from values: [Int: T]) -> [Int: T] {
         Dictionary(uniqueKeysWithValues: values.compactMap { key, value in
             key == index ? nil : (key > index ? key - 1 : key, value)
         })
@@ -186,6 +220,12 @@ final class WorkspaceSession {
         }
     }
 
+    private func mergeStamps(_ draft: ToolDraft, plan: [PDFMergePageReference]) -> [Int: PDFMergeSourceStamp] {
+        Dictionary(uniqueKeysWithValues: Set(plan.map(\.source)).compactMap { index in
+            draft.mergeInspections[index]?.stamp.map { (index, $0) }
+        })
+    }
+
     func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false) {
         guard !isRunning else { return }
         runningTool = tool
@@ -206,6 +246,13 @@ final class WorkspaceSession {
                 options.pageRanges = draft.inputs.indices.map { draft.ranges[$0, default: ""] }
                 options.pdfOutputName = draft.outputName
                 options.pdfPasswords = draft.inputs.indices.map { draft.passwords[$0, default: ""] }
+                if tool == .mergePDFs {
+                    guard let plan = draft.mergePages, !plan.isEmpty else {
+                        throw ToolError.invalid("Check the source pages and choose at least one page to merge.")
+                    }
+                    options.pdfMergeOrder = plan
+                    options.pdfMergeSourceStamps = mergeStamps(draft, plan: plan)
+                }
                 let report = try await ToolRunner.run(
                     tool, inputs: draft.inputs,
                     destination: preview ? FileManager.default.temporaryDirectory : draft.destination,
