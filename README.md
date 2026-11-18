@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 61 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 63 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -96,6 +96,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Redact PDF** permanently removes marked content in a rasterized copy of an unencrypted PDF. The copy contains rendered pages, with text selection, links, and forms removed.
 - **Web Page to PDF** previews an HTTP or HTTPS page and exports a continuous or paginated PDF. Paginated export supports paper, margins, and print backgrounds.
 - **Convert Documents** uses Pandoc and LibreOffice for supported conversion pairs, with text previews and batch filename templates. Plain-text export drops formatting and images.
+- **Word to PDF** uses LibreOffice to preview the source layout and export selected pages with searchable text and links. Page setup and font substitution follow LibreOffice.
 - **Markdown to PDF** previews GFM Markdown and exports searchable, paginated PDF with theme, paper, margin, and source-folder image options.
 - **Add Password** encrypts a PDF copy with AES-256 and controls printing and copying permissions. **Remove Password** previews the PDF after unlocking it and saves a decrypted copy. Both use a selected qpdf executable.
 
@@ -117,3 +118,4 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **JSON Formatter** validates, formats, and minifies JSON, with configurable indentation, key sorting, and duplicate-key warnings.
 - **Base64** encodes and decodes text or files as Base64, Base64URL, hex, or binary. Decoded bytes can be exported directly.
 - **Hash Generator** calculates MD5, SHA-1, SHA-256, SHA-384, and SHA-512 digests for text and files and compares them with supplied checksums.
+- **UUID Generator** generates v4 and v7 identifiers in batches and inspects UUID variants, versions, and v7 timestamps.

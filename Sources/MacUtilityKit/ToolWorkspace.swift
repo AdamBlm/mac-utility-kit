@@ -48,6 +48,7 @@ struct ToolWorkspace: View {
         case .jsonFormatter: JSONFormatterView(draft: $draft.jsonFormatter)
         case .base64: Base64ToolView(draft: $draft.base64)
         case .hashGenerator: HashGeneratorView(draft: $draft.hashGenerator)
+        case .uuidGenerator: UUIDGeneratorView(draft: $draft.uuidGenerator)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
         case .textToSpeech: TextToSpeechView(draft: $draft.textToSpeech)
@@ -88,6 +89,8 @@ struct ToolWorkspace: View {
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .compressPDF:
             draft.options.pdfCompression.validationIssue != nil
+        case .wordToPDF:
+            draft.inputs.allSatisfy { OfficePDF.optionIssue($0, kind: .word, options: draft.options.officePDF) != nil }
         case .watermark:
             draft.options.watermark.content == .logo
                 ? draft.options.watermark.logo == nil
@@ -196,6 +199,8 @@ struct ToolWorkspace: View {
                                 .id(draft.pdfSourceRevision)
                         case .makePDFSearchable:
                             SearchablePDFControls(inputs: draft.inputs, options: $draft.options.searchablePDF)
+                        case .wordToPDF:
+                            OfficePDFControls(inputs: draft.inputs, options: $draft.options.officePDF, kind: .word)
                         case .convertDocuments:
                             DocumentConvertControls(inputs: draft.inputs, options: $draft.options.documents)
                         case .cropPDF:
@@ -205,7 +210,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

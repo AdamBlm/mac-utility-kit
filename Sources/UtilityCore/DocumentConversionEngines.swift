@@ -69,14 +69,12 @@ enum DocumentConversionEngines {
     }
 
     static func officeBinary(_ executable: URL) -> URL {
-        executable.pathExtension.lowercased() == "app"
-            ? executable.appending(path: "Contents/MacOS/soffice") : executable
+        LibreOfficeHeadless.binary(for: executable)
     }
 
     static func libreOffice(
         _ input: URL, to output: URL, target: DocumentConvertOptions.Format, executable: URL, stage: URL
     ) async throws {
-        let binary = officeBinary(executable)
         let outputFilter: String
         switch target {
         case .docx: outputFilter = "docx:Office Open XML Text"
@@ -86,26 +84,13 @@ enum DocumentConversionEngines {
         case .plain: outputFilter = "txt:Text (encoded):UTF8"
         case .markdown: throw ToolError.invalid("Markdown export requires Pandoc.")
         }
-        let conversion = stage.appending(path: "Office-\(UUID().uuidString)", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: conversion, withIntermediateDirectories: false)
-        defer { try? FileManager.default.removeItem(at: conversion) }
-        let profile = conversion.appending(path: "Profile", directoryHint: .isDirectory)
-        var arguments = [
-            "-env:UserInstallation=\(profile.absoluteString)",
-            "--headless", "--nologo", "--nodefault", "--norestore"
-        ]
-        if input.pathExtension.lowercased() == "txt" {
-            arguments.append("--infilter=Text (encoded):UTF8,LF")
-        }
-        let out = conversion.appending(path: "Output", directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: out, withIntermediateDirectories: false)
-        arguments += ["--convert-to", outputFilter, "--outdir", out.path, input.path]
-        try await ExternalTool.run(binary, name: "LibreOffice", arguments: arguments, directory: conversion)
-        let filename = input.deletingPathExtension().lastPathComponent + "." + target.fileExtension
-        let candidate = out.appending(path: filename)
+        let inputFilter = input.pathExtension.lowercased() == "txt" ? "Text (encoded):UTF8,LF" : nil
+        let candidate = try await LibreOfficeHeadless.convert(input, filter: outputFilter,
+                                                               fileExtension: target.fileExtension,
+                                                               executable: executable, in: stage, inputFilter: inputFilter)
         try verify(candidate, format: target)
         if target == .html {
-            let contents = try FileManager.default.contentsOfDirectory(atPath: out.path)
+            let contents = try FileManager.default.contentsOfDirectory(atPath: candidate.deletingLastPathComponent().path)
             guard contents.count == 1 else {
                 throw ToolError.invalid("LibreOffice produced separate HTML media files. Choose Pandoc or another target to export a single file.")
             }
