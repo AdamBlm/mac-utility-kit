@@ -114,16 +114,21 @@ public enum VideoMerge {
         if options.mode == .normalize, (size.width > 4096 || size.height > 4096) {
             throw ToolError.invalid("Choose a common resolution no larger than 4096 pixels per side.")
         }
-        let issue = clips.dropFirst().first { clip in
-            clip.orientation != first.orientation || clip.bounds.size != first.bounds.size
-                || clip.videoFormats != first.videoFormats || clip.audioFormats != first.audioFormats
-        }.map { "\($0.url.lastPathComponent) has different video or audio settings. Select Normalize." }
+        let issue = clips.dropFirst()
+            .first { !matchesStreams($0, first) }
+            .map { "\($0.url.lastPathComponent) has different video or audio settings. Select Normalize." }
         let entries = zip(clips, starts).map { clip, start in
             VideoMergePlan.Clip(url: clip.url, start: start.seconds, duration: clip.range.duration.seconds,
-                                sizesDiffer: clip.bounds.size != size, hasAudio: clip.audio != nil)
+                                sizesDiffer: clip.bounds.size != size, hasDifferentSettings: !matchesStreams(clip, first),
+                                hasAudio: clip.audio != nil)
         }
         let plan = VideoMergePlan(clips: entries, duration: cursor.seconds, size: size, passthroughIssue: issue)
         return Prepared(clips: clips, starts: starts, plan: plan)
+    }
+
+    private static func matchesStreams(_ clip: Clip, _ reference: Clip) -> Bool {
+        clip.orientation == reference.orientation && clip.bounds.size == reference.bounds.size
+            && clip.videoFormats == reference.videoFormats && clip.audioFormats == reference.audioFormats
     }
 
     private static func asset(_ url: URL) -> AVURLAsset {

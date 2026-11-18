@@ -76,6 +76,8 @@ public struct ToolOptions: Sendable {
     public var videoGIF = VideoGIFOptions()
     public var crop = VideoCropOptions()
     public var videoMerge = VideoMergeOptions()
+    public var replaceAudio = ReplaceAudioOptions()
+    public var burnSubtitles = BurnSubtitlesOptions()
     public var inspection = MediaInspectionOptions()
     public var extraction = AudioExtractionOptions()
     public var imageConversion = ImageConversionOptions()

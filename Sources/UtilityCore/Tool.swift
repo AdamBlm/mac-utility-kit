@@ -22,7 +22,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
-    case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos
+    case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
 
     public var usesInteractiveEditor: Bool {
         switch self {
@@ -69,6 +69,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .videoToGIF: "Video to GIF"
         case .cropRotateVideo: "Crop & Rotate Video"
         case .mergeVideos: "Merge Videos"
+        case .replaceAudio: "Replace Audio"
+        case .burnSubtitles: "Burn In Subtitles"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
@@ -86,7 +88,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
-        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos: .video
+        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: .video
         case .extractAudio: .audio
         }
     }
@@ -101,7 +103,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .jsonFormatter: [.json]
         case .keepAwake: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
-        case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos: [.movie]
+        case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo: [.movie, .audio]
         }
     }

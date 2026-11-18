@@ -146,6 +146,7 @@ struct VideoMergeControls: View {
     private func warning(for clip: VideoMergePlan.Clip) -> String? {
         let warnings = [
             options.mode == .normalize && clip.sizesDiffer ? "Padded or resized" : nil,
+            options.mode == .normalize && clip.hasDifferentSettings && !clip.sizesDiffer ? "Stream settings differ" : nil,
             options.keepsAudio && !clip.hasAudio ? "Silent" : nil
         ].compactMap { $0 }
         return warnings.isEmpty ? nil : warnings.joined(separator: " · ")

@@ -57,6 +57,10 @@ struct ToolWorkspace: View {
             draft.options.videoGIF.ffmpegExecutable == nil
         case .mergeVideos:
             draft.inputs.count < 2
+        case .replaceAudio:
+            draft.options.replaceAudio.source == nil
+        case .burnSubtitles:
+            draft.options.burnSubtitles.ffmpegExecutable == nil || draft.options.burnSubtitles.srt.isEmpty
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .convertImages:
@@ -118,6 +122,10 @@ struct ToolWorkspace: View {
                             VideoCropControls(inputs: draft.inputs, options: $draft.options.crop)
                         case .mergeVideos:
                             VideoMergeControls(inputs: $draft.inputs, options: $draft.options.videoMerge)
+                        case .replaceAudio:
+                            ReplaceAudioControls(inputs: draft.inputs, options: $draft.options.replaceAudio)
+                        case .burnSubtitles:
+                            BurnSubtitlesSettings(input: draft.inputs.first, options: $draft.options.burnSubtitles)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:

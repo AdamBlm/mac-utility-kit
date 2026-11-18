@@ -120,7 +120,7 @@ public enum ToolRunner {
                     case .resizeImages: options.imageFormat.rawValue
                     case .compressVideo: options.videoFormat.rawValue
                     case .convertVideo: options.conversion.format.rawValue
-                    case .changeSpeed, .resizeVideo, .cropRotateVideo: "mp4"
+                    case .changeSpeed, .resizeVideo, .cropRotateVideo, .replaceAudio, .burnSubtitles: "mp4"
                     case .videoToGIF: "gif"
                     case .mergeVideos: options.videoMerge.format.rawValue
                     case .trimVideo: options.trim.fileExtension
@@ -180,6 +180,16 @@ public enum ToolRunner {
                         summaries.append(summary)
                     case .cropRotateVideo:
                         let summary = try await VideoCrop.export(input, to: output, options: options.crop) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .replaceAudio:
+                        let summary = try await ReplaceAudio.export(input, to: output, options: options.replaceAudio) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .burnSubtitles:
+                        let summary = try await BurnSubtitles.export(input, to: output, options: options.burnSubtitles) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)

@@ -47,6 +47,7 @@ public struct VideoMergePlan: Sendable {
         public let start: Double
         public let duration: Double
         public let sizesDiffer: Bool
+        public let hasDifferentSettings: Bool
         public let hasAudio: Bool
     }
 

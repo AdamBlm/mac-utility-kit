@@ -45,6 +45,8 @@ struct VideoMergeTests {
         let actual = try await result.load(.duration).seconds
         #expect(abs(actual - plan.duration) < 0.1)
         #expect(try await result.loadTracks(withMediaType: .audio).count == 1)
+        #expect(try await Self.audioPeak(result, startingAt: 0.2) < 100)
+        #expect(try await Self.audioPeak(result, startingAt: plan.clips[1].start + 0.2) > 1_000)
         let generator = AVAssetImageGenerator(asset: result)
         let first = try await generator.image(at: CMTime(seconds: 0.2, preferredTimescale: 600)).image
         let last = try await generator.image(at: CMTime(seconds: plan.clips[1].start + 0.2, preferredTimescale: 600)).image
@@ -105,6 +107,29 @@ struct VideoMergeTests {
         let session = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
         try await session.export(to: destination, as: .mov)
         return destination
+    }
+
+    private static func audioPeak(_ asset: AVAsset, startingAt seconds: Double) async throws -> Int {
+        let track = try #require(try await asset.loadTracks(withMediaType: .audio).first)
+        let reader = try AVAssetReader(asset: asset)
+        let output = AVAssetReaderTrackOutput(track: track, outputSettings: [
+            AVFormatIDKey: kAudioFormatLinearPCM, AVLinearPCMBitDepthKey: 16, AVLinearPCMIsFloatKey: false
+        ])
+        reader.add(output)
+        reader.timeRange = CMTimeRange(start: CMTime(seconds: seconds, preferredTimescale: 60_000),
+                                       duration: CMTime(value: 1, timescale: 10))
+        try #require(reader.startReading())
+        var peak = 0
+        while let buffer = output.copyNextSampleBuffer(), let block = CMSampleBufferGetDataBuffer(buffer) {
+            let length = CMBlockBufferGetDataLength(block)
+            var values = [Int16](repeating: 0, count: length / MemoryLayout<Int16>.size)
+            let status = values.withUnsafeMutableBytes { bytes in
+                CMBlockBufferCopyDataBytes(block, atOffset: 0, dataLength: length, destination: bytes.baseAddress!)
+            }
+            try #require(status == kCMBlockBufferNoErr)
+            peak = max(peak, values.map { abs(Int($0)) }.max() ?? 0)
+        }
+        return peak
     }
 
     private static func edgeHasColor(_ frame: CGImage) throws -> Bool {
