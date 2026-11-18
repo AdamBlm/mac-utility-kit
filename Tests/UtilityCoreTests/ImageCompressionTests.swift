@@ -1,0 +1,144 @@
+import CoreGraphics
+import Foundation
+import ImageIO
+import Testing
+import UniformTypeIdentifiers
+import UtilityCore
+
+@Test func imageCompressionMeetsMeasuredGoalAndLeavesSourceUntouched() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("camera.jpg")
+    let output = directory.appendingPathComponent("export.jpg")
+    try writeCompressionFixture(to: source, format: .jpeg, withAlpha: false)
+    let before = try Data(contentsOf: source)
+
+    var settings = ImageCompressionOptions()
+    settings.quality = 0.95
+    settings.targetKilobytes = 18
+    #expect(try ImageCompression.outputExtension(source, options: settings) == "jpg")
+    let summary = try await ImageCompression.compress(source, to: output, options: settings)
+
+    #expect(summary.contains("Size goal reached"))
+    #expect(summary.contains("smaller"))
+    #expect(try Data(contentsOf: output).count <= 18_000)
+    #expect(try Data(contentsOf: source) == before)
+    let result = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(result, 0, nil))
+    #expect(image.width == 256 && image.height == 192)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).count == 2)
+}
+
+@Test func imageCompressionPreservesAlphaAndReportsUnreachableLosslessGoal() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("transparent.png")
+    let output = directory.appendingPathComponent("export.png")
+    try writeCompressionFixture(to: source, format: .png, withAlpha: true)
+
+    var settings = ImageCompressionOptions()
+    settings.mode = .lossless
+    settings.targetKilobytes = 1
+    let summary = try await ImageCompression.compress(source, to: output, options: settings)
+    #expect(summary.contains("Lossless encoding"))
+    #expect(summary.contains("Size goal not reached"))
+    #expect(try ImageConversion.hasTransparency(output))
+
+    settings.mode = .lossy
+    settings.format = .jpg
+    let rejected = directory.appendingPathComponent("no-output.jpg")
+    await #expect(throws: ToolError.self) {
+        try await ImageCompression.compress(source, to: rejected, options: settings)
+    }
+    #expect(!FileManager.default.fileExists(atPath: rejected.path))
+}
+
+@Test func imageCompressionReportsWhenFormatConversionGrows() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("camera.jpg")
+    let output = directory.appendingPathComponent("export.png")
+    try writeCompressionFixture(to: source, format: .jpeg, withAlpha: false)
+
+    var settings = ImageCompressionOptions()
+    settings.mode = .lossless
+    settings.format = .png
+    let summary = try await ImageCompression.compress(source, to: output, options: settings)
+    #expect(summary.contains("larger"))
+}
+
+@Test func imageCompressionRejectsMultiplePagesInsteadOfDroppingThem() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let single = directory.appendingPathComponent("single.png")
+    let source = directory.appendingPathComponent("multi.tiff")
+    let output = directory.appendingPathComponent("export.tiff")
+    try writeCompressionFixture(to: single, format: .png, withAlpha: true)
+    let image = try #require(CGImageSourceCreateWithURL(single as CFURL, nil))
+    let writer = try #require(CGImageDestinationCreateWithURL(source as CFURL, UTType.tiff.identifier as CFString, 2, nil))
+    CGImageDestinationAddImageFromSource(writer, image, 0, nil)
+    CGImageDestinationAddImageFromSource(writer, image, 0, nil)
+    try #require(CGImageDestinationFinalize(writer))
+    let before = try Data(contentsOf: source)
+
+    var settings = ImageCompressionOptions()
+    settings.mode = .lossless
+    let options = settings
+    await #expect(throws: ToolError.self) {
+        try await ImageCompression.compress(source, to: output, options: options)
+    }
+    #expect(!FileManager.default.fileExists(atPath: output.path))
+    #expect(try Data(contentsOf: source) == before)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
+func imageCompressionUsesImageMagickForTransparentLosslessWebP() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appendingPathComponent("transparent.png")
+    let output = directory.appendingPathComponent("export.webp")
+    try writeCompressionFixture(to: source, format: .png, withAlpha: true)
+
+    var settings = ImageCompressionOptions()
+    settings.mode = .lossless
+    settings.format = .webp
+    settings.imageMagickExecutable = URL(fileURLWithPath: executable)
+    let summary = try await ImageCompression.compress(source, to: output, options: settings)
+    #expect(summary.contains("WebP"))
+    #expect(summary.contains("Lossless encoding"))
+    #expect(try ImageConversion.hasTransparency(output))
+    // A VP8L chunk identifies the actual lossless WebP bitstream.
+    #expect(try Data(contentsOf: output).range(of: Data("VP8L".utf8)) != nil)
+}
+
+private func compressionDirectory() throws -> URL {
+    let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+    return folder
+}
+
+private func writeCompressionFixture(to url: URL, format: UTType, withAlpha: Bool) throws {
+    let width = 256
+    let height = 192
+    var random = UInt32(0x4845_5031)
+    var pixels = [UInt8](repeating: 255, count: width * height * 4)
+    for pixel in 0..<(width * height) {
+        for channel in 0..<3 {
+            random = 1_664_525 &* random &+ 1_013_904_223
+            pixels[pixel * 4 + channel] = UInt8(truncatingIfNeeded: random >> 24)
+        }
+        if withAlpha, pixel.isMultiple(of: 5) { pixels[pixel * 4 + 3] = 60 }
+    }
+    let provider = try #require(CGDataProvider(data: Data(pixels) as CFData))
+    let colorSpace = try #require(CGColorSpace(name: CGColorSpace.sRGB))
+    let bitmap = CGBitmapInfo(rawValue: (withAlpha ? CGImageAlphaInfo.last : .noneSkipLast).rawValue)
+    let image = try #require(CGImage(
+        width: width, height: height, bitsPerComponent: 8, bitsPerPixel: 32, bytesPerRow: width * 4,
+        space: colorSpace, bitmapInfo: bitmap, provider: provider, decode: nil,
+        shouldInterpolate: false, intent: .defaultIntent
+    ))
+    let writer = try #require(CGImageDestinationCreateWithURL(url as CFURL, format.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: 0.97] as CFDictionary)
+    try #require(CGImageDestinationFinalize(writer))
+}

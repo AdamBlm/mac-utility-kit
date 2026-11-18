@@ -312,3 +312,30 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(try JSONDecoder().decode([MediaInspectionReport.Section].self, from: data).count >= 2)
     #expect(try Data(contentsOf: invalid) == Data("No media".utf8))
 }
+
+@Test func imageWavePublishesBatchResultsAndComparisonURLs() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try imageFixture(in: folder)
+    let invalid = folder.appendingPathComponent("broken.png")
+    try Data("Not an image".utf8).write(to: invalid)
+    let original = try Data(contentsOf: source)
+
+    var options = ToolOptions()
+    options.imageConversion.format = .jpg
+    let converted = try await ToolRunner.run(
+        .convertImages, inputs: [source, invalid], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(converted.failures.count == 1)
+    #expect(converted.outputs.map(\.pathExtension) == ["jpg"])
+
+    let compressed = try await ToolRunner.run(
+        .compressImages, inputs: [source, invalid], destination: folder, imageSize: 0
+    ) { _ in }
+    #expect(compressed.failures.count == 1)
+    let comparison = try #require(compressed.imageComparisons.first)
+    #expect(comparison.source == source)
+    #expect(compressed.outputs == [comparison.output])
+    #expect(FileManager.default.fileExists(atPath: comparison.output.path))
+    #expect(try Data(contentsOf: source) == original)
+}

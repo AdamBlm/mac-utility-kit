@@ -5,11 +5,23 @@ public struct JobReport: Sendable {
     public let failures: [String]
     public let summaries: [String]
     public let inspections: [MediaInspectionResult]
+    public let imageComparisons: [ImageComparisonResult]
+    public let metadataResults: [ImageMetadataResult]
 }
 
 public struct MediaInspectionResult: Sendable {
     public let filename: String
     public let report: MediaInspectionReport
+}
+
+public struct ImageComparisonResult: Sendable {
+    public let source: URL
+    public let output: URL
+}
+
+public struct ImageMetadataResult: Sendable {
+    public let filename: String
+    public let removal: ImageMetadataRemoval
 }
 
 public enum ToolError: LocalizedError {
@@ -47,6 +59,8 @@ public enum ToolRunner {
         var failures: [String] = []
         var summaries: [String] = []
         var inspections: [MediaInspectionResult] = []
+        var comparisons: [ImageComparisonResult] = []
+        var metadataResults: [ImageMetadataResult] = []
 
         if tool == .mergePDFs {
             let name = options.pdfOutputName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -59,18 +73,23 @@ public enum ToolRunner {
         } else {
             for (index, input) in inputs.enumerated() {
                 try Task.checkCancellation()
-                let ext = switch tool {
-                case .resizeImages: options.imageFormat.rawValue
-                case .compressVideo: options.videoFormat.rawValue
-                case .convertVideo: options.conversion.format.rawValue
-                case .mediaInfo: "json"
-                case .extractAudio: options.extraction.format.rawValue
-                case .mergePDFs: "pdf"
-                }
-                let output = staging.appendingPathComponent(
-                    "\(index + 1) - \(input.deletingPathExtension().lastPathComponent).\(ext)"
-                )
+                var stagedOutput: URL?
                 do {
+                    let ext = switch tool {
+                    case .resizeImages: options.imageFormat.rawValue
+                    case .compressVideo: options.videoFormat.rawValue
+                    case .convertVideo: options.conversion.format.rawValue
+                    case .mediaInfo: "json"
+                    case .extractAudio: options.extraction.format.rawValue
+                    case .convertImages: options.imageConversion.format.rawValue
+                    case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
+                    case .removeMetadata: try ImageMetadata.outputExtension(input)
+                    case .mergePDFs: "pdf"
+                    }
+                    let output = staging.appendingPathComponent(
+                        "\(index + 1) - \(input.deletingPathExtension().lastPathComponent).\(ext)"
+                    )
+                    stagedOutput = output
                     switch tool {
                     case .resizeImages: try await ImageResizing.resize(input, output: output, imageSize: imageSize, options: options)
                     case .compressVideo:
@@ -93,12 +112,20 @@ public enum ToolRunner {
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
+                    case .convertImages:
+                        summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
+                    case .compressImages:
+                        summaries.append(try await ImageCompression.compress(input, to: output, options: options.imageCompression))
+                        comparisons.append(ImageComparisonResult(source: input, output: result.appendingPathComponent(output.lastPathComponent)))
+                    case .removeMetadata:
+                        let removal = try await ImageMetadata.remove(input, to: output, options: options.imageMetadata)
+                        metadataResults.append(ImageMetadataResult(filename: input.lastPathComponent, removal: removal))
                     case .mergePDFs: break
                     }
                     outputs.append(output)
                 } catch {
                     try Task.checkCancellation()
-                    try? manager.removeItem(at: output)
+                    if let stagedOutput { try? manager.removeItem(at: stagedOutput) }
                     failures.append("\(input.lastPathComponent) — \(error.localizedDescription)")
                 }
                 await progress(Double(index + 1) / Double(inputs.count))
@@ -106,11 +133,12 @@ public enum ToolRunner {
         }
 
         try Task.checkCancellation()
-        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], inspections: []) }
+        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], inspections: [], imageComparisons: [], metadataResults: []) }
         try manager.moveItem(at: staging, to: result)
         return JobReport(
             outputs: outputs.map { result.appendingPathComponent($0.lastPathComponent) },
-            failures: failures, summaries: summaries, inspections: inspections
+            failures: failures, summaries: summaries, inspections: inspections,
+            imageComparisons: comparisons, metadataResults: metadataResults
         )
     }
 

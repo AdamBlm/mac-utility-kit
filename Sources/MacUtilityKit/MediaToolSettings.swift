@@ -191,7 +191,7 @@ private struct AudioExtractionControls: View {
     }
 }
 
-private func executablePicker(_ name: String, selection: Binding<URL?>) -> some View {
+func executablePicker(_ name: String, selection: Binding<URL?>) -> some View {
     HStack {
         if let current = selection.wrappedValue {
             Label(current.lastPathComponent, systemImage: "gearshape")

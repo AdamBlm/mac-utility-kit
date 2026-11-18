@@ -52,26 +52,29 @@ struct Workspace: View {
                         .font(.callout).foregroundStyle(.secondary)
                         .padding(.horizontal, 6)
                 } else {
-                    VStack(alignment: .leading, spacing: 4) {
-                        ForEach(visibleTools) { tool in
-                            Button {
-                                selection = tool
-                            } label: {
-                                Label(tool.title, systemImage: tool.symbol)
-                                    .font(.system(size: 13, weight: selection == tool ? .semibold : .regular))
-                                    .labelStyle(.fixedIcon)
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .padding(.horizontal, 10)
-                                    .padding(.vertical, 9)
-                                    .foregroundStyle(selection == tool ? palette.accent : .primary)
-                                    .background(selection == tool ? palette.wash : .clear,
-                                                in: RoundedRectangle(cornerRadius: 8))
-                                    .contentShape(Rectangle())
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 4) {
+                            ForEach(visibleTools) { tool in
+                                Button {
+                                    selection = tool
+                                } label: {
+                                    Label(tool.title, systemImage: tool.symbol)
+                                        .font(.system(size: 13, weight: selection == tool ? .semibold : .regular))
+                                        .labelStyle(.fixedIcon)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                        .padding(.horizontal, 10)
+                                        .padding(.vertical, 9)
+                                        .foregroundStyle(selection == tool ? palette.accent : .primary)
+                                        .background(selection == tool ? palette.wash : .clear,
+                                                    in: RoundedRectangle(cornerRadius: 8))
+                                        .contentShape(Rectangle())
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityAddTraits(selection == tool ? .isSelected : [])
                             }
-                            .buttonStyle(.plain)
-                            .accessibilityAddTraits(selection == tool ? .isSelected : [])
                         }
                     }
+                    .scrollIndicators(.hidden)
                 }
                 Spacer(minLength: 0)
             }

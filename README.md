@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build includes Resize Images, Merge PDFs, Compress Video, Convert Video, Media Info, and Extract Audio.
+Working name for an open-source macOS utility suite with its own interface. The current build has nine tools for images, PDFs, video, and audio.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -28,3 +28,12 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 - **Extract Audio** previews one selected track and exports it to M4A, WAV, or AIFF. A user-selected FFmpeg adds MP3 and FLAC. Source track discovery uses AVFoundation. Passthrough is supported for AAC and ALAC tracks in M4A.
 
 Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the external Media Info integration fixture.
+
+
+### Image tools
+
+- **Convert Images** exports the primary image to JPEG, PNG, HEIC, or TIFF using Image I/O. A user-selected ImageMagick executable adds WebP. The tool applies orientation and can preserve supported metadata or flatten transparency against a chosen color.
+- **Compress Images** uses the same encoding pipeline. It reports measured sizes and whether a best-effort size goal was reached. Compare opens the original and result side by side with linked zoom. Animated and multi-image sources require an explicit conversion workflow.
+- **Remove Metadata** works on single-image JPEG and PNG. The native path removes supported location metadata. A user-selected ExifTool executable enables camera, dates, IPTC, and XMP groups. The tool verifies selected fields and checks dimensions, orientation, and color profile before publishing a copy.
+
+Set `MAC_UTILITY_EXIFTOOL_TEST` to a local ExifTool executable to run its integration fixture.

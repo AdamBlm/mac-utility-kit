@@ -73,6 +73,9 @@ extension Tool {
     var symbol: String {
         switch self {
         case .resizeImages: "photo.on.rectangle"
+        case .convertImages: "photo.badge.arrow.down"
+        case .compressImages: "arrow.down.right.and.arrow.up.left"
+        case .removeMetadata: "eye.slash"
         case .mergePDFs: "document.on.document"
         case .compressVideo: "film"
         case .convertVideo: "arrow.triangle.2.circlepath"
@@ -84,6 +87,9 @@ extension Tool {
     var subtitle: String {
         switch self {
         case .resizeImages: "Change the dimensions of one image or a whole batch."
+        case .convertImages: "Change image formats and control transparency."
+        case .compressImages: "Reduce image file size and compare the result."
+        case .removeMetadata: "Inspect and remove private details from image copies."
         case .mergePDFs: "Choose and combine pages from PDFs and images."
         case .compressVideo: "Make videos smaller while keeping their resolution."
         case .convertVideo: "Save a video in another format."
@@ -94,7 +100,7 @@ extension Tool {
 
     var dropHint: String {
         switch self {
-        case .resizeImages: "or drop images anywhere in this pane"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata: "or drop images anywhere in this pane"
         case .mergePDFs: "or drop PDFs and images anywhere in this pane"
         case .compressVideo: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
@@ -104,7 +110,7 @@ extension Tool {
 
     var dropTitle: String {
         switch self {
-        case .resizeImages: "Drop images here"
+        case .resizeImages, .convertImages, .compressImages, .removeMetadata: "Drop images here"
         case .mergePDFs: "Drop PDFs or images here"
         case .compressVideo: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"

@@ -7,16 +7,22 @@ struct ToolWorkspace: View {
     @Binding var draft: ToolDraft
     let session: WorkspaceSession
     @State private var dropTarget: Tool?
+    @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
     private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
 
     var body: some View {
-        if draft.inputs.isEmpty, session.reports[tool] == nil,
-           session.errors[tool] == nil, session.runningTool != tool {
-            emptyWorkspace(for: tool)
-        } else {
-            editor(for: tool)
+        Group {
+            if draft.inputs.isEmpty, session.reports[tool] == nil,
+               session.errors[tool] == nil, session.runningTool != tool {
+                emptyWorkspace(for: tool)
+            } else {
+                editor(for: tool)
+            }
+        }
+        .sheet(isPresented: Binding(get: { comparison != nil }, set: { if !$0 { comparison = nil } })) {
+            if let comparison { ImageComparisonView(pair: comparison) }
         }
     }
 
@@ -26,6 +32,14 @@ struct ToolWorkspace: View {
             draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+        case .convertImages:
+            draft.options.imageConversion.format.requiresImageMagick && draft.options.imageConversion.imageMagickExecutable == nil
+        case .compressImages:
+            draft.options.imageCompression.format.requiresImageMagick && draft.options.imageCompression.imageMagickExecutable == nil
+        case .removeMetadata:
+            draft.options.imageMetadata.groups.isEmpty
+                || (!draft.options.imageMetadata.groups.subtracting([.location]).isEmpty
+                    && draft.options.imageMetadata.exifToolExecutable == nil)
         default:
             false
         }
@@ -51,6 +65,12 @@ struct ToolWorkspace: View {
                         switch tool {
                         case .resizeImages:
                             imageControls()
+                        case .convertImages:
+                            imageConversionControls()
+                        case .compressImages:
+                            imageCompressionControls()
+                        case .removeMetadata:
+                            metadataControls()
                         case .compressVideo:
                             videoControls()
                         case .convertVideo:
@@ -85,6 +105,9 @@ struct ToolWorkspace: View {
                                     Text(summary).font(.callout).textSelection(.enabled)
                                 }
                             }
+                            ForEach(Array(report.metadataResults.enumerated()), id: \.offset) { _, item in
+                                MetadataRemovalResultView(item: item)
+                            }
                             ForEach(report.outputs, id: \.self) { output in
                                 HStack {
                                     Image(systemName: "checkmark.circle.fill")
@@ -92,6 +115,9 @@ struct ToolWorkspace: View {
                                         .accessibilityHidden(true)
                                     Text(output.lastPathComponent).lineLimit(1)
                                     Spacer()
+                                    if let pair = report.imageComparisons.first(where: { $0.output == output }) {
+                                        Button("Compare") { comparison = pair }
+                                    }
                                     Button("Open") { NSWorkspace.shared.open(output) }
                                     Button("Reveal") {
                                         NSWorkspace.shared.activateFileViewerSelecting([output])

@@ -62,6 +62,9 @@ public struct ToolOptions: Sendable {
     public var conversion = VideoConversionOptions()
     public var inspection = MediaInspectionOptions()
     public var extraction = AudioExtractionOptions()
+    public var imageConversion = ImageConversionOptions()
+    public var imageCompression = ImageCompressionOptions()
+    public var imageMetadata = ImageMetadataOptions()
     public var imageMagickExecutable: URL?
     public var imageSizing: ImageSizing = .longestEdge
     public var imageFit: ImageFit = .fit
