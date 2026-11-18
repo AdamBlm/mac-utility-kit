@@ -18,28 +18,11 @@ public enum VideoQuality: String, CaseIterable, Sendable {
     case smaller = "Smaller File"
     case balanced = "Balanced"
     case higher = "Higher Quality"
-
-    var preset: String {
-        switch self {
-        case .smaller: AVAssetExportPresetLowQuality
-        case .balanced: AVAssetExportPresetMediumQuality
-        case .higher: AVAssetExportPresetHighestQuality
-        }
-    }
 }
 
 public enum VideoCodec: String, CaseIterable, Sendable {
     case automatic = "Automatic"
     case hevc = "HEVC"
-
-    func preset(for quality: VideoQuality) -> String {
-        guard self == .hevc else { return quality.preset }
-        switch quality {
-        case .smaller: return AVAssetExportPresetHEVC1920x1080
-        case .balanced: return AVAssetExportPresetHEVC3840x2160
-        case .higher: return AVAssetExportPresetHEVCHighestQuality
-        }
-    }
 }
 
 public enum ImageSizing: String, CaseIterable, Sendable {

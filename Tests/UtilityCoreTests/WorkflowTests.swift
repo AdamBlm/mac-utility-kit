@@ -79,22 +79,26 @@ private func imageFixture(in folder: URL) throws -> URL {
     #expect(outputSize < sourceSize)
 }
 
-private func writeVideoFixture(to url: URL) async throws {
+private func writeVideoFixture(
+    to url: URL, width: Int = 640, height: Int = 480, frames: Int = 30,
+    transform: CGAffineTransform = .identity
+) async throws {
     let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
         AVVideoCodecKey: AVVideoCodecType.proRes422,
-        AVVideoWidthKey: 640,
-        AVVideoHeightKey: 480
+        AVVideoWidthKey: width,
+        AVVideoHeightKey: height
     ])
     let adaptor = AVAssetWriterInputPixelBufferAdaptor(
         assetWriterInput: input, sourcePixelBufferAttributes: nil
     )
+    input.transform = transform
     writer.add(input)
     try #require(writer.startWriting())
     writer.startSession(atSourceTime: .zero)
     var buffer: CVPixelBuffer?
     try #require(CVPixelBufferCreate(
-        kCFAllocatorDefault, 640, 480, kCVPixelFormatType_32BGRA, nil, &buffer
+        kCFAllocatorDefault, width, height, kCVPixelFormatType_32BGRA, nil, &buffer
     ) == kCVReturnSuccess)
     let frame = try #require(buffer)
     CVPixelBufferLockBaseAddress(frame, [])
@@ -103,7 +107,7 @@ private func writeVideoFixture(to url: URL) async throws {
     }
     CVPixelBufferUnlockBaseAddress(frame, [])
 
-    for index in 0..<30 {
+    for index in 0..<frames {
         for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
             try await Task.sleep(for: .milliseconds(2))
         }
@@ -195,4 +199,43 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(output.pathExtension == "mov")
     #expect(try await AVURLAsset(url: output).load(.isPlayable))
     #expect(report.summaries.count == 1)
+}
+
+@Test func balancedKeeps4KResolutionInExportAndSample() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("4k.mov")
+    let rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 2160, ty: 0)
+    try await writeVideoFixture(to: source, width: 3840, height: 2160, frames: 8, transform: rotation)
+
+    let options = ToolOptions()
+    let report = try await ToolRunner.run(
+        .compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let export = try #require(report.outputs.first)
+    let sample = try await ToolRunner.sampleVideo(source, destination: folder, options: options)
+
+    for url in [export, sample.url] {
+        let tracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .video)
+        let track = try #require(tracks.first)
+        #expect(try await track.load(.naturalSize) == CGSize(width: 3840, height: 2160))
+        #expect(try await track.load(.preferredTransform) == rotation)
+    }
+}
+
+@Test func balancedSupportsM4VContainer() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.mov")
+    try await writeVideoFixture(to: source, frames: 8)
+    var options = ToolOptions()
+    options.videoFormat = .m4v
+    let report = try await ToolRunner.run(
+        .compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    #expect(output.pathExtension == "m4v")
+    #expect(try await AVURLAsset(url: output).load(.isPlayable))
 }

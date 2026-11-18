@@ -285,28 +285,7 @@ public enum ToolRunner {
         _ input: URL, output: URL, options: ToolOptions, sample: Bool = false, progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
         let asset = AVURLAsset(url: input)
-        guard let exporter = AVAssetExportSession(asset: asset, presetName: options.videoCodec.preset(for: options.videoQuality)),
-              exporter.supportedFileTypes.contains(options.videoFormat.fileType)
-        else { throw ToolError.invalid("This video cannot be exported with the selected format and quality.") }
-        if sample {
-            let duration = try await asset.load(.duration)
-            guard duration.seconds.isFinite, duration.seconds > 0 else {
-                throw ToolError.invalid("Could not determine the video duration.")
-            }
-            exporter.timeRange = CMTimeRange(
-                start: .zero, duration: min(duration, CMTime(seconds: 5, preferredTimescale: 600))
-            )
-        }
-        let states = exporter.states(updateInterval: 0.2)
-        let observer = Task {
-            for await state in states {
-                if case .exporting(let status) = state {
-                    await progress(status.fractionCompleted)
-                }
-            }
-        }
-        defer { observer.cancel() }
-        try await exporter.export(to: output, as: options.videoFormat.fileType)
+        try await VideoEncoding.export(asset, to: output, options: options, sample: sample, progress: progress)
         if sample { return output.lastPathComponent }
         let sourceSize = try input.resourceValues(forKeys: [.fileSizeKey]).fileSize
         let outputSize = try output.resourceValues(forKeys: [.fileSizeKey]).fileSize

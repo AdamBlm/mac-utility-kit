@@ -148,6 +148,8 @@ private struct Workspace: View {
                     Picker("Compression quality", selection: option(tool, \.videoQuality)) {
                         ForEach(VideoQuality.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
+                    Text("Quality adjusts the encoding bitrate. Exports keep the source resolution.")
+                        .font(.caption).foregroundStyle(.secondary)
                     Toggle("Keep exports that are not smaller", isOn: option(tool, \.keepLargerVideos))
                     HStack {
                         Button("Create 5-second sample") { startSample(draft) }
