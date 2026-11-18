@@ -318,6 +318,7 @@ struct DocumentScannerView: View {
 private struct ScanCornerCanvas: View {
     let image: CGImage
     @Binding var corners: ScanCorners
+    @FocusState private var focusedCorner: Int?
 
     var body: some View {
         GeometryReader { canvas in
@@ -338,15 +339,32 @@ private struct ScanCornerCanvas: View {
                         let point = corners.points[index]
                         Circle()
                             .fill(.white)
-                            .overlay { Circle().stroke(Color.accentColor, lineWidth: 2) }
+                            .overlay { Circle().stroke(Color.accentColor, lineWidth: focusedCorner == index ? 4 : 2) }
                             .frame(width: 18, height: 18)
+                            .focusable()
+                            .focused($focusedCorner, equals: index)
+                            .onMoveCommand { direction in
+                                switch direction {
+                                case .left: nudge(index, dx: -0.01)
+                                case .right: nudge(index, dx: 0.01)
+                                case .up: nudge(index, dy: 0.01)
+                                case .down: nudge(index, dy: -0.01)
+                                @unknown default: break
+                                }
+                            }
                             .position(x: point.x * size.width, y: (1 - point.y) * size.height)
                             .gesture(DragGesture(minimumDistance: 0, coordinateSpace: .named("scan-page")).onChanged { drag in
                                 guard size.width > 0, size.height > 0 else { return }
                                 corners.set(CGPoint(x: min(1, max(0, drag.location.x / size.width)),
                                                     y: min(1, max(0, 1 - drag.location.y / size.height))), at: index)
                             })
-                            .accessibilityLabel("Corner \(index + 1)")
+                            .accessibilityLabel(["Top left corner", "Top right corner", "Bottom right corner", "Bottom left corner"][index])
+                            .accessibilityValue("Horizontal \(Int(point.x * 100)) percent, vertical \(Int((1 - point.y) * 100)) percent")
+                            .accessibilityHint("Use the arrow keys to move this corner.")
+                            .accessibilityAction(named: Text("Move Left")) { nudge(index, dx: -0.01) }
+                            .accessibilityAction(named: Text("Move Right")) { nudge(index, dx: 0.01) }
+                            .accessibilityAction(named: Text("Move Up")) { nudge(index, dy: 0.01) }
+                            .accessibilityAction(named: Text("Move Down")) { nudge(index, dy: -0.01) }
                     }
                 }
                 .frame(width: size.width, height: size.height)
@@ -354,5 +372,10 @@ private struct ScanCornerCanvas: View {
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
+    }
+
+    private func nudge(_ index: Int, dx: CGFloat = 0, dy: CGFloat = 0) {
+        let point = corners.points[index]
+        corners.set(CGPoint(x: min(1, max(0, point.x + dx)), y: min(1, max(0, point.y + dy))), at: index)
     }
 }
