@@ -130,6 +130,8 @@ struct ToolWorkspace: View {
                             inspectionControls()
                         case .extractAudio:
                             extractionControls()
+                        case .trimAudio:
+                            AudioTrimControls(inputs: draft.inputs, options: $draft.options.audioTrim)
                         case .imagesToPDF:
                             ImagesToPDFSettings(inputs: draft.inputs, options: $draft.options.imagesToPDF)
                         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages:

@@ -23,6 +23,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
+    case trimAudio
 
     public var usesInteractiveEditor: Bool {
         switch self {
@@ -75,6 +76,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
         case .extractAudio: "Extract Audio"
+        case .trimAudio: "Trim Audio"
         }
     }
 
@@ -89,7 +91,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .keepAwake: .mac
         case .jsonFormatter, .base64, .hashGenerator: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: .video
-        case .extractAudio: .audio
+        case .extractAudio, .trimAudio: .audio
         }
     }
 
@@ -105,6 +107,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo: [.movie, .audio]
+        case .trimAudio: [.audio]
         }
     }
 }

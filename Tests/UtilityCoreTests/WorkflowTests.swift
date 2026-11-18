@@ -304,17 +304,7 @@ private func writePDF(widths: [Int], to url: URL) throws {
     let source = folder.appendingPathComponent("source.mov")
     try await writeVideoFixture(to: source)
     let audio = folder.appendingPathComponent("replacement.wav")
-    let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
-    let frames = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
-    frames.frameLength = frames.frameCapacity
-    let samples = try #require(frames.floatChannelData?[0])
-    for index in 0..<Int(frames.frameLength) {
-        samples[index] = Float(sin(Double(index) * 2 * .pi * 440 / 48_000)) * 0.25
-    }
-    do {
-        let file = try AVAudioFile(forWriting: audio, settings: format.settings)
-        try file.write(from: frames)
-    }
+    try writeToneFixture(to: audio)
     var options = ToolOptions()
     options.replaceAudio.source = audio
     let report = try await ToolRunner.run(
@@ -327,6 +317,39 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
     #expect(FileManager.default.fileExists(atPath: source.path))
     #expect(FileManager.default.fileExists(atPath: audio.path))
+}
+
+private func writeToneFixture(to audio: URL) throws {
+    let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 1))
+    let frames = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 48_000))
+    frames.frameLength = frames.frameCapacity
+    let samples = try #require(frames.floatChannelData?[0])
+    for index in 0..<Int(frames.frameLength) {
+        samples[index] = Float(sin(Double(index) * 2 * .pi * 440 / 48_000)) * 0.25
+    }
+    do {
+        let file = try AVAudioFile(forWriting: audio, settings: format.settings)
+        try file.write(from: frames)
+    }
+}
+
+@Test func trimAudioPublishesTheRequestedSampleRangeThroughSharedRunner() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.wav")
+    try writeToneFixture(to: source)
+    var options = ToolOptions()
+    options.audioTrim.start = 0.125
+    options.audioTrim.end = 0.625
+    let report = try await ToolRunner.run(
+        .trimAudio, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    let track = try AudioTrim.source(output)
+    #expect(track.sampleRate == 48_000)
+    #expect(track.frameCount == 24_000)
+    #expect(try AudioTrim.source(source).frameCount == 48_000)
 }
 
 @Test func balancedKeeps4KResolutionInExportAndSample() async throws {

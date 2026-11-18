@@ -106,6 +106,7 @@ extension Tool {
         case .convertVideo: "arrow.triangle.2.circlepath"
         case .mediaInfo: "info.circle"
         case .extractAudio: "waveform"
+        case .trimAudio: "waveform.path"
         }
     }
 
@@ -145,6 +146,7 @@ extension Tool {
         case .convertVideo: "Save a video in another format."
         case .mediaInfo: "Inspect the streams and properties of a media file."
         case .extractAudio: "Save a selected audio track from a video."
+        case .trimAudio: "Trim an audio selection, preview it on a loop, and add fades."
         }
     }
 
@@ -160,6 +162,7 @@ extension Tool {
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
         case .mediaInfo: "or drop audio or video anywhere in this pane"
+        case .trimAudio: "or drop audio files anywhere in this pane"
         }
     }
 
@@ -175,6 +178,7 @@ extension Tool {
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"
         case .mediaInfo: "Drop media files here"
+        case .trimAudio: "Drop audio files here"
         }
     }
 }

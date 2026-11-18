@@ -80,6 +80,7 @@ public struct ToolOptions: Sendable {
     public var burnSubtitles = BurnSubtitlesOptions()
     public var inspection = MediaInspectionOptions()
     public var extraction = AudioExtractionOptions()
+    public var audioTrim = AudioTrimOptions()
     public var imageConversion = ImageConversionOptions()
     public var imageCompression = ImageCompressionOptions()
     public var imageMetadata = ImageMetadataOptions()

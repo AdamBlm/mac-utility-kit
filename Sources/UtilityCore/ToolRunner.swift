@@ -128,6 +128,7 @@ public enum ToolRunner {
                     case .extractFrames: throw ToolError.invalid("Frame extraction requires an output directory.")
                     case .mediaInfo: "json"
                     case .extractAudio: options.extraction.format.rawValue
+                    case .trimAudio: options.audioTrim.format.rawValue
                     case .convertImages: options.imageConversion.format.rawValue
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
@@ -200,6 +201,11 @@ public enum ToolRunner {
                         inspections.append(MediaInspectionResult(filename: input.lastPathComponent, report: report))
                     case .extractAudio:
                         let summary = try await AudioExtraction.extract(input, to: output, options: options.extraction) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append(summary)
+                    case .trimAudio:
+                        let summary = try await AudioTrim.export(input, to: output, options: options.audioTrim) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)

@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 34 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 35 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -45,6 +45,8 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 - **Replace Audio** replaces or mixes a selected soundtrack with the original. Set track gains, an offset, and a duration policy, and listen to a short preview before exporting MP4.
 - **Burn In Subtitles** imports or edits SRT cues, shifts their timing, and previews subtitle styling on a selected video frame. MP4 export uses a selected FFmpeg build with libass.
+
+- **Trim Audio** selects a sample-accurate range with a waveform, time fields, and a looping preview. Export WAV, AIFF, or M4A with optional fades, or preserve PCM samples in matching WAV or AIFF output.
 
 ### Image tools
 
