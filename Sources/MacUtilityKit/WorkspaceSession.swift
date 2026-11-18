@@ -23,6 +23,7 @@ struct ToolDraft {
     var annotation = AnnotateScreenshotDraft()
     var videoDownload = VideoDownloadDraft()
     var colorPicker = ColorPickerToolDraft()
+    var markdownPDF = MarkdownPDFDraft()
     var captureAttachments: [CaptureTextAttachment] = []
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()

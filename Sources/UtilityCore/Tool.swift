@@ -23,12 +23,13 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case signPDF, extractText, wordCounter
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
+    case makePDFSearchable, markdownToPDF, addPassword, removePassword
     case recordScreen, downloadVideo
     case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword: true
         default: false
         }
     }
@@ -64,6 +65,10 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .imagesToPDF: "Images to PDF"
         case .pdfToImages: "PDF to Images"
         case .signPDF: "Sign PDF"
+        case .makePDFSearchable: "Make PDF Searchable"
+        case .markdownToPDF: "Markdown to PDF"
+        case .addPassword: "Add Password"
+        case .removePassword: "Remove Password"
         case .extractText: "Extract Text"
         case .wordCounter: "Word Counter"
         case .transcribe: "Transcribe"
@@ -103,7 +108,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     public var group: ToolCategory {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage, .annotateScreenshot, .removeBackground, .colorPicker, .watermark: .images
-        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF: .documents
+        case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .addPassword, .removePassword: .documents
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
@@ -120,11 +125,12 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .watermark: [.image, .pdf, .movie]
         case .wordCounter: [.plainText]
         case .textToSpeech: [.plainText, .rtf, .pdf]
+        case .markdownToPDF: [.plainText]
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]
         case .jsonFormatter: [.json]
         case .keepAwake, .captureText, .recordAudio, .screenshot, .recordScreen, .downloadVideo, .colorPicker: []
-        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF: [.pdf]
+        case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF, .makePDFSearchable, .addPassword, .removePassword: [.pdf]
         case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo, .transcribe, .cleanUpAudio: [.movie, .audio]
         case .trimAudio, .convertAudio: [.audio]

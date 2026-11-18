@@ -57,6 +57,8 @@ struct ToolWorkspace: View {
         case .recordScreen: RecordScreenView(controller: screenRecordingController)
         case .downloadVideo: VideoDownloadView(draft: $draft.videoDownload)
         case .colorPicker: ColorPickerToolView(draft: $draft.colorPicker)
+        case .markdownToPDF: MarkdownPDFView(draft: $draft.markdownPDF)
+        case .addPassword, .removePassword: PDFProtectionView(tool: tool)
         default: EmptyView()
         }
     }
@@ -188,9 +190,11 @@ struct ToolWorkspace: View {
                             PDFSigningSettings(input: draft.inputs.first, options: $draft.options.pdfSignature,
                                                ready: $pdfEditorReady, canEdit: !session.isRunning)
                                 .id(draft.pdfSourceRevision)
+                        case .makePDFSearchable:
+                            SearchablePDFControls(inputs: draft.inputs, options: $draft.options.searchablePDF)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

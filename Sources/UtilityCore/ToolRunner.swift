@@ -139,9 +139,9 @@ public enum ToolRunner {
                     case .watermark: try Watermark.outputExtension(input)
                     case .compressImages: try ImageCompression.outputExtension(input, options: options.imageCompression)
                     case .removeMetadata: try ImageMetadata.outputExtension(input)
-                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF: "pdf"
+                    case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .signPDF, .makePDFSearchable: "pdf"
                     case .extractText: "txt"
-                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker:
+                    case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
                         throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
@@ -260,6 +260,12 @@ public enum ToolRunner {
                         try await PDFPageEditing.extract(input, to: output, options: options.pdfExtract, progress: progress)
                     case .signPDF:
                         try await PDFSigning.sign(input, to: output, options: options.pdfSignature, progress: progress)
+                    case .makePDFSearchable:
+                        let report = try await SearchablePDF.export(input, to: output, options: options.searchablePDF) { fraction in
+                            await progress((Double(index) + fraction) / Double(inputs.count))
+                        }
+                        summaries.append("\(input.lastPathComponent) · \(report.summary)")
+                        failures.append(contentsOf: report.warnings.map { "\(input.lastPathComponent) — \($0)" })
                     case .extractText:
                         let extracted = try await TextExtraction.extract(input, options: options.textExtraction) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
@@ -276,7 +282,7 @@ public enum ToolRunner {
                         textExtractions.append(ExtractedTextFile(source: input, result: extracted))
                         failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
                     case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames, .mergeVideos,
-                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker:
+                         .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .addPassword, .removePassword:
                         break
                     }
                     outputs.append(output)

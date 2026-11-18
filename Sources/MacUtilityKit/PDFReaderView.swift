@@ -104,7 +104,7 @@ struct PDFReaderView: View {
                         Divider()
                     }
                     ForEach([Tool.mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages,
-                             .pdfToImages, .signPDF, .extractText]) { tool in
+                             .pdfToImages, .signPDF, .extractText, .makePDFSearchable]) { tool in
                         Button(tool.title) {
                             if let source { onHandoff(tool, source) }
                         }
