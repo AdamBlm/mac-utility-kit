@@ -65,6 +65,7 @@ int archive_write_header(struct archive *, struct archive_entry *);
 ssize_t archive_write_data(struct archive *, const void *, size_t);
 int archive_write_finish_entry(struct archive *);
 int archive_write_close(struct archive *);
+int archive_write_fail(struct archive *);
 int archive_write_free(struct archive *);
 
 struct archive_entry *archive_entry_new(void);
