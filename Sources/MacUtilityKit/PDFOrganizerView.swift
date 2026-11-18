@@ -184,9 +184,18 @@ struct PDFOrganizerView: View {
             }
         }
         .buttonStyle(.plain)
+        .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
+            guard !page.removed, press.modifiers == .option,
+                  let index = strip.firstIndex(where: { $0.number == page.number }) else { return .ignored }
+            let target = index + (press.key == .leftArrow ? -1 : 1)
+            if strip.indices.contains(target) { _ = move(page.number, to: strip[target].number) }
+            return .handled
+        }
         .accessibilityLabel("Page \(page.number)\(page.removed ? ", removed" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .help("Shift-click to select a range. Command-click to toggle a page.")
+        .help(page.removed
+              ? "Shift-click to select a range. Command-click to toggle a page."
+              : "Shift-click for a range. Command-click to toggle. Option–Left or Option–Right Arrow moves the focused page.")
     }
 
     private func select(_ number: Int, in strip: [OrganizerPage], modifiers: NSEvent.ModifierFlags) {
