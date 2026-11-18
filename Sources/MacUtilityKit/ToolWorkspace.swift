@@ -49,6 +49,7 @@ struct ToolWorkspace: View {
         case .base64: Base64ToolView(draft: $draft.base64)
         case .hashGenerator: HashGeneratorView(draft: $draft.hashGenerator)
         case .uuidGenerator: UUIDGeneratorView(draft: $draft.uuidGenerator)
+        case .cleanLinks: CleanLinksView(draft: $draft.cleanLinks)
         case .transcribe: TranscribeView(draft: $draft.transcribe, onCaptionHandoff: openCaptionBurn)
         case .captureText: CaptureTextView(draft: $draft.captureText, onHandoff: openCapturedText)
         case .textToSpeech: TextToSpeechView(draft: $draft.textToSpeech)
@@ -210,7 +211,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             SettingRow("Output filename") {

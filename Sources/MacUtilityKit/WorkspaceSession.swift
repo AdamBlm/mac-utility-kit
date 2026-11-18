@@ -17,6 +17,7 @@ struct ToolDraft {
     var base64 = Base64ToolDraft()
     var hashGenerator = HashGeneratorDraft()
     var uuidGenerator = UUIDGeneratorDraft()
+    var cleanLinks = CleanLinksDraft()
     var transcribe = TranscribeDraft()
     var captureText = CaptureTextDraft()
     var textToSpeech = TextToSpeechDraft()

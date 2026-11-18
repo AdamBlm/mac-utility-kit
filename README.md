@@ -1,6 +1,6 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 63 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 64 tools across images, PDFs, media, files, macOS, and development.
 
 - [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
@@ -119,3 +119,4 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Base64** encodes and decodes text or files as Base64, Base64URL, hex, or binary. Decoded bytes can be exported directly.
 - **Hash Generator** calculates MD5, SHA-1, SHA-256, SHA-384, and SHA-512 digests for text and files and compares them with supplied checksums.
 - **UUID Generator** generates v4 and v7 identifiers in batches and inspects UUID variants, versions, and v7 timestamps.
+- **Clean Links** previews the tracking parameters it removes and decodes supported redirects locally. It preserves unknown query fields, fragments, and recognized signed links.

@@ -21,7 +21,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
     case signPDF, extractText, wordCounter
-    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator
+    case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
     case makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF
     case recordScreen, downloadVideo
@@ -29,7 +29,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
+        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
         default: false
         }
     }
@@ -90,6 +90,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .base64: "Base64"
         case .hashGenerator: "Hash Generator"
         case .uuidGenerator: "UUID Generator"
+        case .cleanLinks: "Clean Links"
         case .changeSpeed: "Change Speed"
         case .extractFrames: "Extract Frames"
         case .trimVideo: "Trim Video"
@@ -119,7 +120,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .extractText, .wordCounter, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename: .files
         case .keepAwake: .mac
-        case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator: .developer
+        case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks: .developer
         case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
         case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
         }
@@ -137,7 +138,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .convertDocuments:
             [.rtf, .html, .plainText] + ["doc", "docx", "odt", "md", "markdown"].compactMap { UTType(filenameExtension: $0) }
         case .markdownToPDF: [.plainText]
-        case .webPageToPDF, .uuidGenerator: []
+        case .webPageToPDF, .uuidGenerator, .cleanLinks: []
         case .qrCode: [.image]
         case .batchRename, .base64, .hashGenerator: [.data]
         case .jsonFormatter: [.json]
