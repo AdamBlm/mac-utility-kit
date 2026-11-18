@@ -10,6 +10,7 @@ struct PDFOrganizerView: View {
 
     @State private var localHistory = PDFOrganizerHistory()
     @State private var selection: Set<Int> = []
+    @State private var selectionAnchor: Int?
     @State private var showsRemoved = false
     @State private var dragScope = UUID().uuidString
     @Environment(\.colorScheme) private var colorScheme
@@ -76,6 +77,7 @@ struct PDFOrganizerView: View {
         }
         .onChange(of: ObjectIdentifier(document)) { _, _ in
             selection = []
+            selectionAnchor = nil
             showsRemoved = false
             dragScope = UUID().uuidString
         }
@@ -137,7 +139,7 @@ struct PDFOrganizerView: View {
             LazyHStack(spacing: 8) {
                 ForEach(strip) { page in
                     if acceptsReordering {
-                        thumbnail(page)
+                        thumbnail(page, in: strip)
                             .draggable("\(dragScope):\(page.number)")
                             .dropDestination(for: String.self) { items, _ in
                                 guard items.count == 1,
@@ -147,7 +149,7 @@ struct PDFOrganizerView: View {
                                 return move(number, to: page.number)
                             }
                     } else {
-                        thumbnail(page)
+                        thumbnail(page, in: strip)
                     }
                 }
             }
@@ -156,18 +158,14 @@ struct PDFOrganizerView: View {
         .frame(height: 104)
     }
 
-    private func thumbnail(_ page: OrganizerPage) -> some View {
+    private func thumbnail(_ page: OrganizerPage, in strip: [OrganizerPage]) -> some View {
         let selected = selection.contains(page.number)
         let palette = WorkspacePalette(dark: colorScheme == .dark)
         let image = document.page(at: page.number - 1)?
             .thumbnail(of: NSSize(width: 68, height: 68), for: .cropBox)
 
         return Button {
-            if NSEvent.modifierFlags.contains(.command) {
-                if !selection.insert(page.number).inserted { selection.remove(page.number) }
-            } else {
-                selection = selection == [page.number] ? [] : [page.number]
-            }
+            select(page.number, in: strip, modifiers: NSEvent.modifierFlags)
         } label: {
             VStack(spacing: 4) {
                 if let image {
@@ -188,7 +186,31 @@ struct PDFOrganizerView: View {
         .buttonStyle(.plain)
         .accessibilityLabel("Page \(page.number)\(page.removed ? ", removed" : "")")
         .accessibilityAddTraits(selected ? .isSelected : [])
-        .help("Click to select. Command-click to extend selection.")
+        .help("Shift-click to select a range. Command-click to toggle a page.")
+    }
+
+    private func select(_ number: Int, in strip: [OrganizerPage], modifiers: NSEvent.ModifierFlags) {
+        if modifiers.contains(.shift), let selectionAnchor,
+           let start = strip.firstIndex(where: { $0.number == selectionAnchor }),
+           let end = strip.firstIndex(where: { $0.number == number }) {
+            let range = Set(strip[min(start, end)...max(start, end)].map(\.number))
+            selection = modifiers.contains(.command) ? selection.union(range) : range
+            return
+        }
+        if modifiers.contains(.command) {
+            if selection.contains(number), !modifiers.contains(.shift) {
+                selection.remove(number)
+                if selectionAnchor == number {
+                    selectionAnchor = strip.first { selection.contains($0.number) }?.number
+                }
+            } else {
+                selection.insert(number)
+                selectionAnchor = number
+            }
+            return
+        }
+        selection = selection == [number] ? [] : [number]
+        selectionAnchor = selection.contains(number) ? number : nil
     }
 
     private func moveSelection(by step: Int) {
