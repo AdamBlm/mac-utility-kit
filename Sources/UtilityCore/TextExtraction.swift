@@ -138,6 +138,15 @@ public enum TextExtraction {
         return image
     }
 
+    public static func recognizeImage(_ image: CGImage, language: String? = nil) async throws -> String {
+        if let language, try !languages().contains(language) {
+            throw ToolError.invalid("The selected recognition language is unavailable on this Mac.")
+        }
+        var options = TextExtractionOptions()
+        options.language = language
+        return try recognize(image, options: options)
+    }
+
     private static func makeRequest() -> VNRecognizeTextRequest {
         let request = VNRecognizeTextRequest()
         request.recognitionLevel = .accurate

@@ -6,6 +6,7 @@ struct Workspace: View {
     let keepAwakeController: KeepAwakeController
     @State private var selection = Destination.tool(.resizeImages)
     @State private var readerSource: URL?
+    @State private var captureHandoffError: String?
     @State private var search = ""
     @State private var collapsedCategories: Set<ToolCategory> = []
     @FocusState private var searching: Bool
@@ -120,7 +121,8 @@ struct Workspace: View {
                         keepAwakeController: keepAwakeController,
                         openOutput: openOutput,
                         openTranscription: openTranscription,
-                        openCaptionBurn: openCaptionBurn
+                        openCaptionBurn: openCaptionBurn,
+                        openCapturedText: openCapturedText
                     )
                     .id(selection)
                 }
@@ -151,6 +153,14 @@ struct Workspace: View {
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
         .tint(palette.accent)
+        .alert("Could Not Open Capture", isPresented: Binding(
+            get: { captureHandoffError != nil },
+            set: { if !$0 { captureHandoffError = nil } }
+        )) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(captureHandoffError ?? "")
+        }
     }
 
     private var readerButton: some View {
@@ -185,6 +195,22 @@ struct Workspace: View {
         draft.options.burnSubtitles.srt = srt
         session.drafts[.burnSubtitles] = draft
         selection = .tool(.burnSubtitles)
+    }
+
+    private func openCapturedText(_ image: CGImage, language: String?) {
+        do {
+            let attachment = try CaptureTextAttachment(image: image)
+            var draft = session.drafts[.extractText, default: ToolDraft()]
+            draft.inputs = [attachment.url]
+            draft.captureAttachments = [attachment]
+            draft.options.textExtraction.language = language
+            draft.options.textExtraction.range = ""
+            draft.options.textExtraction.region = nil
+            session.drafts[.extractText] = draft
+            selection = .tool(.extractText)
+        } catch {
+            captureHandoffError = error.localizedDescription
+        }
     }
 
     private func handoffPDF(to tool: Tool, input: URL) {

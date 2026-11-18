@@ -17,6 +17,8 @@ struct ToolDraft {
     var base64 = Base64ToolDraft()
     var hashGenerator = HashGeneratorDraft()
     var transcribe = TranscribeDraft()
+    var captureText = CaptureTextDraft()
+    var captureAttachments: [CaptureTextAttachment] = []
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory
@@ -47,7 +49,8 @@ struct ToolDraft {
 
     mutating func removeInput(at index: Int) {
         guard inputs.indices.contains(index) else { return }
-        inputs.remove(at: index)
+        let removed = inputs.remove(at: index)
+        if !inputs.contains(removed) { captureAttachments.removeAll { $0.url == removed } }
         ranges = afterRemoving(index, from: ranges)
         passwords = afterRemoving(index, from: passwords)
     }
