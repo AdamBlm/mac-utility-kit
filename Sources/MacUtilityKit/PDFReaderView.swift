@@ -110,18 +110,18 @@ struct PDFReaderView: View {
                     }
                     ForEach([Tool.mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages,
                              .pdfToImages, .signPDF, .extractText, .makePDFSearchable]) { tool in
-                        Button(tool.title) {
-                            if let source { onHandoff(tool, source) }
-                        }
+                        handoffButton(tool)
                     }
+                    handoffButton(.pdfToWord)
+                        .disabled(!document.allowsCopying)
                     if !document.isEncrypted {
-                        Button(Tool.fillFlattenForms.title) {
-                            if let source { onHandoff(.fillFlattenForms, source) }
-                        }
-                        .disabled(!canHandoffForms || !document.allowsFormFieldEntry)
-                        Button(Tool.redactPDF.title) {
-                            if let source { onHandoff(.redactPDF, source) }
-                        }
+                        handoffButton(.cropPDF)
+                            .disabled(!document.allowsDocumentChanges)
+                        handoffButton(.compressPDF)
+                            .disabled(!document.allowsDocumentChanges)
+                        handoffButton(.fillFlattenForms)
+                            .disabled(!canHandoffForms || !document.allowsFormFieldEntry)
+                        handoffButton(.redactPDF)
                     }
                 }
                 .fixedSize()
@@ -156,6 +156,12 @@ struct PDFReaderView: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
         .background(palette.surface)
+    }
+
+    private func handoffButton(_ tool: Tool) -> some View {
+        Button(tool.title) {
+            if let input = reader.source { onHandoff(tool, input) }
+        }
     }
 
     private var searchControls: some View {
