@@ -135,7 +135,7 @@ public enum PDFToImages {
             let ext = "." + options.format.fileExtension
             if !filename.lowercased().hasSuffix(ext) { filename += ext }
             let normalized = filename.precomposedStringWithCanonicalMapping
-            guard PDFConversionStaging.supportsFilename(filename) else {
+            guard OutputFilename.fits(filename) else {
                 throw ToolError.invalid("The image filename is too long. Shorten the filename pattern.")
             }
             guard used.insert(normalized.lowercased()).inserted else {

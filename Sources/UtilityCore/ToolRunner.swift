@@ -106,7 +106,7 @@ public enum ToolRunner {
                 do {
                     if tool == .extractFrames {
                         let folder = staging.appendingPathComponent(
-                            "\(index + 1) - \(input.deletingPathExtension().lastPathComponent)", isDirectory: true
+                            OutputFilename.numberedSource(input, position: index + 1), isDirectory: true
                         )
                         try manager.createDirectory(at: folder, withIntermediateDirectories: false)
                         stagedOutput = folder
@@ -150,10 +150,14 @@ public enum ToolRunner {
                         throw ToolError.invalid("Open \(tool.title) to use its interactive controls.")
                     case .pdfToImages: options.pdfToImages.format.fileExtension
                     }
-                    let stem = tool == .convertDocuments
-                        ? try DocumentConvert.outputStem(input, position: index + 1, options: options.documents)
-                        : "\(index + 1) - \(input.deletingPathExtension().lastPathComponent)"
-                    let output = staging.appendingPathComponent("\(stem).\(ext)")
+                    let filename: String
+                    if tool == .convertDocuments {
+                        let stem = try DocumentConvert.outputStem(input, position: index + 1, options: options.documents)
+                        filename = "\(stem).\(ext)"
+                    } else {
+                        filename = OutputFilename.numberedSource(input, position: index + 1, suffix: ".\(ext)")
+                    }
+                    let output = staging.appendingPathComponent(filename)
                     guard !manager.fileExists(atPath: output.path) else {
                         throw ToolError.invalid("The output name is already in use. Add {index} to the filename template to give each file a unique name.")
                     }

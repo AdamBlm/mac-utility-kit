@@ -27,6 +27,26 @@ import UtilityCore
     #expect(try Data(contentsOf: valid) == original)
 }
 
+@Test func resizeBatchShortensLongGeneratedFilenames() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let image = try imageFixture(in: folder)
+    let original = try Data(contentsOf: image)
+    let commonStem = String(repeating: "é", count: 82)
+    let inputs = try ["first", "other"].map { ending in
+        let url = folder.appendingPathComponent(commonStem + ending + ".png")
+        try original.write(to: url)
+        return url
+    }
+
+    let report = try await ToolRunner.run(
+        .resizeImages, inputs: inputs, destination: folder, imageSize: 40
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    #expect(report.outputs.map(\.lastPathComponent) == ["1 - " + commonStem + "f.png", "2 - " + commonStem + "o.png"])
+    for input in inputs { #expect(try Data(contentsOf: input) == original) }
+}
+
 @Test(arguments: [0.5, 1.0])
 func cancelingResizeBatchDiscardsStagedOutputs(cancelAt: Double) async throws {
     let folder = try temporaryFolder()

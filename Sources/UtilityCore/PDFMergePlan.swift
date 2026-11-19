@@ -21,7 +21,7 @@ public enum PDFMergePlan {
             throw ToolError.invalid("Enter a valid PDF filename.")
         }
         let filename = name.lowercased().hasSuffix(".pdf") ? name : name + ".pdf"
-        guard PDFConversionStaging.supportsFilename(filename) else {
+        guard OutputFilename.fits(filename) else {
             throw ToolError.invalid("The PDF filename is too long. Enter a shorter name.")
         }
         return filename
