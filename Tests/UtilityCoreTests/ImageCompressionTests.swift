@@ -53,6 +53,34 @@ import UtilityCore
     #expect(!FileManager.default.fileExists(atPath: rejected.path))
 }
 
+@Test(arguments: [8, 16])
+func imageCompressionOnlyRejectsJPEGForNonOpaquePixels(depth: Int) async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let opaque = directory.appending(path: "opaque-rgba.png")
+    let transparent = directory.appending(path: "transparent-rgba.png")
+    let output = directory.appending(path: "opaque.jpg")
+    let rejected = directory.appending(path: "transparent.jpg")
+    try writeOpacityFixture(to: opaque, depth: depth, hasTransparentPixel: false)
+    try writeOpacityFixture(to: transparent, depth: depth, hasTransparentPixel: true)
+    let metadataSource = try #require(CGImageSourceCreateWithURL(opaque as CFURL, nil))
+    let metadata = try #require(CGImageSourceCopyPropertiesAtIndex(metadataSource, 0, nil) as? [CFString: Any])
+    #expect(metadata[kCGImagePropertyHasAlpha] as? Bool == true)
+    #expect(try !ImageConversion.hasTransparency(opaque))
+    #expect(try ImageConversion.hasTransparency(transparent))
+
+    var options = ImageCompressionOptions()
+    options.format = .jpg
+    let settings = options
+    _ = try await ImageCompression.compress(opaque, to: output, options: settings)
+    let result = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    #expect(CGImageSourceGetType(result) as String? == UTType.jpeg.identifier)
+    await #expect(throws: ToolError.self) {
+        _ = try await ImageCompression.compress(transparent, to: rejected, options: settings)
+    }
+    #expect(!FileManager.default.fileExists(atPath: rejected.path))
+}
+
 @Test func imageCompressionReportsWhenFormatConversionGrows() async throws {
     let directory = try compressionDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -140,5 +168,32 @@ private func writeCompressionFixture(to url: URL, format: UTType, withAlpha: Boo
     ))
     let writer = try #require(CGImageDestinationCreateWithURL(url as CFURL, format.identifier as CFString, 1, nil))
     CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: 0.97] as CFDictionary)
+    try #require(CGImageDestinationFinalize(writer))
+}
+
+private func writeOpacityFixture(to url: URL, depth: Int, hasTransparentPixel: Bool) throws {
+    let width = 259
+    let height = 257
+    let count = width * height * 4
+    let data: Data
+    if depth == 16 {
+        var pixels = [UInt16](repeating: .max, count: count)
+        if hasTransparentPixel { pixels[count - 1] -= 1 }
+        data = pixels.withUnsafeBytes { Data($0) }
+    } else {
+        var pixels = [UInt8](repeating: .max, count: count)
+        if hasTransparentPixel { pixels[count - 1] -= 1 }
+        data = Data(pixels)
+    }
+    let provider = try #require(CGDataProvider(data: data as CFData))
+    var layout = CGBitmapInfo(rawValue: CGImageAlphaInfo.last.rawValue)
+    if depth == 16 { layout.insert(.byteOrder16Little) }
+    let image = try #require(CGImage(
+        width: width, height: height, bitsPerComponent: depth, bitsPerPixel: depth * 4,
+        bytesPerRow: width * depth / 2, space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: layout,
+        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent
+    ))
+    let writer = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(writer, image, nil)
     try #require(CGImageDestinationFinalize(writer))
 }

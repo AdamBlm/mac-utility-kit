@@ -36,12 +36,12 @@ public enum ImageConversion {
     public static func hasTransparency(_ input: URL) throws -> Bool {
         let source = try loadSource(input)
         let properties = try imageProperties(source)
-        if let hasAlpha = properties[kCGImagePropertyHasAlpha] as? Bool { return hasAlpha }
+        if (properties[kCGImagePropertyHasAlpha] as? Bool) == false { return false }
         _ = try validatedDimensions(properties)
         guard let image = CGImageSourceCreateImageAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), nil) else {
             throw ToolError.invalid("Could not determine whether the image has transparency.")
         }
-        return imageContainsAlpha(image)
+        return try containsNonOpaquePixels(image)
     }
 
     public static func convert(_ input: URL, to output: URL, options: ImageConversionOptions) async throws -> String {
@@ -145,6 +145,41 @@ public enum ImageConversion {
         case .first, .last, .premultipliedFirst, .premultipliedLast, .alphaOnly: true
         default: false
         }
+    }
+
+    private static func containsNonOpaquePixels(_ image: CGImage) throws -> Bool {
+        guard imageContainsAlpha(image) else { return false }
+        let tileWidth = min(image.width, 256)
+        let tileHeight = min(image.height, 256)
+        // Float alpha preserves even the smallest transparency in 16-bit images.
+        let layout = CGImageAlphaInfo.premultipliedLast.rawValue
+            | CGBitmapInfo.floatComponents.rawValue | CGBitmapInfo.byteOrder32Little.rawValue
+        guard let space = CGColorSpace(name: CGColorSpace.extendedLinearSRGB),
+              let context = CGContext(data: nil, width: tileWidth, height: tileHeight,
+                                      bitsPerComponent: 32, bytesPerRow: 0, space: space, bitmapInfo: layout),
+              let pixels = context.data?.assumingMemoryBound(to: Float.self) else {
+            throw ToolError.invalid("Could not inspect image transparency.")
+        }
+        context.setBlendMode(.copy)
+        context.interpolationQuality = .none
+        let rowStride = context.bytesPerRow / MemoryLayout<Float>.stride
+        for y in stride(from: 0, to: image.height, by: tileHeight) {
+            for x in stride(from: 0, to: image.width, by: tileWidth) {
+                try Task.checkCancellation()
+                let width = min(tileWidth, image.width - x)
+                let height = min(tileHeight, image.height - y)
+                guard let tile = image.cropping(to: CGRect(x: x, y: y, width: width, height: height)) else {
+                    throw ToolError.invalid("Could not inspect image transparency.")
+                }
+                context.draw(tile, in: CGRect(x: 0, y: 0, width: width, height: height))
+                for row in (tileHeight - height)..<tileHeight {
+                    for column in 0..<width where pixels[row * rowStride + column * 4 + 3] != 1 {
+                        return true
+                    }
+                }
+            }
+        }
+        return false
     }
 
     private static func flattenImage(_ image: CGImage, backgroundRGB: UInt32) throws -> CGImage {
