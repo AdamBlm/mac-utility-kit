@@ -20,6 +20,7 @@ package enum ClipboardFiles {
     }
 
     package static func readImage(from board: NSPasteboard) throws -> CGImage? {
+        var foundOversizedImage = false
         for item in board.pasteboardItems ?? [] {
             let imageTypes = item.types.filter { UTType($0.rawValue)?.conforms(to: .image) == true }
             let preferred = [NSPasteboard.PasteboardType.png, .tiff].filter(imageTypes.contains)
@@ -32,7 +33,8 @@ package enum ClipboardFiles {
                       let height = properties[kCGImagePropertyPixelHeight] as? Int,
                       width > 0, height > 0 else { continue }
                 guard width <= 80_000_000 / height else {
-                    throw ToolError.invalid("The clipboard image exceeds 80 megapixels.")
+                    foundOversizedImage = true
+                    continue
                 }
                 if let image = CGImageSourceCreateThumbnailAtIndex(source, index, [
                     kCGImageSourceCreateThumbnailFromImageAlways: true,
@@ -40,6 +42,9 @@ package enum ClipboardFiles {
                     kCGImageSourceThumbnailMaxPixelSize: max(width, height)
                 ] as CFDictionary) { return image }
             }
+        }
+        if foundOversizedImage {
+            throw ToolError.invalid("The clipboard image exceeds 80 megapixels.")
         }
         return nil
     }
