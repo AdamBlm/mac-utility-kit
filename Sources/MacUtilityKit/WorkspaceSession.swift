@@ -54,6 +54,7 @@ struct ToolDraft {
     var webPagePDF = WebPagePDFDraft()
     var pdfRedaction = PDFRedactionDraft()
     var captureAttachments: [CaptureTextAttachment] = []
+    var watermarkLogoAttachment: CaptureTextAttachment?
     var pdfSourceRevision = UUID()
     var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory
@@ -275,6 +276,7 @@ final class WorkspaceSession {
         let export = preview ? nil : center.start(tool) { [weak self] in self?.cancel() }
         job = Task { @MainActor in
             defer {
+                withExtendedLifetime(draft.watermarkLogoAttachment) {}
                 if let export { center.finish(export) }
                 job = nil
                 runningTool = nil

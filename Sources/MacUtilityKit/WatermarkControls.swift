@@ -6,6 +6,7 @@ import UtilityCore
 struct WatermarkControls: View {
     let inputs: [URL]
     @Binding var options: WatermarkOptions
+    @Binding var logoAttachment: CaptureTextAttachment?
     @State private var choice: URL?
     @State private var inspected: Inspected?
     @State private var inspectionError: String?
@@ -115,13 +116,26 @@ struct WatermarkControls: View {
                     Button("Choose Image…", systemImage: "photo") {
                         let panel = NSOpenPanel()
                         panel.allowedContentTypes = [.image]
-                        if panel.runModal() == .OK { options.logo = panel.url }
+                        if panel.runModal() == .OK, let url = panel.url { setLogo(url) }
+                    }
+                    ClipboardFileButton(allowedTypes: [.image], onPasteImage: { image in
+                        let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Logo.png")
+                        setLogo(attachment.url, attachment: attachment)
+                    }, buttonOnlyTitle: "Paste Logo") { url in
+                        setLogo(url)
                     }
                     if let logo = options.logo {
                         Text(logo.lastPathComponent).lineLimit(1).truncationMode(.middle).help(logo.path)
                     }
                 }
             }
+        }
+    }
+
+    private func setLogo(_ url: URL, attachment: CaptureTextAttachment? = nil) {
+        options.logo = url
+        if logoAttachment?.url != url || attachment != nil {
+            logoAttachment = attachment
         }
     }
 

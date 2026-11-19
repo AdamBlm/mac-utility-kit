@@ -234,7 +234,8 @@ struct ToolWorkspace: View {
                         case .removeBackground:
                             RemoveBackgroundControls(inputs: draft.inputs, options: $draft.options.removeBackground)
                         case .watermark:
-                            WatermarkControls(inputs: draft.inputs, options: $draft.options.watermark)
+                            WatermarkControls(inputs: draft.inputs, options: $draft.options.watermark,
+                                              logoAttachment: $draft.watermarkLogoAttachment)
                         case .compressImages:
                             imageCompressionControls()
                             ImageCompressionPreviewControls(inputs: draft.inputs, options: draft.options.imageCompression)

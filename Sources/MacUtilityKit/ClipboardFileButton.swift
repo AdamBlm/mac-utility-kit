@@ -11,6 +11,7 @@ struct ClipboardFileButton: View {
     let onPasteImage: ((CGImage) throws -> Void)?
     let onPastePDF: ((Data) throws -> Void)?
     let onPaste: ([URL]) -> Void
+    var buttonOnlyTitle: String? = nil
     @State private var message: String?
     @Environment(\.isEnabled) private var isEnabled
 
@@ -26,15 +27,16 @@ struct ClipboardFileButton: View {
     }
 
     init(allowedTypes: [UTType], onPasteImage: ((CGImage) throws -> Void)? = nil,
-         onPastePDF: ((Data) throws -> Void)? = nil, onPasteFile: @escaping (URL) -> Void) {
+         onPastePDF: ((Data) throws -> Void)? = nil, buttonOnlyTitle: String? = nil, onPasteFile: @escaping (URL) -> Void) {
         self.init(allowedTypes: allowedTypes, allowsMultiple: false, onPasteImage: onPasteImage, onPastePDF: onPastePDF) { urls in
             if let file = urls.first { onPasteFile(file) }
         }
+        self.buttonOnlyTitle = buttonOnlyTitle
     }
 
     var body: some View {
         pasteButton
-        .background(ClipboardPasteShortcut(isEnabled: isEnabled) { paste(reportsMissingInput: false) })
+        .background(ClipboardPasteShortcut(isEnabled: isEnabled && buttonOnlyTitle == nil) { paste(reportsMissingInput: false) })
         .alert("Paste from Clipboard", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -47,7 +49,9 @@ struct ClipboardFileButton: View {
 
     @ViewBuilder
     private var pasteButton: some View {
-        if onPasteImage != nil, onPastePDF != nil {
+        if let buttonOnlyTitle {
+            Button(buttonOnlyTitle, systemImage: "clipboard") { paste() }
+        } else if onPasteImage != nil, onPastePDF != nil {
             Button("Paste Image or PDF", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL, .pdf, .image]) { _ in paste() }
         } else if onPasteImage != nil {
