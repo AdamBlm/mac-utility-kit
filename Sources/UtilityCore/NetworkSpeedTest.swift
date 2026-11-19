@@ -2,8 +2,10 @@ import Foundation
 import Network
 
 public struct NetworkSpeedResult: Sendable {
+    public let mode: NetworkSpeedTest.Mode
     public let downloadBitsPerSecond: Double?
     public let uploadBitsPerSecond: Double?
+    public let idleLatencyMilliseconds: Double?
     public let responsiveness: Double?
     public let uploadResponsiveness: Double?
     public let downloadResponsiveness: Double?
@@ -12,6 +14,14 @@ public struct NetworkSpeedResult: Sendable {
 }
 
 public enum NetworkSpeedTest {
+    public enum Mode: String, CaseIterable, Identifiable, Sendable {
+        case combined = "Combined"
+        case sequential = "Sequential"
+
+        public var id: Self { self }
+        var arguments: [String] { self == .sequential ? ["-c", "-s"] : ["-c"] }
+    }
+
     struct Path: Equatable, Sendable {
         let connected: Bool
         let interfaces: [String]
@@ -28,7 +38,7 @@ public enum NetworkSpeedTest {
         }
     }
 
-    public static func run() async throws -> NetworkSpeedResult {
+    public static func run(mode: Mode = .combined) async throws -> NetworkSpeedResult {
         let executable = URL(fileURLWithPath: "/usr/bin/networkQuality")
         guard FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw ToolError.invalid("Network Quality is unavailable on this Mac.")
@@ -43,8 +53,8 @@ public enum NetworkSpeedTest {
         }
 
         let initial = try await initialPath(paths)
-        let result = try await measure(path: initial, changes: paths, timeout: .seconds(45)) {
-            try await benchmark(executable)
+        let result = try await measure(path: initial, changes: paths, timeout: .seconds(45), mode: mode) {
+            try await benchmark(executable, mode: mode)
         }
         try Task.checkCancellation()
         let final = Path(monitor.currentPath)
@@ -54,7 +64,7 @@ public enum NetworkSpeedTest {
     }
 
     static func measure(
-        path: Path, changes: AsyncStream<Path>, timeout: Duration,
+        path: Path, changes: AsyncStream<Path>, timeout: Duration, mode: Mode = .combined,
         benchmark: @escaping @Sendable () async throws -> Data
     ) async throws -> NetworkSpeedResult {
         try Task.checkCancellation()
@@ -82,17 +92,20 @@ public enum NetworkSpeedTest {
             return first
         }
         try Task.checkCancellation()
-        return try decode(data, interface: path.uniqueInterface)
+        return try decode(data, interface: path.uniqueInterface, mode: mode)
     }
 
-    static func decode(_ data: Data, interface: String?, timestamp: Date = .now) throws -> NetworkSpeedResult {
+    static func decode(_ data: Data, interface: String?, timestamp: Date = .now,
+                       mode: Mode = .combined) throws -> NetworkSpeedResult {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ToolError.invalid("Network Quality did not return a readable report.")
         }
         let reportedInterface = interfaceName(object["interface_name"]) ?? interfaceName(object["interface"])
         return NetworkSpeedResult(
+            mode: mode,
             downloadBitsPerSecond: metric(object["dl_throughput"]),
             uploadBitsPerSecond: metric(object["ul_throughput"]),
+            idleLatencyMilliseconds: metric(object["base_rtt"]),
             responsiveness: metric(object["responsiveness"]) ?? metric(object["rpm"]),
             uploadResponsiveness: metric(object["ul_responsiveness"]),
             downloadResponsiveness: metric(object["dl_responsiveness"]),
@@ -129,7 +142,7 @@ public enum NetworkSpeedTest {
         }
     }
 
-    private static func benchmark(_ executable: URL) async throws -> Data {
+    private static func benchmark(_ executable: URL, mode: Mode) async throws -> Data {
         try Task.checkCancellation()
         let manager = FileManager.default
         let folder = manager.temporaryDirectory.appending(path: ".network-quality-\(UUID().uuidString)")
@@ -142,7 +155,7 @@ public enum NetworkSpeedTest {
         defer { try? handle.close() }
         do {
             try Task.checkCancellation()
-            try await ExternalTool.run(executable, name: "Network Quality", arguments: ["-c"],
+            try await ExternalTool.run(executable, name: "Network Quality", arguments: mode.arguments,
                                        directory: folder, standardOutput: handle)
         } catch {
             try Task.checkCancellation()

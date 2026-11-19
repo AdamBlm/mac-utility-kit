@@ -38,6 +38,25 @@ struct NetworkSpeedTests {
         #expect(unreported.interface == "en0")
     }
 
+    @Test func requestsNativeSequentialModeAndParsesIdleAndDirectionalMetrics() throws {
+        #expect(NetworkSpeedTest.Mode.combined.arguments == ["-c"])
+        #expect(NetworkSpeedTest.Mode.sequential.arguments == ["-c", "-s"])
+        let sequential = try NetworkSpeedTest.decode(
+            Data(#"{"base_rtt":27.82,"ul_responsiveness":1129,"dl_responsiveness":1007}"#.utf8), interface: nil, mode: .sequential
+        )
+        #expect(sequential.mode == .sequential)
+        #expect(sequential.idleLatencyMilliseconds == 27.82)
+        #expect(sequential.uploadResponsiveness == 1129)
+        #expect(sequential.downloadResponsiveness == 1007)
+        #expect(sequential.responsiveness == nil)
+
+        for value in ["true", "-1", "null", #""27.82""#] {
+            let report = try NetworkSpeedTest.decode(Data("{\"base_rtt\":\(value)}".utf8), interface: nil)
+            #expect(report.idleLatencyMilliseconds == nil)
+        }
+        #expect(try NetworkSpeedTest.decode(Data("{}".utf8), interface: nil).idleLatencyMilliseconds == nil)
+    }
+
     @Test func rejectsOfflineAndCancelsOnInterfaceChange() async throws {
         let (paths, changes) = AsyncStream<NetworkSpeedTest.Path>.makeStream()
         defer { changes.finish() }

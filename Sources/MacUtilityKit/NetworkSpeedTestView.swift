@@ -2,6 +2,7 @@ import SwiftUI
 import UtilityCore
 
 struct NetworkSpeedTestView: View {
+    @State private var mode: NetworkSpeedTest.Mode = .combined
     @State private var result: NetworkSpeedResult?
     @State private var work: Task<Void, Never>?
     @State private var issue: String?
@@ -12,6 +13,16 @@ struct NetworkSpeedTestView: View {
             WorkspaceSection("Connection test", palette: palette) {
                 Text("Tests download, upload and responsiveness using macOS Network Quality. Running a test sends data over your active connection.")
                     .font(.callout).foregroundStyle(.secondary)
+                SettingRow("Test mode") {
+                    Picker("Test mode", selection: $mode) {
+                        ForEach(NetworkSpeedTest.Mode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .labelsHidden()
+                    .help("Combined tests upload and download together. Sequential measures responsiveness for each direction.")
+                    .disabled(work != nil)
+                }
                 HStack {
                     Button("Start Test", systemImage: "speedometer", action: start)
                         .buttonStyle(.borderedProminent).disabled(work != nil)
@@ -37,17 +48,25 @@ struct NetworkSpeedTestView: View {
             }
         }
         .onDisappear { work?.cancel() }
+        .onChange(of: mode) {
+            result = nil
+            issue = nil
+            copied = false
+        }
     }
 
     private func rows(_ result: NetworkSpeedResult) -> [(String, String)] {
         var fields = [
+            ("Test mode", result.mode.rawValue),
             ("Download", throughput(result.downloadBitsPerSecond)),
             ("Upload", throughput(result.uploadBitsPerSecond)),
-            ("Responsiveness", responsiveness(result.responsiveness))
+            ("Idle latency", latency(result.idleLatencyMilliseconds))
         ]
-        if result.uploadResponsiveness != nil || result.downloadResponsiveness != nil {
+        if result.mode == .sequential {
             fields.append(("Download responsiveness", responsiveness(result.downloadResponsiveness)))
             fields.append(("Upload responsiveness", responsiveness(result.uploadResponsiveness)))
+        } else {
+            fields.append(("Responsiveness", responsiveness(result.responsiveness)))
         }
         fields.append(("Interface", result.interface ?? "Unavailable"))
         fields.append(("Completed", result.timestamp.formatted(date: .abbreviated, time: .shortened)))
@@ -56,6 +75,10 @@ struct NetworkSpeedTestView: View {
 
     private func throughput(_ value: Double?) -> String {
         value.map { "\(($0 / 1_000_000).formatted(.number.precision(.fractionLength(1)))) Mbps" } ?? "Unavailable"
+    }
+
+    private func latency(_ value: Double?) -> String {
+        value.map { "\($0.formatted(.number.precision(.fractionLength(1)))) ms" } ?? "Unavailable"
     }
 
     private func responsiveness(_ value: Double?) -> String {
@@ -67,10 +90,11 @@ struct NetworkSpeedTestView: View {
         result = nil
         issue = nil
         copied = false
+        let testMode = mode
         work = Task {
             defer { work = nil }
             do {
-                let report = try await NetworkSpeedTest.run()
+                let report = try await NetworkSpeedTest.run(mode: testMode)
                 if !Task.isCancelled { result = report }
             } catch is CancellationError {
                 issue = "Test cancelled."
