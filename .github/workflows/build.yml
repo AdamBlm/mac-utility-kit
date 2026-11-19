@@ -75,7 +75,10 @@ jobs:
           helper="${swift_bin%/*}/../libexec/swift/pm/swiftpm-testing-helper"
           bundle="$(find .build -type f -path '*/MacUtilityKitPackageTests.xctest/Contents/MacOS/MacUtilityKitPackageTests' -print -quit)"
           test -x "$helper" && test -f "$bundle"
-          xcrun lldb --batch -o 'settings set target.disable-aslr false' -o run -k 'thread backtrace all' -- \
+          frameworks="$(xcrun --sdk macosx --show-sdk-platform-path)/Developer/Library/Frameworks"
+          xcrun lldb --batch -o 'settings set target.disable-aslr false' \
+            -o "settings set target.env-vars DYLD_FRAMEWORK_PATH=$frameworks" \
+            -o run -k 'thread backtrace all' -- \
             "$helper" --test-bundle-path "$bundle" --no-parallel
       - run: ./scripts/build-app.sh
       - run: codesign --verify --deep --strict 'build/Mac Utility Kit.app'
