@@ -157,12 +157,14 @@ public final class PDFForms {
     }
 
     public func candidates(on pageIndex: Int) throws -> [Candidate] {
-        guard let page = document.page(at: pageIndex), page.rotation == 0 else {
-            throw ToolError.invalid("Candidate detection supports unrotated pages. Fields can still be placed manually.")
+        guard let page = document.page(at: pageIndex) else {
+            throw ToolError.invalid("Choose a page to detect fields on.")
         }
-        let bounds = page.bounds(for: .cropBox)
-        let size = CGSize(width: bounds.width * min(2, 1_600 / max(bounds.width, bounds.height)),
-                          height: bounds.height * min(2, 1_600 / max(bounds.width, bounds.height)))
+        let geometry = try PDFRedactionGeometry(page)
+        guard let bounds = geometry.pageRect(PDFRedactionGeometry.unit) else { return [] }
+        let display = geometry.displaySize
+        let scale = min(2, 1_600 / max(display.width, display.height))
+        let size = CGSize(width: display.width * scale, height: display.height * scale)
         let thumbnail = page.thumbnail(of: size, for: .cropBox)
         guard let image = thumbnail.cgImage(forProposedRect: nil, context: nil, hints: nil) else { return [] }
         let request = VNDetectRectanglesRequest()
@@ -174,9 +176,10 @@ public final class PDFForms {
         let existing = fields(on: pageIndex).map(\.bounds)
         return (request.results ?? []).compactMap { observation in
             let rect = observation.boundingBox
-            let fieldBounds = CGRect(x: bounds.minX + rect.minX * bounds.width, y: bounds.minY + rect.minY * bounds.height,
-                                     width: rect.width * bounds.width, height: rect.height * bounds.height)
-            guard fieldBounds.width >= 8, fieldBounds.height >= 8, fieldBounds.height <= 44,
+            let normalized = CGRect(x: rect.minX, y: 1 - rect.maxY, width: rect.width, height: rect.height)
+                .intersection(PDFRedactionGeometry.unit)
+            guard let fieldBounds = geometry.pageRect(normalized),
+                  fieldBounds.width >= 8, fieldBounds.height >= 8, fieldBounds.height <= 44,
                   fieldBounds.width <= bounds.width * 0.82, !existing.contains(where: { $0.intersects(fieldBounds) }) else { return nil }
             let aspect = fieldBounds.width / fieldBounds.height
             return Candidate(bounds: fieldBounds, kind: (0.75...1.35).contains(aspect) ? .checkbox : .text)

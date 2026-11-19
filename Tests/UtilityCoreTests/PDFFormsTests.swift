@@ -49,14 +49,30 @@ struct PDFFormsTests {
         #expect(PDFDocument(url: url)?.page(at: 0)?.annotations.isEmpty == true)
     }
 
-    @Test func detectsPrintedBoxesWithoutAddingFields() throws {
+    @Test(arguments: [0, 90, 180, 270])
+    func detectsPrintedBoxesWithoutAddingFields(rotation: Int) throws {
         let (url, directory) = try fixture(withBoxes: true)
         defer { try? FileManager.default.removeItem(at: directory) }
-        let subject = try PDFForms(source: url)
+        let input: URL
+        if rotation != 0 {
+            let source = try #require(PDFDocument(url: url))
+            let page = try #require(source.page(at: 0))
+            page.rotation = rotation
+            input = directory.appending(path: "Rotated.pdf")
+            try #require(source.write(to: input))
+        } else {
+            input = url
+        }
+        #expect(PDFDocument(url: input)?.page(at: 0)?.rotation == rotation)
+        let subject = try PDFForms(source: input)
         let candidates = try subject.candidates(on: 0)
-        #expect(candidates.contains { $0.kind == .checkbox && abs($0.bounds.midX - 42) < 5 })
-        #expect(candidates.contains { $0.kind == .text && abs($0.bounds.midX - 144) < 5 })
+        let checkbox = try #require(candidates.first { $0.kind == .checkbox && abs($0.bounds.midX - 42) < 5 && abs($0.bounds.midY - 117) < 5 })
+        let text = try #require(candidates.first { $0.kind == .text && abs($0.bounds.midX - 144) < 5 && abs($0.bounds.midY - 117) < 5 })
         #expect(subject.fields(on: 0).isEmpty)
+        _ = try subject.add(checkbox.kind, on: 0, bounds: checkbox.bounds, name: "Consent")
+        _ = try subject.add(text.kind, on: 0, bounds: text.bounds, name: "Name")
+        #expect(Set(subject.fields(on: 0).map(\.name)) == ["Consent", "Name"])
+        #expect(PDFDocument(url: input)?.page(at: 0)?.annotations.isEmpty == true)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FORMS_PYTHON"] != nil))
