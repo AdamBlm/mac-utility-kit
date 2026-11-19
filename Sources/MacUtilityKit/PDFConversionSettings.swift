@@ -110,6 +110,7 @@ private struct PDFExportPagePicker: View {
     @Binding var range: String
     let startsWithAll: Bool
     @State private var expanded = false
+    @State private var anchor: Int?
 
     var body: some View {
         let selection = Result { try pageIndices() }
@@ -130,8 +131,8 @@ private struct PDFExportPagePicker: View {
                 }
                 .font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Select all") { range = "all" }
-                Button("Clear") { range = "none" }
+                Button("Select all") { range = "all"; anchor = nil }
+                Button("Clear") { range = "none"; anchor = nil }
             }
             DisclosureGroup("Page thumbnails", isExpanded: $expanded) {
                 if expanded {
@@ -139,6 +140,7 @@ private struct PDFExportPagePicker: View {
                 }
             }
         }
+        .onChange(of: ObjectIdentifier(document)) { anchor = nil }
     }
 
     private func pageIndices() throws -> [Int] {
@@ -152,9 +154,9 @@ private struct PDFExportPagePicker: View {
             LazyHStack(spacing: 8) {
                 ForEach(0..<document.pageCount, id: \.self) { index in
                     Button {
-                        var edits = selected
-                        if marked.contains(index) { edits.removeAll { $0 == index } }
-                        else { edits.append(index) }
+                        let start = NSEvent.modifierFlags.contains(.shift) ? anchor : nil
+                        let edits = PageSelection.updating(selected, at: index, extendingFrom: start)
+                        anchor = index
                         range = PageSelection.expression(for: edits)
                     } label: {
                         VStack(spacing: 5) {

@@ -113,15 +113,8 @@ struct PDFPageControls: View {
     private func unlock() { inspection = PDFMergeInspection.load(input, password: password) }
 
     private func select(_ index: Int, from selected: [Int]) {
-        var pages = selected
-        if NSEvent.modifierFlags.contains(.shift), let anchor {
-            var existing = Set(pages)
-            pages += (min(anchor, index)...max(anchor, index)).filter { existing.insert($0).inserted }
-        } else if let position = pages.firstIndex(of: index) {
-            pages.remove(at: position)
-        } else {
-            pages.append(index)
-        }
+        let pages = PageSelection.updating(selected, at: index,
+                                           extendingFrom: NSEvent.modifierFlags.contains(.shift) ? anchor : nil)
         anchor = index
         range = PageSelection.expression(for: pages)
     }

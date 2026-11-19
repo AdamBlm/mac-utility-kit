@@ -139,6 +139,15 @@ public enum PageSelection {
         return ranges.joined(separator: ", ")
     }
 
+    package static func updating(_ selection: [Int], at index: Int, extendingFrom anchor: Int?) -> [Int] {
+        if let anchor {
+            var seen = Set(selection)
+            return selection + (min(anchor, index)...max(anchor, index)).filter { seen.insert($0).inserted }
+        }
+        if selection.contains(index) { return selection.filter { $0 != index } }
+        return selection + [index]
+    }
+
     public static func indices(_ expression: String, pageCount: Int) throws -> [Int] {
         guard pageCount >= 0 else { throw ToolError.invalid("The source page count is invalid.") }
         let value = expression.trimmingCharacters(in: .whitespacesAndNewlines)

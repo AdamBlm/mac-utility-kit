@@ -4,6 +4,13 @@ import PDFKit
 import Testing
 import UtilityCore
 
+@Test func thumbnailRangeSelectionPreservesExistingOrderAndExtendsWithoutDuplicates() {
+    #expect(PageSelection.updating([], at: 4, extendingFrom: nil) == [4])
+    #expect(PageSelection.updating([4, 2], at: 0, extendingFrom: 2) == [4, 2, 0, 1])
+    #expect(PageSelection.updating([4, 2, 0, 1], at: 4, extendingFrom: 0) == [4, 2, 0, 1, 3])
+    #expect(PageSelection.updating([4, 2, 0, 1], at: 0, extendingFrom: nil) == [4, 2, 1])
+}
+
 @Test func splitPDFSupportsSinglePagesFixedGroupsAndNamedOverlappingRanges() async throws {
     try await withPDFEditingFixture { source, directory in
         var options = PDFSplitOptions()
