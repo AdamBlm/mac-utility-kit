@@ -169,6 +169,10 @@ struct ToolWorkspace: View {
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .mergePDFs:
             draft.mergePages?.isEmpty != false || (try? PDFMergePlan.outputFilename(draft.outputName)) == nil
+        case .convertDocuments:
+            draft.inputs.enumerated().allSatisfy { index, input in
+                DocumentConvert.exportIssue(for: input, position: index + 1, options: draft.options.documents) != nil
+            }
         case .pdfToWord:
             draft.inputs.allSatisfy { PDFToWord.optionIssue($0, options: draft.options.pdfToWord) != nil }
         case .compressPDF:

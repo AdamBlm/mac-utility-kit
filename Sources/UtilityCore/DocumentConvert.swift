@@ -136,6 +136,15 @@ public enum DocumentConvert {
         return stem
     }
 
+    package static func exportIssue(for input: URL, position: Int, options: DocumentConvertOptions) -> String? {
+        do {
+            _ = try outputStem(input, position: position, options: options)
+        } catch {
+            return error.localizedDescription
+        }
+        return optionIssue(for: input, options: options)
+    }
+
     package static func conflictingOutputFilenames(_ inputs: [URL], options: DocumentConvertOptions) -> [String] {
         var seen: [String: String] = [:]
         var reported: Set<String> = []

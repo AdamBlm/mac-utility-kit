@@ -35,6 +35,10 @@ struct DocumentConvertTests {
         try Data("second document".utf8).write(to: second)
         var options = ToolOptions()
         options.documents.target = .html
+        #expect(DocumentConvert.exportIssue(for: first, position: 1, options: options.documents) == nil)
+        options.documents.filenamePattern = "../bad"
+        #expect(DocumentConvert.exportIssue(for: first, position: 1, options: options.documents)
+                == "The filename template produces an invalid filename.")
         options.documents.filenamePattern = "{name}"
         let differentlyCased = directory.appending(path: "FIRST.txt")
         #expect(DocumentConvert.conflictingOutputFilenames([first, differentlyCased], options: options.documents) == ["First.html"])

@@ -41,13 +41,9 @@ struct DocumentConvertControls: View {
                     .textFieldStyle(.roundedBorder)
                     .help("Use {name} for the source name and {index} for the file number.")
             }
-            if let input = previewInput, let index = inputs.firstIndex(of: input) {
-                switch Result(catching: { try DocumentConvert.outputStem(input, position: index + 1, options: options) }) {
-                case .success(let name):
-                    Text(name + "." + options.target.fileExtension).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
-                case .failure(let error):
-                    Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
-                }
+            if let input = previewInput, let index = inputs.firstIndex(of: input),
+               let name = try? DocumentConvert.outputStem(input, position: index + 1, options: options) {
+                Text(name + "." + options.target.fileExtension).font(.callout.monospacedDigit()).foregroundStyle(.secondary)
             }
             let conflicts = DocumentConvert.conflictingOutputFilenames(inputs, options: options)
             if !conflicts.isEmpty {
@@ -89,7 +85,9 @@ struct DocumentConvertControls: View {
 
     @ViewBuilder
     private var availability: some View {
-        let issues = inputs.compactMap { input in DocumentConvert.optionIssue(for: input, options: options).map { (input, $0) } }
+        let issues = inputs.enumerated().compactMap { index, input in
+            DocumentConvert.exportIssue(for: input, position: index + 1, options: options).map { (input, $0) }
+        }
         if !issues.isEmpty {
             ForEach(Array(issues.enumerated()), id: \.offset) { _, entry in
                 Text(inputs.count > 1 ? "\(entry.0.lastPathComponent) · \(entry.1)" : entry.1)
