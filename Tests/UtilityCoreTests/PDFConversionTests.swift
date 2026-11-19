@@ -188,17 +188,7 @@ private func conversionPDF(in folder: URL) throws -> URL {
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
         "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 150] /UserUnit 2 >>"
     ]
-    var source = "%PDF-1.6\n"
-    var offsets: [Int] = []
-    for (index, object) in objects.enumerated() {
-        offsets.append(source.utf8.count)
-        source += "\(index + 1) 0 obj\n\(object)\nendobj\n"
-    }
-    let xref = source.utf8.count
-    source += "xref\n0 4\n0000000000 65535 f \n"
-    for offset in offsets { source += String(format: "%010d 00000 n \n", offset) }
-    source += "trailer\n<< /Size 4 /Root 1 0 R >>\nstartxref\n\(xref)\n%%EOF\n"
-    try Data(source.utf8).write(to: pdf)
+    try pdfFixtureData(objects: objects).write(to: pdf)
     let exports = try folder.subdirectory("exports")
     var options = PDFToImagesOptions()
     options.dpi = 72
@@ -254,4 +244,18 @@ private func conversionPDF(in folder: URL) throws -> URL {
     #expect(output.pathExtension == options.format.fileExtension)
     #expect(try conversionReadImage(output).width == 200)
     #expect(try Data(contentsOf: restricted) == data)
+}
+
+func pdfFixtureData(objects: [String]) -> Data {
+    var source = "%PDF-1.6\n"
+    var offsets: [Int] = []
+    for (index, object) in objects.enumerated() {
+        offsets.append(source.utf8.count)
+        source += "\(index + 1) 0 obj\n\(object)\nendobj\n"
+    }
+    let xref = source.utf8.count
+    source += "xref\n0 \(objects.count + 1)\n0000000000 65535 f \n"
+    for offset in offsets { source += String(format: "%010d 00000 n \n", offset) }
+    source += "trailer\n<< /Size \(objects.count + 1) /Root 1 0 R >>\nstartxref\n\(xref)\n%%EOF\n"
+    return Data(source.utf8)
 }

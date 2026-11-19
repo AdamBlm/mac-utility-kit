@@ -7,6 +7,21 @@ import UtilityCore
 
 @MainActor
 struct PDFFormsTests {
+    @Test func rejectsXFAFromTheDocumentCatalog() throws {
+        let (source, directory) = try fixture()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let data = pdfFixtureData(objects: [
+            "<< /Type /Catalog /Pages 2 0 R /AcroForm 4 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 150] >>",
+            "<< /Fields [] /XFA [] >>"
+        ])
+        try data.write(to: source)
+        let error = #expect(throws: ToolError.self) { try PDFForms(source: source) }
+        #expect(error?.localizedDescription == "Dynamic XFA PDF forms are unsupported.")
+        #expect(try Data(contentsOf: source) == data)
+    }
+
     @Test func refusesRedirectedAndNewlyOccupiedSaveDestinations() throws {
         let (source, directory) = try fixture()
         defer { try? FileManager.default.removeItem(at: directory) }
