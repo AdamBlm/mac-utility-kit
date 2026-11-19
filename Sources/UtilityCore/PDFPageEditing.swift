@@ -107,25 +107,26 @@ public enum PDFPageEditing {
                                      pageNumbers: Array(first...last))
             }
         case .custom:
-            let lines = options.customRanges.split(whereSeparator: \.isNewline)
-                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-                .filter { !$0.isEmpty }
+            let lines = options.customRanges.split(omittingEmptySubsequences: false, whereSeparator: \.isNewline)
+                .enumerated()
+                .map { (number: $0.offset + 1, text: $0.element.trimmingCharacters(in: .whitespaces)) }
+                .filter { !$0.text.isEmpty }
             guard !lines.isEmpty else { throw ToolError.invalid("Enter at least one custom page range.") }
             return try lines.enumerated().map { index, line in
-                let parts = line.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
+                let parts = line.text.split(separator: ":", maxSplits: 1, omittingEmptySubsequences: false)
                 let range = parts.last.map { $0.trimmingCharacters(in: .whitespaces) } ?? ""
                 let name = parts.count == 2 ? parts[0].trimmingCharacters(in: .whitespaces) : "Group \(index + 1)"
                 guard !range.isEmpty, !name.isEmpty else {
-                    throw ToolError.invalid("Line \(index + 1) needs a page range and a name when a colon is used.")
+                    throw ToolError.invalid("Line \(line.number) needs a page range and a name when a colon is used.")
                 }
                 let pages: [Int]
                 do {
                     pages = try PageSelection.indices(range, pageCount: pageCount).map { $0 + 1 }
                 } catch {
-                    throw ToolError.invalid("Line \(index + 1): \(error.localizedDescription)")
+                    throw ToolError.invalid("Line \(line.number): \(error.localizedDescription)")
                 }
                 guard !pages.isEmpty else {
-                    throw ToolError.invalid("Line \(index + 1) must contain at least one page.")
+                    throw ToolError.invalid("Line \(line.number) must contain at least one page.")
                 }
                 return PDFSplitGroup(number: index + 1, name: name, pageNumbers: pages)
             }

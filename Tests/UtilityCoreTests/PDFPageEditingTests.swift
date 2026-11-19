@@ -14,7 +14,7 @@ import UtilityCore
         #expect(try PDFPageEditing.splitGroups(pageCount: 5, options: options).map(\.pageNumbers) ==
                 [[1, 2], [3, 4], [5]])
         options.mode = .custom
-        options.customRanges = "Overview: 3,1\nAppendix: 1,4–5"
+        options.customRanges = "Overview: 3,1\n  \nAppendix: 1,4–5"
         options.filenamePattern = "{group}-{number}"
         let results = try await PDFPageEditing.split(source, into: directory, options: options) { _ in }
 
@@ -34,10 +34,11 @@ import UtilityCore
         await #expect(throws: ToolError.self) {
             try await PDFPageEditing.split(source, into: directory, options: options) { _ in }
         }
-        options.customRanges = "Empty:"
-        await #expect(throws: ToolError.self) {
+        options.customRanges = "1-2\r\n  \r\nEmpty:"
+        let error = await #expect(throws: ToolError.self) {
             try await PDFPageEditing.split(source, into: directory, options: options) { _ in }
         }
+        #expect(error?.localizedDescription.hasPrefix("Line 3 needs") == true)
         options.customRanges = "1-2\n3-5"
         options.filenamePattern = "same-name"
         await #expect(throws: ToolError.self) {
