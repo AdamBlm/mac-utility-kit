@@ -85,12 +85,11 @@ private func audioTestFolder() throws -> URL {
     #expect(!FileManager.default.fileExists(atPath: output.path))
 }
 
-@Test func extractsOnlyTheChosenLanguageTrack() async throws {
-    let folder = try audioTestFolder()
-    defer { try? FileManager.default.removeItem(at: folder) }
-
+private func makeTaggedAudioTracks(
+    _ tracks: [(Double, String)], in folder: URL, at input: URL
+) async throws {
     let composition = AVMutableComposition()
-    for (seconds, language) in [(0.4, "en"), (0.8, "fr")] {
+    for (seconds, language) in tracks {
         let source = try audioFixture(in: folder, seconds: seconds)
         let asset = AVURLAsset(url: source)
         let audio = try #require(try await asset.loadTracks(withMediaType: .audio).first)
@@ -100,9 +99,53 @@ private func audioTestFolder() throws -> URL {
         try track.insertTimeRange(try await audio.load(.timeRange), of: audio, at: .zero)
         track.extendedLanguageTag = language
     }
-    let input = folder.appendingPathComponent("Two tracks.mov")
     let exporter = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
     try await exporter.exportMedia(to: input, as: .mov)
+}
+
+@Test func languageSelectionHandlesReorderedMissingAndAmbiguousTracksInOneBatch() async throws {
+    let folder = try audioTestFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    let first = folder.appending(path: "English first.mov")
+    let second = folder.appending(path: "English second.mov")
+    let missing = folder.appending(path: "French only.mov")
+    let duplicate = folder.appending(path: "Two English tracks.mov")
+    try await makeTaggedAudioTracks([(0.4, "en-US"), (0.8, "fr")], in: folder, at: first)
+    try await makeTaggedAudioTracks([(0.8, "fr"), (0.4, "en-GB")], in: folder, at: second)
+    try await makeTaggedAudioTracks([(0.8, "fr")], in: folder, at: missing)
+    try await makeTaggedAudioTracks([(0.4, "en-US"), (0.6, "en-GB")], in: folder, at: duplicate)
+
+    var options = ToolOptions()
+    options.extraction.trackLanguage = "eng"
+    let report = try await ToolRunner.run(.extractAudio, inputs: [first, second, missing, duplicate],
+                                          destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.outputs.count == 2)
+    #expect(report.failures.count == 2)
+    #expect(report.failures.contains { $0.contains("French only.mov") && $0.contains("No audio track is tagged") })
+    #expect(report.failures.contains { $0.contains("Two English tracks.mov") && $0.contains("Multiple audio tracks") })
+    for output in report.outputs {
+        let duration = try await AVURLAsset(url: output).load(.duration).seconds
+        #expect(abs(duration - 0.4) < 0.05)
+        let track = try #require(try await AudioExtraction.trackList(output).first)
+        #expect(track.languageCode == "en")
+    }
+    let sample = folder.appending(path: "Preview.m4a")
+    try await AudioExtraction.preview(second, to: sample, options: options.extraction)
+    #expect(abs(try await AVURLAsset(url: sample).load(.duration).seconds - 0.4) < 0.05)
+    var legacy = AudioExtractionOptions()
+    legacy.trackLanguage = "fre"
+    let french = folder.appending(path: "French.m4a")
+    _ = try await AudioExtraction.extract(second, to: french, options: legacy) { _ in }
+    #expect(abs(try await AVURLAsset(url: french).load(.duration).seconds - 0.8) < 0.05)
+}
+
+@Test func extractsOnlyTheChosenLanguageTrack() async throws {
+    let folder = try audioTestFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    let input = folder.appending(path: "Two tracks.mov")
+    try await makeTaggedAudioTracks([(0.4, "en"), (0.8, "fr")], in: folder, at: input)
     let tracks = try await AudioExtraction.trackList(input)
     #expect(tracks.count == 2)
     let french = try #require(tracks.first { $0.language?.hasPrefix("fr") == true })

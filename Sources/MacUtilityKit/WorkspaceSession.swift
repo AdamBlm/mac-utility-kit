@@ -194,8 +194,8 @@ final class WorkspaceSession {
         }
     }
 
-    func startAudioPreview(_ draft: ToolDraft) {
-        guard !isRunning, let input = draft.inputs.first else { return }
+    func startAudioPreview(_ draft: ToolDraft, input: URL) {
+        guard !isRunning, draft.inputs.contains(input) else { return }
         runningTool = .extractAudio
         progress = 0
         previewURL = nil

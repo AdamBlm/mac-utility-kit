@@ -106,7 +106,7 @@ extension ToolWorkspace {
             options: $draft.options.extraction,
             showsAdvanced: $draft.showsAdvanced,
             previewDisabled: session.isRunning,
-            preview: { session.startAudioPreview(draft) }
+            preview: { session.startAudioPreview(draft, input: $0) }
         )
     }
 }
@@ -116,24 +116,57 @@ private struct AudioExtractionControls: View {
     @Binding var options: AudioExtractionOptions
     @Binding var showsAdvanced: Bool
     let previewDisabled: Bool
-    let preview: () -> Void
-    @State private var tracks: [AudioExtractionTrack] = []
-    @State private var trackError: String?
+    let preview: (URL) -> Void
+    @State private var tracksBySource: [URL: [AudioExtractionTrack]] = [:]
+    @State private var languages: [String] = []
+    @State private var errorsBySource: [URL: String] = [:]
+    @State private var chosenPreview: URL?
+
+    private var previewInput: URL? {
+        if let chosenPreview, inputs.contains(chosenPreview) { return chosenPreview }
+        return inputs.first
+    }
+
+    private var tracks: [AudioExtractionTrack] {
+        previewInput.flatMap { tracksBySource[$0] } ?? []
+    }
+
+    private func languageTitle(_ code: String) -> String {
+        Locale.current.localizedString(forLanguageCode: code) ?? code
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            if !tracks.isEmpty {
+            if !languages.isEmpty || options.trackLanguage != nil {
+                SettingRow("Select by") {
+                    Picker("Select by", selection: $options.trackLanguage) {
+                        Text("Track number").tag(nil as String?)
+                        if let language = options.trackLanguage, !languages.contains(language) {
+                            Text(languageTitle(language)).tag(Optional(language))
+                        }
+                        ForEach(languages, id: \.self) { language in
+                            Text(languageTitle(language)).tag(Optional(language))
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
+            if options.trackLanguage == nil, !tracks.isEmpty {
                 SettingRow("Audio track") {
                     Picker("Audio track", selection: $options.trackIndex) {
+                        if !tracks.contains(where: { $0.index == options.trackIndex }) {
+                            Text("Track \(options.trackIndex + 1) · Unavailable").tag(options.trackIndex)
+                        }
                         ForEach(tracks) { track in Text(track.title).tag(track.index) }
                     }
                     .labelsHidden()
                 }
                 if inputs.count > 1 {
-                    Text("The selected track number applies to each file.")
+                    Text("The track number applies to every file.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            } else if let trackError {
+            }
+            if let previewInput, let trackError = errorsBySource[previewInput] {
                 Text(trackError).font(.caption).foregroundStyle(.secondary)
             }
             SettingRow("Output format") {
@@ -169,23 +202,45 @@ private struct AudioExtractionControls: View {
             if options.format.requiresFFmpeg, options.ffmpegExecutable == nil {
                 executablePicker("FFmpeg", selection: $options.ffmpegExecutable)
             }
-            Button("Preview first file", systemImage: "play.rectangle", action: preview)
-                .disabled(previewDisabled || tracks.isEmpty)
-        }
-        .task(id: inputs.first) {
-            tracks = []
-            trackError = nil
-            guard let input = inputs.first else { return }
-            do {
-                let discovered = try await AudioExtraction.trackList(input)
-                guard !Task.isCancelled else { return }
-                tracks = discovered
-                if discovered.isEmpty { trackError = "The first file has no audio tracks." }
-                if !tracks.contains(where: { $0.index == options.trackIndex }) {
-                    options.trackIndex = tracks.first?.index ?? 0
+            if let previewInput {
+                if inputs.count > 1 {
+                    SettingRow("Preview source") {
+                        Picker("Preview source", selection: Binding(
+                            get: { previewInput },
+                            set: { chosenPreview = $0 }
+                        )) {
+                            ForEach(Array(inputs.enumerated()), id: \.offset) { index, input in
+                                Text("\(index + 1). \(input.lastPathComponent)").tag(input)
+                            }
+                        }
+                        .labelsHidden()
+                    }
                 }
-            } catch {
-                if !Task.isCancelled { trackError = error.localizedDescription }
+                Button("Preview track", systemImage: "play.rectangle") { preview(previewInput) }
+                    .disabled(previewDisabled)
+            }
+        }
+        .task(id: inputs) {
+            tracksBySource = [:]
+            languages = []
+            errorsBySource = [:]
+            var discoveredLanguages = Set<String>()
+            for input in inputs {
+                do {
+                    let discovered = try await AudioExtraction.trackList(input)
+                    guard !Task.isCancelled else { return }
+                    tracksBySource[input] = discovered
+                    if discovered.isEmpty {
+                        errorsBySource[input] = "The preview source has no audio tracks."
+                    }
+                    discoveredLanguages.formUnion(discovered.compactMap(\.languageCode))
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    errorsBySource[input] = error.localizedDescription
+                }
+            }
+            languages = discoveredLanguages.sorted {
+                languageTitle($0).localizedStandardCompare(languageTitle($1)) == .orderedAscending
             }
         }
     }

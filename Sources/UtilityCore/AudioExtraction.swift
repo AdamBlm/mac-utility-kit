@@ -27,6 +27,7 @@ public enum AudioExtractionQuality: String, CaseIterable, Identifiable, Sendable
 
 public struct AudioExtractionOptions: Sendable {
     public var trackIndex = 0
+    public var trackLanguage: String?
     public var format: AudioOutputFormat = .m4a
     public var quality: AudioExtractionQuality = .standard
     public var passthrough = false
@@ -41,6 +42,8 @@ public struct AudioExtractionTrack: Identifiable, Sendable {
     public let language: String?
     public let codec: String
     public let channels: Int?
+
+    package var languageCode: String? { AudioExtraction.normalizedLanguage(language) }
 
     public var title: String {
         var parts = ["Track \(index + 1)"]
@@ -86,11 +89,33 @@ public enum AudioExtraction {
         ])
         let tracks = try await asset.loadTracks(withMediaType: .audio)
         guard !tracks.isEmpty else { throw ToolError.invalid("This file has no audio track.") }
-        guard tracks.indices.contains(options.trackIndex) else {
-            throw ToolError.invalid("Audio track \(options.trackIndex + 1) is not available in this file.")
+        let selected: Int
+        if let language = options.trackLanguage {
+            guard let code = normalizedLanguage(language) else {
+                throw ToolError.invalid("Choose a valid audio language.")
+            }
+            var matching: [Int] = []
+            for (index, track) in tracks.enumerated() {
+                try Task.checkCancellation()
+                let tag = try await languageTag(track)
+                if normalizedLanguage(tag) == code { matching.append(index) }
+            }
+            let title = Locale.current.localizedString(forLanguageCode: code) ?? code
+            guard let index = matching.first else {
+                throw ToolError.invalid("No audio track is tagged \(title) in this file.")
+            }
+            guard matching.count == 1 else {
+                throw ToolError.invalid("Multiple audio tracks are tagged \(title). Select a track by number.")
+            }
+            selected = index
+        } else {
+            guard tracks.indices.contains(options.trackIndex) else {
+                throw ToolError.invalid("The selected audio track number is unavailable in this file.")
+            }
+            selected = options.trackIndex
         }
-        let track = tracks[options.trackIndex]
-        let description = try await describe(track, index: options.trackIndex)
+        let track = tracks[selected]
+        let description = try await describe(track, index: selected)
 
         guard !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("The audio output file already exists.")
@@ -146,14 +171,32 @@ public enum AudioExtraction {
         )
     }
 
+    private static func languageTag(_ track: AVAssetTrack) async throws -> String? {
+        let (tag, code) = try await track.load(.extendedLanguageTag, .languageCode)
+        return [tag, code].compactMap { $0 }.first { normalizedLanguage($0) != nil }
+    }
+
+    // ISO 639-2 bibliographic aliases that can appear in older media containers.
+    private static let bibliographicLanguages = [
+        "alb": "sq", "arm": "hy", "baq": "eu", "bur": "my", "chi": "zh", "cze": "cs", "dut": "nl",
+        "fre": "fr", "geo": "ka", "ger": "de", "gre": "el", "ice": "is", "mac": "mk", "mao": "mi",
+        "may": "ms", "per": "fa", "rum": "ro", "slo": "sk", "tib": "bo", "wel": "cy"
+    ]
+
+    fileprivate static func normalizedLanguage(_ tag: String?) -> String? {
+        guard let tag,
+              let code = Locale.Language(identifier: tag).languageCode?.identifier.lowercased(),
+              (2...3).contains(code.utf8.count), code.utf8.allSatisfy({ (97...122).contains($0) }),
+              !["und", "mul", "zxx", "mis"].contains(code) else { return nil }
+        return bibliographicLanguages[code] ?? code
+    }
+
     private static func describe(_ track: AVAssetTrack, index: Int) async throws -> AudioExtractionTrack {
         let format = try await track.load(.formatDescriptions).first
         let subtype = format.map(CMFormatDescriptionGetMediaSubType)
         let channels = format.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }
             .map { Int($0.mChannelsPerFrame) }
-        let tag = try await track.load(.extendedLanguageTag)
-        let code = try await track.load(.languageCode)
-        let language = [tag, code].compactMap { $0 }.first { !$0.isEmpty && $0.lowercased() != "und" }
+        let language = try await languageTag(track)
         let codec: String
         switch subtype {
         case kAudioFormatMPEG4AAC: codec = "AAC"

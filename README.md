@@ -28,7 +28,7 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 
 - **Convert Video** converts to MP4, MOV, and M4V with AVFoundation. A user-selected FFmpeg adds WebM export and resolution and frame rate options. Passthrough requires streams compatible with the destination container.
 - **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections, while the optional user-selected ffprobe exports its detailed stream metadata. Frame-timing results describe observed samples only.
-- **Extract Audio** previews one selected track and exports it to M4A, WAV, or AIFF. A user-selected FFmpeg adds MP3 and FLAC. Source track discovery uses AVFoundation. Passthrough is supported for AAC and ALAC tracks in M4A.
+- **Extract Audio** selects a track by language or number, previews a chosen source, and exports to M4A, WAV, or AIFF. Language selection matches each file independently and reports missing or ambiguous tracks. A user-selected FFmpeg adds MP3 and FLAC. Source track discovery uses AVFoundation. Passthrough is supported for AAC and ALAC tracks in M4A.
 
 Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the external Media Info integration fixture.
 
