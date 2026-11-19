@@ -136,6 +136,23 @@ public enum DocumentConvert {
         return stem
     }
 
+    package static func conflictingOutputFilenames(_ inputs: [URL], options: DocumentConvertOptions) -> [String] {
+        var seen: [String: String] = [:]
+        var reported: Set<String> = []
+        var conflicts: [String] = []
+        for (index, input) in inputs.enumerated() {
+            guard let stem = try? outputStem(input, position: index + 1, options: options) else { continue }
+            let filename = stem + "." + options.target.fileExtension
+            let key = filename.precomposedStringWithCanonicalMapping.lowercased()
+            if let earlier = seen[key] {
+                if reported.insert(key).inserted { conflicts.append(earlier) }
+            } else {
+                seen[key] = filename
+            }
+        }
+        return conflicts
+    }
+
     public static func export(
         _ input: URL, to output: URL, options: DocumentConvertOptions,
         progress: @escaping @Sendable (Double) async -> Void

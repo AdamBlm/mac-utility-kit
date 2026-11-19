@@ -35,7 +35,13 @@ struct DocumentConvertTests {
         try Data("second document".utf8).write(to: second)
         var options = ToolOptions()
         options.documents.target = .html
+        options.documents.filenamePattern = "{name}"
+        let differentlyCased = directory.appending(path: "FIRST.txt")
+        #expect(DocumentConvert.conflictingOutputFilenames([first, differentlyCased], options: options.documents) == ["First.html"])
+        options.documents.filenamePattern = "{index} - {name}"
+        #expect(DocumentConvert.conflictingOutputFilenames([first, differentlyCased], options: options.documents).isEmpty)
         options.documents.filenamePattern = "Same"
+        #expect(DocumentConvert.conflictingOutputFilenames([first, second], options: options.documents) == ["Same.html"])
         let report = try await ToolRunner.run(
             .convertDocuments, inputs: [first, second], destination: directory, imageSize: 0, options: options
         ) { _ in }

@@ -49,6 +49,16 @@ struct DocumentConvertControls: View {
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
                 }
             }
+            let conflicts = DocumentConvert.conflictingOutputFilenames(inputs, options: options)
+            if !conflicts.isEmpty {
+                DisclosureGroup("Potential filename conflicts · \(conflicts.count)") {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Add {index} to give each export a distinct name.")
+                        ForEach(conflicts, id: \.self) { Text($0).textSelection(.enabled) }
+                    }
+                    .font(.callout).foregroundStyle(.secondary)
+                }
+            }
             DisclosureGroup("Conversion Engines") {
                 VStack(alignment: .leading, spacing: 9) {
                     enginePicker("Pandoc", url: $options.pandocExecutable)
