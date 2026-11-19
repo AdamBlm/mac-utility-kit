@@ -129,6 +129,7 @@ struct PDFFormsTests {
         #expect(page.annotations.first { $0.fieldName == "Accepted" }?.buttonWidgetState == .onState)
         #expect(page.annotations.first { $0.fieldName == "Declined" }?.buttonWidgetState == .offState)
         #expect(page.annotations.first { $0.type == "FreeText" }?.contents == "Reviewed")
+        try verifyFreeTextAppearance(on: page)
 
         let flattened = try await subject.export(.flattened, python: python)
         let flattenedDocument = try #require(PDFDocument(data: flattened))
@@ -155,6 +156,34 @@ struct PDFFormsTests {
             try editable.write(to: output.appendingPathComponent("editable\(suffix).pdf"))
             try flattened.write(to: output.appendingPathComponent("flattened\(suffix).pdf"))
         }
+    }
+
+    private func verifyFreeTextAppearance(on page: PDFPage) throws {
+        let dictionary = try #require(page.pageRef?.dictionary)
+        var annotations: CGPDFArrayRef?
+        try #require(CGPDFDictionaryGetArray(dictionary, "Annots", &annotations))
+        let array = try #require(annotations)
+        for index in 0..<CGPDFArrayGetCount(array) {
+            var annotation: CGPDFDictionaryRef?
+            guard CGPDFArrayGetDictionary(array, index, &annotation), let annotation else { continue }
+            var subtype: UnsafePointer<CChar>?
+            guard CGPDFDictionaryGetName(annotation, "Subtype", &subtype),
+                  let subtype, String(cString: subtype) == "FreeText" else { continue }
+            var instructions: CGPDFStringRef?
+            try #require(CGPDFDictionaryGetString(annotation, "DA", &instructions))
+            let appearanceInstructions = try #require(instructions)
+            #expect(CGPDFStringGetLength(appearanceInstructions) > 0)
+            var appearances: CGPDFDictionaryRef?
+            try #require(CGPDFDictionaryGetDictionary(annotation, "AP", &appearances))
+            let appearanceDictionary = try #require(appearances)
+            var normal: CGPDFStreamRef?
+            try #require(CGPDFDictionaryGetStream(appearanceDictionary, "N", &normal))
+            let stream = try #require(normal)
+            var format = CGPDFDataFormat.raw
+            #expect((CGPDFStreamCopyData(stream, &format) as Data?)?.isEmpty == false)
+            return
+        }
+        Issue.record("Missing free-text annotation in the saved PDF.")
     }
 
     private func fixture(withBoxes: Bool = false) throws -> (URL, URL) {
