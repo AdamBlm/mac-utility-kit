@@ -18,7 +18,12 @@ struct PDFExtractSettings: View {
                 .labelsHidden()
                 .pickerStyle(.segmented)
             }
-            PDFExportPagePicker(document: document, range: $options.range, startsWithAll: false)
+            PDFExportPagePicker(document: document, range: $options.range, startsWithAll: false,
+                                allowsDescendingRanges: true)
+            if options.order == .selection {
+                Text("Enter a range like 8–3 to export those pages in reverse order.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options) {
                 DisclosureGroup("Export order · \(pages.count) \(pages.count == 1 ? "page" : "pages")", isExpanded: $showsOrder) {
                     ScrollView {
@@ -110,6 +115,7 @@ struct PDFExportPagePicker: View {
     @Binding var range: String
     let startsWithAll: Bool
     var anchorResetID: UUID? = nil
+    var allowsDescendingRanges = false
     @State private var expanded = false
     @State private var anchor: Int?
 
@@ -153,7 +159,8 @@ struct PDFExportPagePicker: View {
 
     private func pageIndices() throws -> [Int] {
         if !startsWithAll, range.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return [] }
-        return try PageSelection.indices(range, pageCount: document.pageCount)
+        return try PageSelection.indices(range, pageCount: document.pageCount,
+                                         allowsDescendingRanges: allowsDescendingRanges)
     }
 
     private func thumbnailStrip(selected: [Int]) -> some View {

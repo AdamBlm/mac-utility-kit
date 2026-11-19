@@ -11,6 +11,14 @@ import UtilityCore
 
     options.order = .document
     #expect(try PDFPageEditing.extractPages(pageCount: 3, options: options) == [1, 2, 3])
+
+    options.range = "4–2, 1-3, 4"
+    options.order = .selection
+    #expect(try PDFPageEditing.extractPages(pageCount: 4, options: options) == [4, 3, 2, 1])
+    options.order = .document
+    #expect(try PDFPageEditing.extractPages(pageCount: 4, options: options) == [1, 2, 3, 4])
+    #expect(throws: ToolError.self) { try PageSelection.indices("4–2", pageCount: 4) }
+    #expect(throws: ToolError.self) { try PageSelection.indices("1", pageCount: 0) }
 }
 
 @Test func extractPublishesTheRequestedPDFPageSequenceAndPreservesTheOriginal() async throws {
@@ -37,18 +45,20 @@ import UtilityCore
 
     let output = directory.appendingPathComponent("Selected.pdf")
     var options = PDFExtractOptions()
-    options.range = "3, 1, 3"
+    options.range = "3–1, 3"
     options.order = .selection
     try await PDFPageEditing.extract(source, to: output, options: options) { _ in }
 
     let result = try #require(PDFDocument(url: output))
     let first = try #require(result.page(at: 0))
     let second = try #require(result.page(at: 1))
-    #expect(result.pageCount == 2)
+    let third = try #require(result.page(at: 2))
+    #expect(result.pageCount == 3)
     #expect(first.rotation == 90)
     #expect(min(first.bounds(for: .mediaBox).width, first.bounds(for: .mediaBox).height) == 120)
     #expect(second.rotation == 0)
-    #expect(second.bounds(for: .mediaBox).width == 100)
+    #expect(second.bounds(for: .mediaBox).width == 110)
+    #expect(third.bounds(for: .mediaBox).width == 100)
     #expect(try Data(contentsOf: source) == originalBytes)
 
     let existingBytes = try Data(contentsOf: output)
@@ -67,7 +77,7 @@ import UtilityCore
 
 @Test func extractRejectsEmptySelectionsAndInvalidPageCounts() throws {
     var options = PDFExtractOptions()
-    for invalid in ["", "  ", "none", "0", "4", "1, invalid"] {
+    for invalid in ["", "  ", "none", "0", "4", "4–1", "3–0", "1, invalid"] {
         options.range = invalid
         #expect(throws: ToolError.self) {
             try PDFPageEditing.extractPages(pageCount: 3, options: options)

@@ -73,7 +73,7 @@ public enum PDFPageEditing {
         guard pageCount > 0 else { throw ToolError.invalid("The PDF has no pages.") }
         let range = options.range.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !range.isEmpty else { throw ToolError.invalid("Select at least one page to extract.") }
-        let pages = try PageSelection.indices(range, pageCount: pageCount).map { $0 + 1 }
+        let pages = try PageSelection.indices(range, pageCount: pageCount, allowsDescendingRanges: true).map { $0 + 1 }
         guard !pages.isEmpty else { throw ToolError.invalid("Select at least one page to extract.") }
         return options.order == .document ? pages.sorted() : pages
     }

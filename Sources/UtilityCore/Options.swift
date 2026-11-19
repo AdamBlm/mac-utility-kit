@@ -149,6 +149,12 @@ public enum PageSelection {
     }
 
     public static func indices(_ expression: String, pageCount: Int) throws -> [Int] {
+        try indices(expression, pageCount: pageCount, allowsDescendingRanges: false)
+    }
+
+    package static func indices(
+        _ expression: String, pageCount: Int, allowsDescendingRanges: Bool
+    ) throws -> [Int] {
         guard pageCount >= 0 else { throw ToolError.invalid("The source page count is invalid.") }
         let value = expression.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty || value.lowercased() == "all" { return Array(0..<pageCount) }
@@ -161,10 +167,14 @@ public enum PageSelection {
             let numbers = bounds.compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
             guard numbers.count == bounds.count, (1...2).contains(numbers.count),
                   let start = numbers.first, let end = numbers.last,
-                  start >= 1, end <= pageCount, end >= start else {
+                  start >= 1, start <= pageCount, end >= 1, end <= pageCount,
+                  allowsDescendingRanges || end >= start else {
                 throw ToolError.invalid("Invalid page selection “\(token)”. Enter pages from 1 to \(pageCount).")
             }
-            for page in start...end where seen.insert(page).inserted { pages.append(page - 1) }
+            for page in stride(from: start, through: end, by: start <= end ? 1 : -1)
+                where seen.insert(page).inserted {
+                pages.append(page - 1)
+            }
         }
         return pages
     }
