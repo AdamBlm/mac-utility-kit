@@ -68,6 +68,7 @@ struct PDFRasterExportPreview: View {
 
 struct ImagePDFPagePreview: View {
     let input: URL
+    let pageNumber: Int
     let options: ImagesToPDFOptions
     let background: Color
     @State private var thumbnail: CGImage?
@@ -78,6 +79,12 @@ struct ImagePDFPagePreview: View {
                 pagePreview(layout)
                 Text("\(Double(layout.page.width).formatted(.number.precision(.fractionLength(0)))) × \(Double(layout.page.height).formatted(.number.precision(.fractionLength(0)))) pt")
                     .monospacedDigit().font(.caption).foregroundStyle(.secondary)
+                if options.placement == .fill,
+                   layout.image.width > layout.printableArea.width + 0.01
+                    || layout.image.height > layout.printableArea.height + 0.01 {
+                    Text("Fill crops this image at the printable edges.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             } else {
                 Text("Preview unavailable. Check the image and page settings.")
                     .font(.caption).foregroundStyle(.secondary)
@@ -118,7 +125,7 @@ struct ImagePDFPagePreview: View {
         }
         .frame(width: layout.page.width * scale, height: layout.page.height * scale)
         .overlay { Rectangle().strokeBorder(.secondary.opacity(0.35)) }
-        .accessibilityLabel("First page with selected paper and placement")
+        .accessibilityLabel("Page \(pageNumber) with selected paper and placement")
     }
 }
 

@@ -162,8 +162,10 @@ private struct PDFExportPagePicker: View {
 struct ImagesToPDFSettings: View {
     let inputs: [URL]
     @Binding var options: ImagesToPDFOptions
+    @State private var previewPage = 0
 
     var body: some View {
+        let page = min(previewPage, max(0, inputs.count - 1))
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Paper") {
                 Picker("Paper", selection: Binding(
@@ -219,12 +221,24 @@ struct ImagesToPDFSettings: View {
                 ColorPicker("Page background", selection: background, supportsOpacity: false)
                     .labelsHidden()
             }
-            if let input = inputs.first {
-                DisclosureGroup("First-page preview") {
-                    ImagePDFPagePreview(input: input, options: options, background: background.wrappedValue)
+            if inputs.indices.contains(page) {
+                DisclosureGroup("Page preview") {
+                    if inputs.count > 1 {
+                        Picker("Preview page", selection: Binding(get: { page }, set: { previewPage = $0 })) {
+                            ForEach(inputs.indices, id: \.self) { index in
+                                Text("\(index + 1). \(inputs[index].lastPathComponent)").tag(index)
+                            }
+                        }
+                    }
+                    ImagePDFPagePreview(input: inputs[page], pageNumber: page + 1,
+                                        options: options, background: background.wrappedValue)
+                        .id(inputs[page])
                         .padding(.top, 6)
                 }
             }
+        }
+        .onChange(of: inputs.count) {
+            previewPage = min(previewPage, max(0, inputs.count - 1))
         }
     }
 
