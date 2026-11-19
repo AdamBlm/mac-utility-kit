@@ -154,7 +154,7 @@ struct ToolWorkspace: View {
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
                 || trimReview?.permitsExport != true
         case .videoToGIF:
-            draft.options.videoGIF.ffmpegExecutable == nil
+            draft.options.videoGIF.engineIssue != nil
         case .mergeVideos:
             draft.inputs.count < 2
         case .replaceAudio:

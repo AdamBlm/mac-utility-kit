@@ -4,6 +4,17 @@ import Testing
 import UtilityCore
 
 @Suite struct VideoGIFTests {
+    @Test func rejectsAnExecutableDirectoryBeforeOpeningTheVideo() async throws {
+        let folder = FileManager.default.temporaryDirectory
+        var options = VideoGIFOptions()
+        options.ffmpegExecutable = folder
+        let input = folder.appendingPathComponent("missing-video-for-gif-preflight.mov")
+        let error = await #expect(throws: ToolError.self) {
+            try await VideoGIF.preview(input, options: options)
+        }
+        #expect(error?.localizedDescription == "Choose an FFmpeg executable to create GIFs.")
+    }
+
     @Test func checksClipTimingAndWarnsAboutLargeExports() throws {
         var options = VideoGIFOptions()
         options.fps = 15

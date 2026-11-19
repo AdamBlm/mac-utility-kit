@@ -31,6 +31,10 @@ public struct VideoGIFOptions: Equatable, Sendable {
 
     public init() {}
 
+    package var engineIssue: String? {
+        ffmpegExecutable.map(ExternalTool.isExecutable) == true ? nil : "Choose an FFmpeg executable to create GIFs."
+    }
+
     var loopValue: Int {
         switch loop {
         case .once: -1
@@ -86,6 +90,7 @@ public enum VideoGIF {
     }
 
     public static func preview(_ input: URL, options: VideoGIFOptions) async throws -> VideoGIFPreview {
+        if let issue = options.engineIssue { throw ToolError.invalid(issue) }
         let bounds = try await FrameExtraction.timeBounds(of: input)
         let plan = try plan(in: bounds, options: options)
         let seconds = min(plan.range.duration, 2)
@@ -108,6 +113,7 @@ public enum VideoGIF {
               output.standardizedFileURL != input.standardizedFileURL else {
             throw ToolError.invalid("Choose a new local output file.")
         }
+        if let issue = options.engineIssue { throw ToolError.invalid(issue) }
         let bounds = try await FrameExtraction.timeBounds(of: input)
         let plan = try plan(in: bounds, options: options)
         return try await staging(in: output.deletingLastPathComponent()) { directory in

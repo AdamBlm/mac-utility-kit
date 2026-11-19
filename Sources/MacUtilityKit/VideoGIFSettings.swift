@@ -93,6 +93,9 @@ struct VideoGIFSettings: View {
         executablePicker("FFmpeg", selection: $options.ffmpegExecutable)
             .onChange(of: request) { clearPreview() }
             .onDisappear { clearPreview() }
+        if let issue = options.engineIssue {
+            Text(issue).font(.callout).foregroundStyle(.secondary)
+        }
 
         if let input, let bounds = source?.bounds {
             clipScrubber(input, bounds: bounds)
@@ -144,7 +147,7 @@ struct VideoGIFSettings: View {
                   systemImage: "info.circle")
                 .font(.callout).foregroundStyle(.secondary)
         }
-        if let input, request.options.ffmpegExecutable != nil {
+        if let input, request.options.engineIssue == nil {
             Button("Generate Preview", systemImage: "play.rectangle") {
                 generatePreview(for: request, input: input)
             }
