@@ -78,9 +78,10 @@ enum VideoWatermark {
         let orientation = try filters(for: source.orientation)
         let base = (orientation + ["scale=\(width):\(height)", "setsar=1"]).joined(separator: ",")
         let graph = "[0:V:0]\(base)[base];[base][1:v]overlay=0:0:enable='gte(t,\(start))*lt(t,\(end))',pad=ceil(iw/2)*2:ceil(ih/2)*2[video]"
+        // The overlay window uses the same source timestamps as the AVFoundation preview.
         await progress(0.12)
         try await ExternalTool.run(executable, name: "FFmpeg", arguments: [
-            "-nostdin", "-hide_banner", "-loglevel", "error", "-n", "-protocol_whitelist", "file",
+            "-nostdin", "-hide_banner", "-loglevel", "error", "-n", "-copyts", "-protocol_whitelist", "file",
             "-noautorotate", "-display_rotation:v:0", "0", "-i", input.path, "-i", overlay.path, "-filter_complex", graph, "-map", "[video]", "-map", "0:a?",
             "-c:v", "libx264", "-crf", "18", "-preset", "medium", "-pix_fmt", "yuv420p",
             "-c:a", "aac", "-movflags", "+faststart", candidate.path

@@ -110,6 +110,60 @@ struct WatermarkTests {
         }
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil),
+          arguments: [false, true])
+    func watermarksTheSameSourceFramesWhenVideoStartsLate(hasLeadingAudio: Bool) async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ffmpeg = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let input = directory.appending(path: "late.mov")
+        var arguments = ["-nostdin", "-loglevel", "error", "-f", "lavfi", "-i", "color=red:s=48x32:r=20:d=1.6"]
+        if hasLeadingAudio {
+            arguments += ["-f", "lavfi", "-i", "sine=frequency=440:sample_rate=48000:duration=2.55"]
+        }
+        arguments += ["-vf", "setpts=PTS+1/TB", "-map", "0:v", "-c:v", "libx264", "-pix_fmt", "yuv420p"]
+        if hasLeadingAudio { arguments += ["-map", "1:a", "-c:a", "aac"] }
+        let writer = Process()
+        writer.executableURL = ffmpeg
+        writer.arguments = arguments + [input.path]
+        try writer.run()
+        writer.waitUntilExit()
+        try #require(writer.terminationStatus == 0)
+
+        let logo = directory.appending(path: "blue.png")
+        try Self.writeImage(logo, width: 24, height: 18, color: CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+        var options = WatermarkOptions()
+        options.content = .logo
+        options.logo = logo
+        options.placement = .center
+        options.opacity = 1
+        options.scale = 0.5
+        options.videoStart = 1.15
+        options.videoEnd = 1.7
+        options.ffmpegExecutable = ffmpeg
+        let output = directory.appending(path: "marked.mp4")
+        _ = try await Watermark.export(input, to: output, options: options) { _ in }
+
+        let generator = AVAssetImageGenerator(asset: AVURLAsset(url: output))
+        generator.requestedTimeToleranceBefore = .zero
+        generator.requestedTimeToleranceAfter = .zero
+        for (time, expected) in [(1.05, false), (1.4, true), (2.0, false)] {
+            let preview = try await Watermark.preview(input, seconds: time, options: options)
+            let rendered = try await generator.image(at: CMTime(seconds: time, preferredTimescale: 600))
+            #expect(try Self.pixels(preview).at(24, 16).isBlue == expected)
+            #expect(try Self.pixels(rendered.image).at(24, 16).isBlue == expected)
+        }
+        let bounds = try await FrameExtraction.timeBounds(of: output)
+        #expect(abs(bounds.lowerBound - 1) < 0.01)
+        let audio = try await generator.asset.loadTracks(withMediaType: .audio)
+        #expect(audio.count == (hasLeadingAudio ? 1 : 0))
+        if let track = audio.first {
+            let timing = try await track.load(.timeRange)
+            #expect(abs(timing.start.seconds) < 0.05)
+            #expect(abs(timing.duration.seconds - 2.55) < 0.05)
+        }
+    }
+
     private static func pdf(_ directory: URL) throws -> URL {
         let raw = directory.appending(path: "raw.pdf")
         var media = CGRect(x: 0, y: 0, width: 180, height: 110)
