@@ -28,6 +28,7 @@ struct ClipboardFileButton: View {
 
     var body: some View {
         pasteButton
+        .background(ClipboardPasteShortcut(isEnabled: isEnabled) { paste(reportsMissingInput: false) })
         .alert("Paste from Clipboard", isPresented: Binding(
             get: { message != nil },
             set: { if !$0 { message = nil } }
@@ -41,16 +42,16 @@ struct ClipboardFileButton: View {
     @ViewBuilder
     private var pasteButton: some View {
         if onPasteImage != nil {
-            Button("Paste Image", systemImage: "clipboard", action: paste)
-                .background(ImagePasteShortcut(isEnabled: isEnabled, action: paste))
+            Button("Paste Image", systemImage: "clipboard") { paste() }
         } else {
-            Button(allowsMultiple ? "Paste Files" : "Paste File", systemImage: "clipboard", action: paste)
+            Button(allowsMultiple ? "Paste Files" : "Paste File", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL]) { _ in paste() }
         }
     }
 
-    private func paste() {
-        guard isEnabled else { return }
+    @discardableResult
+    private func paste(reportsMissingInput: Bool = true) -> Bool {
+        guard isEnabled else { return false }
         let board = NSPasteboard.general
         let files = ClipboardFiles.read(from: board, allowedTypes: allowedTypes)
         if !allowsMultiple && files.count > 1 {
@@ -62,6 +63,7 @@ struct ClipboardFileButton: View {
                 if let onPasteImage, let image = try ClipboardFiles.readImage(from: board) {
                     try onPasteImage(image)
                 } else {
+                    guard reportsMissingInput else { return false }
                     message = onPasteImage == nil
                         ? "Copy a supported file in Finder, then try again."
                         : "Copy an image or a supported file, then try again."
@@ -70,13 +72,14 @@ struct ClipboardFileButton: View {
                 message = error.localizedDescription
             }
         }
+        return true
     }
 }
 
-/// Routes image paste for the current window even when the file button lacks focus.
-private struct ImagePasteShortcut: NSViewRepresentable {
+/// Routes clipboard imports for the current window even when the file button lacks focus.
+private struct ClipboardPasteShortcut: NSViewRepresentable {
     let isEnabled: Bool
-    let action: () -> Void
+    let action: () -> Bool
 
     func makeNSView(context: Context) -> ShortcutView { ShortcutView() }
 
@@ -87,7 +90,7 @@ private struct ImagePasteShortcut: NSViewRepresentable {
     static func dismantleNSView(_ view: ShortcutView, coordinator: ()) { view.stopMonitoring() }
 
     final class ShortcutView: NSView {
-        var action: (() -> Void)?
+        var action: (() -> Bool)?
         private var monitor: Any?
 
         override func viewDidMoveToWindow() {
@@ -113,8 +116,7 @@ private struct ImagePasteShortcut: NSViewRepresentable {
                   event.modifierFlags.intersection([.command, .option, .control, .shift]) == .command,
                   event.charactersIgnoringModifiers?.lowercased() == "v",
                   let action else { return false }
-            if !event.isARepeat { action() }
-            return true
+            return event.isARepeat || action()
         }
     }
 }
