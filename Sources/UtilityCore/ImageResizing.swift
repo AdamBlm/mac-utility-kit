@@ -73,7 +73,7 @@ enum ImageResizing {
               let width = props[kCGImagePropertyPixelWidth] as? Int,
               let height = props[kCGImagePropertyPixelHeight] as? Int
         else { throw ToolError.invalid("Could not read the image dimensions.") }
-        let rotated = (props[kCGImagePropertyOrientation] as? Int ?? 1) >= 5
+        let rotated = (5...8).contains(props[kCGImagePropertyOrientation] as? Int ?? 1)
         return (source, rotated ? height : width, rotated ? width : height)
     }
 
@@ -99,18 +99,19 @@ enum ImageResizing {
                 guard options.upscale || required <= 1 else {
                     throw ToolError.invalid("Enable upscaling or choose smaller dimensions.")
                 }
-                return try boundedSize(options.imageWidth, options.imageHeight)
+                return try boundedSize(Double(options.imageWidth), Double(options.imageHeight))
             }
             factor = min(x, y)
         }
         let scale = options.upscale ? factor : min(factor, 1)
-        return try boundedSize(max(1, Int((Double(width) * scale).rounded())),
-                               max(1, Int((Double(height) * scale).rounded())))
+        return try boundedSize(Double(width) * scale, Double(height) * scale)
     }
 
-    private static func boundedSize(_ width: Int, _ height: Int) throws -> (width: Int, height: Int) {
+    private static func boundedSize(_ scaledWidth: Double, _ scaledHeight: Double) throws -> (width: Int, height: Int) {
+        let width = max(1, scaledWidth.rounded())
+        let height = max(1, scaledHeight.rounded())
         guard width <= 16_384, height <= 16_384, width * height <= 64_000_000
         else { throw ToolError.invalid("Output exceeds 16,384 pixels per edge or 64 megapixels.") }
-        return (width, height)
+        return (Int(width), Int(height))
     }
 }

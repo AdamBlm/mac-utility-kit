@@ -73,14 +73,14 @@ private func temporaryFolder() throws -> URL {
     return folder
 }
 
-private func imageFixture(in folder: URL) throws -> URL {
+private func imageFixture(in folder: URL, width: Int = 100, height: Int = 50) throws -> URL {
     let url = folder.appendingPathComponent("sample.png")
     let context = try #require(CGContext(
-        data: nil, width: 100, height: 50, bitsPerComponent: 8, bytesPerRow: 0,
+        data: nil, width: width, height: height, bitsPerComponent: 8, bytesPerRow: 0,
         space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ))
     context.setFillColor(red: 0.2, green: 0.4, blue: 0.7, alpha: 1)
-    context.fill(CGRect(x: 0, y: 0, width: 100, height: 50))
+    context.fill(CGRect(x: 0, y: 0, width: width, height: height))
     let image = try #require(context.makeImage())
     let writer = try #require(CGImageDestinationCreateWithURL(
         url as CFURL, UTType.png.identifier as CFString, 1, nil
@@ -322,6 +322,24 @@ private func writePDF(widths: [Int], to url: URL) throws {
     let image = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
     #expect(output.pathExtension == "jpg")
     #expect(image.width == 30 && image.height == 30)
+}
+
+@Test func resizeThinImageKeepsAtLeastOnePixelInPreviewAndExport() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try imageFixture(in: folder, width: 100, height: 1)
+    var options = ToolOptions()
+    options.imageSizing = .percentage
+    options.imagePercentage = 20
+    options.imageFormat = .png
+    #expect(try ToolRunner.imagePreview(source, longestEdge: 0, options: options) == "20 × 1")
+    let report = try await ToolRunner.run(
+        .resizeImages, inputs: [source], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let output = try #require(report.outputs.first, "\(report.failures)")
+    let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+    #expect(image.width == 20 && image.height == 1)
 }
 
 @Test func videoSampleAndExportUseSelectedFormat() async throws {
