@@ -56,8 +56,10 @@ struct PDFMergeOrderView: View {
             Text("Page \(reference.page + 1)").font(.caption2).foregroundStyle(.secondary)
             HStack {
                 Button("Move earlier", systemImage: "chevron.left") { move(position, to: position - 1, in: pages) }
+                    .accessibilityLabel("Move \(file.lastPathComponent), page \(reference.page + 1), earlier")
                     .disabled(position == 0)
                 Button("Move later", systemImage: "chevron.right") { move(position, to: position + 1, in: pages) }
+                    .accessibilityLabel("Move \(file.lastPathComponent), page \(reference.page + 1), later")
                     .disabled(position + 1 == pages.count)
             }
             .labelStyle(.iconOnly)

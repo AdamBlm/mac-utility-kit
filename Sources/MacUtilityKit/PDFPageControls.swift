@@ -65,6 +65,7 @@ struct PDFPageControls: View {
         let current = inspection?.input == input ? inspection : nil
         let count = current?.count(password: password)
         let selected = count.flatMap { try? PageSelection.indices(range, pageCount: $0) }
+        let selectedIndices = Set(selected ?? [])
         let excluded = range.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "none"
         VStack(alignment: .leading, spacing: 6) {
             TextField("Pages (all, none, or e.g. 1, 3–5)", text: $range)
@@ -99,17 +100,19 @@ struct PDFPageControls: View {
                                         ) {
                                             Image(nsImage: thumbnail)
                                         }
-                                        Label("Page \(index + 1)", systemImage: selected?.contains(index) == true
+                                        Label("Page \(index + 1)", systemImage: selectedIndices.contains(index)
                                               ? "checkmark.circle.fill" : "circle").font(.caption)
                                     }
                                 }
-                                .accessibilityAddTraits(selected?.contains(index) == true ? .isSelected : [])
+                                .accessibilityAddTraits(selectedIndices.contains(index) ? .isSelected : [])
                             }
                         }
                     }
                 }
             }
         }
+        .onChange(of: input) { anchor = nil }
+        .onChange(of: count) { anchor = nil }
         .task(id: input) {
             if inspection?.input != input { unlock() }
         }
