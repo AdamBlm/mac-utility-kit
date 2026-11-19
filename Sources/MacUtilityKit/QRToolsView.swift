@@ -258,7 +258,12 @@ struct QRToolsView: View {
                 withExtendedLifetime(attachment) {}
             }
             do {
-                let result = try await Task.detached { try QRTools.detect(in: url) }.value
+                let worker = Task.detached { try QRTools.detect(in: url) }
+                let result = try await withTaskCancellationHandler {
+                    try await worker.value
+                } onCancel: {
+                    worker.cancel()
+                }
                 try Task.checkCancellation()
                 detections = result
                 if result.isEmpty { scanMessage = "No QR codes or barcodes found." }

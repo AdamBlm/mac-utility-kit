@@ -114,7 +114,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 
 ### File, Mac, and developer tools
 
-- **QR Code** generates codes for text, web links, and Wi-Fi networks, and reads codes from images.
+- **QR Code** generates codes for text, web links, and Wi-Fi networks, and reads codes from images. A tiled scan helps recover small codes in wide images up to 24 megapixels and 16,384 pixels per edge.
 - **Batch Rename** previews changes from find and replace, case conversion, numbering, and date rules. Apply the preview in place and undo the last batch from the tool.
 - **Find Duplicates** compares exact file contents inside chosen folders and lets you review copies before moving them to the system Trash.
 - **Keep Awake** prevents idle sleep for a chosen duration or until stopped, with an option to keep the display awake.

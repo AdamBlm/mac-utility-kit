@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Testing
 import UtilityCore
@@ -18,6 +19,26 @@ import UtilityCore
         let observations = try QRTools.detect(in: url)
         #expect(observations.map(\.payload) == [text])
         #expect(observations.map(\.type) == ["QR Code"])
+    }
+
+    @Test func detectsSmallRepeatedCodesAcrossOverlappingTiles() throws {
+        let context = try #require(CGContext(data: nil, width: 16_000, height: 1_200, bitsPerComponent: 8,
+                                              bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.setFillColor(gray: 1, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 16_000, height: 1_200))
+        var options = QRCodeOptions()
+        options.size = 128
+        let code = try QRTools.generate(.text("DETAIL-MARKER"), options: options)
+        context.interpolationQuality = .none
+        context.draw(code, in: CGRect(x: 840, y: 500, width: 128, height: 128))
+        context.draw(code, in: CGRect(x: 12_350, y: 300, width: 128, height: 128))
+        let panorama = try #require(context.makeImage())
+        let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try QRTools.png(panorama).write(to: file)
+        #expect(try QRTools.detect(in: file).map(\.payload) == ["DETAIL-MARKER", "DETAIL-MARKER"])
+        #expect(try QRTools.detect(in: panorama).map(\.payload) == ["DETAIL-MARKER", "DETAIL-MARKER"])
     }
 
     @Test func wiFiPayloadEscapesDelimitersAndOmitsOpenNetworkPassword() throws {

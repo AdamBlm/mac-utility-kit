@@ -176,27 +176,90 @@ public enum QRTools {
     }
 
     public static func detect(in url: URL) throws -> [QRDetection] {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil),
-              let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
-                  kCGImageSourceCreateThumbnailFromImageAlways: true,
-                  kCGImageSourceCreateThumbnailWithTransform: true,
-                  kCGImageSourceThumbnailMaxPixelSize: 4096
-              ] as CFDictionary) else {
-            throw QRToolError.unreadableImage
+        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { throw QRToolError.unreadableImage }
+        let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+        let width = properties?[kCGImagePropertyPixelWidth] as? Int ?? 0
+        let height = properties?[kCGImagePropertyPixelHeight] as? Int ?? 0
+        func decode(maximumEdge: Int) -> CGImage? {
+            CGImageSourceCreateThumbnailAtIndex(source, 0, [
+                kCGImageSourceCreateThumbnailFromImageAlways: true,
+                kCGImageSourceCreateThumbnailWithTransform: true,
+                kCGImageSourceThumbnailMaxPixelSize: maximumEdge
+            ] as CFDictionary)
         }
-        return try detect(in: image)
+        try Task.checkCancellation()
+        guard let overview = decode(maximumEdge: 4_096) else { throw QRToolError.unreadableImage }
+        let edge = max(width, height)
+        let detail: CGImage
+        if edge > 4_096, canScanTiles(width: width, height: height) {
+            try Task.checkCancellation()
+            detail = decode(maximumEdge: edge) ?? overview
+        } else {
+            detail = overview
+        }
+        return try detect(in: detail, overview: overview)
+    }
+
+    private struct LocatedDetection {
+        let detection: QRDetection
+        let bounds: CGRect
     }
 
     public static func detect(in image: CGImage) throws -> [QRDetection] {
-        let request = VNDetectBarcodesRequest()
-        let handler = VNImageRequestHandler(cgImage: image)
-        try handler.perform([request])
-        return (request.results ?? []).sorted { left, right in
-            if left.boundingBox.midY == right.boundingBox.midY {
-                return left.boundingBox.minX < right.boundingBox.minX
+        try detect(in: image, overview: image)
+    }
+
+    private static func detect(in image: CGImage, overview: CGImage) throws -> [QRDetection] {
+        let width = image.width
+        let height = image.height
+        let full = CGRect(x: 0, y: 0, width: width, height: height)
+        var results = try scan(overview, in: full)
+        if canScanTiles(width: width, height: height), max(width, height) > 2_048 {
+            let tileWidth = min(width, 1_024)
+            let tileHeight = min(height, 1_024)
+            for y in tileStarts(length: height, size: tileHeight) {
+                for x in tileStarts(length: width, size: tileWidth) {
+                    try Task.checkCancellation()
+                    let tile = CGRect(x: x, y: y, width: tileWidth, height: tileHeight)
+                    guard let cropped = image.cropping(to: tile) else { continue }
+                    let visionRect = CGRect(x: x, y: height - y - tileHeight,
+                                            width: tileWidth, height: tileHeight)
+                    for match in try scan(cropped, in: visionRect) {
+                        if !results.contains(where: { isSameDetection($0, match) }) {
+                            results.append(match)
+                        }
+                    }
+                }
             }
-            return left.boundingBox.midY > right.boundingBox.midY
-        }.compactMap { observation in
+        }
+        return results.sorted { left, right in
+            if left.bounds.midY == right.bounds.midY { return left.bounds.minX < right.bounds.minX }
+            return left.bounds.midY > right.bounds.midY
+        }.map(\.detection)
+    }
+
+    private static func canScanTiles(width: Int, height: Int) -> Bool {
+        width > 0 && height > 0 && max(width, height) <= 16_384 && width <= 24_000_000 / height
+    }
+
+    private static func tileStarts(length: Int, size: Int) -> [Int] {
+        let last = length - size
+        guard last > 0 else { return [0] }
+        return Array(stride(from: 0, to: last, by: 768)) + [last]
+    }
+
+    private static func isSameDetection(_ first: LocatedDetection, _ second: LocatedDetection) -> Bool {
+        guard first.detection.type == second.detection.type, first.detection.payload == second.detection.payload else { return false }
+        let overlap = first.bounds.intersection(second.bounds)
+        let area = min(first.bounds.width * first.bounds.height, second.bounds.width * second.bounds.height)
+        return !overlap.isNull && area > 0 && overlap.width * overlap.height >= 0.6 * area
+    }
+
+    private static func scan(_ image: CGImage, in rect: CGRect) throws -> [LocatedDetection] {
+        try Task.checkCancellation()
+        let request = VNDetectBarcodesRequest()
+        try VNImageRequestHandler(cgImage: image).perform([request])
+        return (request.results ?? []).compactMap { observation in
             let payload: String
             if let text = observation.payloadStringValue {
                 payload = text
@@ -207,7 +270,12 @@ public enum QRTools {
             }
             let type = observation.symbology == .qr ? "QR Code" : observation.symbology.rawValue
                 .replacingOccurrences(of: "VNBarcodeSymbology", with: "")
-            return QRDetection(type: observation.payloadStringValue == nil ? "\(type) (Base64)" : type, payload: payload)
+            let bounds = observation.boundingBox
+            return LocatedDetection(
+                detection: QRDetection(type: observation.payloadStringValue == nil ? "\(type) (Base64)" : type, payload: payload),
+                bounds: CGRect(x: rect.minX + bounds.minX * rect.width, y: rect.minY + bounds.minY * rect.height,
+                               width: bounds.width * rect.width, height: bounds.height * rect.height)
+            )
         }
     }
 }
