@@ -6,7 +6,7 @@ import UniformTypeIdentifiers
 
 struct PDFProtectionView: View {
     let tool: Tool
-    @State private var input: URL?
+    @Binding var input: URL?
     @State private var options = PDFProtectionOptions()
     @State private var verifiedPreview: Preview?
     @State private var task: Task<Void, Never>?
@@ -77,6 +77,7 @@ struct PDFProtectionView: View {
             }
         }
         .onChange(of: options.password) { verifiedPreview = nil }
+        .onChange(of: input) { resetInputState() }
         .onDisappear {
             task?.cancel()
             clearPasswords()
@@ -92,6 +93,10 @@ struct PDFProtectionView: View {
 
     private func setInput(_ url: URL) {
         input = url
+        resetInputState()
+    }
+
+    private func resetInputState() {
         savedOutput = nil
         issue = nil
         clearPasswords()

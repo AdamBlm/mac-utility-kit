@@ -101,7 +101,11 @@ struct ToolWorkspace: View {
         case .markdownToPDF: MarkdownPDFView(draft: $draft.markdownPDF)
         case .webPageToPDF: WebPagePDFView(draft: $draft.webPagePDF)
         case .redactPDF: RedactPDFView(draft: $draft.pdfRedaction)
-        case .addPassword, .removePassword: PDFProtectionView(tool: tool)
+        case .addPassword, .removePassword:
+            PDFProtectionView(tool: tool, input: Binding(
+                get: { draft.inputs.first },
+                set: { draft.inputs = $0.map { [$0] } ?? [] }
+            ))
         default: EmptyView()
         }
     }

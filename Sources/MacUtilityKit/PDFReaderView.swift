@@ -46,6 +46,7 @@ struct PDFReaderView: View {
                         if let message = reader.error {
                             Text(message).foregroundStyle(.secondary)
                         }
+                        handoffButton(.removePassword)
                         Button("Open Another PDF…", action: choosePDF)
                         ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
                     }
@@ -107,6 +108,7 @@ struct PDFReaderView: View {
                     if document.isEncrypted {
                         Text("The selected tool may ask for the PDF password again.")
                         Divider()
+                        handoffButton(.removePassword)
                     }
                     ForEach([Tool.mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages,
                              .pdfToImages, .signPDF, .extractText, .makePDFSearchable]) { tool in
@@ -115,6 +117,7 @@ struct PDFReaderView: View {
                     handoffButton(.pdfToWord)
                         .disabled(!document.allowsCopying)
                     if !document.isEncrypted {
+                        handoffButton(.addPassword)
                         handoffButton(.cropPDF)
                             .disabled(!document.allowsDocumentChanges)
                         handoffButton(.compressPDF)

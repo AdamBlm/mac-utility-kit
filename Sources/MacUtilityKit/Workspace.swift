@@ -262,6 +262,8 @@ struct Workspace: View {
             if draft.pdfForms.source != input || draft.pdfForms.session == nil {
                 draft.pdfForms.pendingSource = input
             }
+        } else if tool == .addPassword || tool == .removePassword {
+            draft.inputs = [input]
         } else if tool.requiresSinglePDF {
             if draft.inputs.first != input { draft.replacePDF(with: input) }
         } else if !draft.inputs.contains(input) {

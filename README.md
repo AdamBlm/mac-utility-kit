@@ -78,6 +78,8 @@ Set `MAC_UTILITY_EXIFTOOL_TEST` to a local ExifTool executable to run its integr
 
 Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom, or print. PDF output and merge previews can open directly in the reader. The **Use in Tool** menu sends the open file to tools such as **Crop PDF**, **Compress PDF**, **PDF to Word**, and **Fill & Flatten Forms**, subject to the document's permissions. In **Settings → PDF Reader**, choose whether macOS should open PDFs with Mac Utility Kit.
 
+Use **Add Password** for an unencrypted PDF or **Remove Password** after opening an encrypted PDF. The protection tool receives the file and prompts separately for the password.
+
 ### PDF page tools
 
 **Split PDF** exports individual pages, fixed-size groups, or named ranges with filename previews. **Organize PDF** supports reordering, rotation, removal, restoration, and in-session undo and redo. **Delete Pages** takes a typed range or thumbnail selections and previews the marked and remaining pages.
