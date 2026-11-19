@@ -93,17 +93,13 @@ final class PDFReaderSession {
     }
 
     func resetSearch() {
-        cancelSearch()
+        isSearching = false
+        document?.cancelFindString()
         searchTerm = nil
         matches = []
         matchIndex = nil
         view.highlightedSelections = nil
         view.clearSelection()
-    }
-
-    func cancelSearch() {
-        isSearching = false
-        document?.cancelFindString()
     }
 
     func addSearchResult(_ notification: Notification) {

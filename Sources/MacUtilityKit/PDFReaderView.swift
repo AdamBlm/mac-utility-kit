@@ -66,7 +66,7 @@ struct PDFReaderView: View {
         .onChange(of: source, initial: true) { previous, next in
             if previous != next || reader.source != next { load(next) }
         }
-        .onDisappear { reader.cancelSearch() }
+        .onDisappear { reader.resetSearch() }
         .dropDestination(for: URL.self) { urls, _ in
             guard let pdf = urls.first(where: { $0.isFileURL && $0.pathExtension.lowercased() == "pdf" }) else {
                 return false
