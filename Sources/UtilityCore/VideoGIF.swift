@@ -55,13 +55,24 @@ public struct VideoGIFPreview: Sendable {
 
 public enum VideoGIF {
     public static func plan(duration: Double, options: VideoGIFOptions) throws -> VideoGIFPlan {
+        guard duration.isFinite, duration > 0 else {
+            throw ToolError.invalid("The video must have a finite positive duration.")
+        }
+        return try plan(in: 0..<duration, options: options)
+    }
+
+    package static func plan(in bounds: Range<Double>, options: VideoGIFOptions) throws -> VideoGIFPlan {
         guard (16...1_280).contains(options.width), (5...30).contains(options.fps) else {
             throw ToolError.invalid("Choose a width from 16 to 1,280 pixels and a frame rate from 5 to 30 fps.")
         }
         guard options.loop != .repeatCount || (1...99).contains(options.repetitions) else {
             throw ToolError.invalid("Choose between 1 and 99 repeats.")
         }
-        let range = try VideoTrimRange.validate(start: options.start, end: options.end, duration: duration)
+        let start = options.start == 0 ? bounds.lowerBound : options.start
+        guard bounds.contains(start) else {
+            throw ToolError.invalid("Choose an in point within the visible video.")
+        }
+        let range = try VideoTrimRange.validate(start: start, end: options.end, duration: bounds.upperBound)
         let frames = range.duration * Double(options.fps)
         guard frames.isFinite, frames <= 1_200 else {
             throw ToolError.invalid("Choose a shorter clip or a lower frame rate. GIF exports support up to 1,200 frames.")
@@ -75,8 +86,8 @@ public enum VideoGIF {
     }
 
     public static func preview(_ input: URL, options: VideoGIFOptions) async throws -> VideoGIFPreview {
-        let duration = try await TrimVideo.duration(of: input)
-        let plan = try plan(duration: duration, options: options)
+        let bounds = try await FrameExtraction.timeBounds(of: input)
+        let plan = try plan(in: bounds, options: options)
         let seconds = min(plan.range.duration, 2)
         let sample = VideoTrimRange(start: plan.range.start, end: plan.range.start + seconds)
         let showsFullClip = seconds == plan.range.duration
@@ -97,8 +108,8 @@ public enum VideoGIF {
               output.standardizedFileURL != input.standardizedFileURL else {
             throw ToolError.invalid("Choose a new local output file.")
         }
-        let duration = try await TrimVideo.duration(of: input)
-        let plan = try plan(duration: duration, options: options)
+        let bounds = try await FrameExtraction.timeBounds(of: input)
+        let plan = try plan(in: bounds, options: options)
         return try await staging(in: output.deletingLastPathComponent()) { directory in
             let candidate = directory.appendingPathComponent("animation.gif")
             try await FFmpegVideoGIF.encode(input, range: plan.range, to: candidate, options: options, progress: progress)

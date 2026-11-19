@@ -13,7 +13,7 @@ enum FFmpegVideoGIF {
         let locale = Locale(identifier: "en_US_POSIX")
         let start = String(format: "%.6f", locale: locale, range.start)
         let duration = String(format: "%.6f", locale: locale, range.duration)
-        let source = ["-protocol_whitelist", "file", "-ss", start, "-t", duration, "-i", input.path]
+        let source = ["-protocol_whitelist", "file", "-seek_timestamp", "1", "-ss", start, "-t", duration, "-i", input.path]
         let global = ["-hide_banner", "-loglevel", "error", "-nostdin", "-n", "-filter_threads", "1", "-filter_complex_threads", "1"]
         let sampling = "fps=\(options.fps),scale=w='min(\(options.width),max(1,round(1280*dar)))':h='max(1,round(ow/dar))':flags=lanczos,setsar=1"
         let generation = "palettegen=max_colors=\(options.palette.rawValue):reserve_transparent=1:stats_mode=diff"

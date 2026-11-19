@@ -15,7 +15,7 @@ struct VideoGIFSettings: View {
 
     private struct Source {
         let url: URL
-        let duration: Double?
+        let bounds: Range<Double>?
         let error: String?
     }
 
@@ -37,7 +37,10 @@ struct VideoGIFSettings: View {
         let request = Request(input: input, options: options)
         let source = loaded?.url == input ? loaded : nil
         SettingRow("In point") {
-            TextField("In point in seconds", value: $options.start, format: format)
+            TextField("In point in seconds", value: Binding(
+                get: { options.start == 0 ? source?.bounds?.lowerBound ?? 0 : options.start },
+                set: { options.start = $0 }
+            ), format: format)
                 .frame(width: 80)
             Text("seconds").foregroundStyle(.secondary)
         }
@@ -51,12 +54,12 @@ struct VideoGIFSettings: View {
                 Text("seconds").foregroundStyle(.secondary)
                 Button("Use End") { options.end = nil }
             } else {
-                if let duration = source?.duration {
+                if let duration = source?.bounds?.upperBound {
                     Text("End of video (\(duration.formatted(format)) s)").foregroundStyle(.secondary)
                 } else {
                     Text("End of video").foregroundStyle(.secondary)
                 }
-                Button("Set Time") { options.end = source?.duration ?? options.start + 1 }
+                Button("Set Time") { options.end = source?.bounds?.upperBound ?? options.start + 1 }
             }
         }
         SettingRow("Maximum width") {
@@ -91,9 +94,9 @@ struct VideoGIFSettings: View {
             .onChange(of: request) { clearPreview() }
             .onDisappear { clearPreview() }
 
-        if let input, let duration = source?.duration {
-            clipScrubber(input, duration: duration)
-            switch Result(catching: { try VideoGIF.plan(duration: duration, options: options) }) {
+        if let input, let bounds = source?.bounds {
+            clipScrubber(input, bounds: bounds)
+            switch Result(catching: { try VideoGIF.plan(in: bounds, options: options) }) {
             case .success(let plan):
                 previewControls(request, plan: plan)
             case .failure(let error):
@@ -105,7 +108,7 @@ struct VideoGIFSettings: View {
     }
 
     @ViewBuilder
-    private func clipScrubber(_ input: URL, duration: Double) -> some View {
+    private func clipScrubber(_ input: URL, bounds: Range<Double>) -> some View {
         if let sourceFrame {
             Image(decorative: sourceFrame, scale: 1)
                 .resizable()
@@ -113,9 +116,9 @@ struct VideoGIFSettings: View {
                 .frame(maxWidth: .infinity, maxHeight: 160)
                 .accessibilityLabel("Source frame")
         }
-        let maximum = max(duration - 0.001, duration * 0.999)
-        let request = ScrubRequest(input: input, time: min(scrubTime, maximum))
-        Slider(value: $scrubTime, in: 0...maximum)
+        let maximum = max(bounds.lowerBound, min(bounds.upperBound.nextDown, bounds.upperBound - 0.001))
+        let request = ScrubRequest(input: input, time: min(max(scrubTime, bounds.lowerBound), maximum))
+        Slider(value: Binding(get: { request.time }, set: { scrubTime = $0 }), in: bounds.lowerBound...maximum)
             .accessibilityLabel("Scrub source video")
             .task(id: request) {
                 do {
@@ -171,11 +174,12 @@ struct VideoGIFSettings: View {
         sourceFrame = nil
         guard let input else { return }
         do {
-            let duration = try await TrimVideo.duration(of: input)
+            let bounds = try await FrameExtraction.timeBounds(of: input)
             guard !Task.isCancelled else { return }
-            loaded = Source(url: input, duration: duration, error: nil)
+            scrubTime = bounds.lowerBound
+            loaded = Source(url: input, bounds: bounds, error: nil)
         } catch {
-            if !Task.isCancelled { loaded = Source(url: input, duration: nil, error: error.localizedDescription) }
+            if !Task.isCancelled { loaded = Source(url: input, bounds: nil, error: error.localizedDescription) }
         }
     }
 
