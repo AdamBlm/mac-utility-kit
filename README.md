@@ -121,7 +121,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 ### File, Mac, and developer tools
 
 - **QR Code** generates codes for text, web links, and Wi-Fi networks, and reads codes from images. A tiled scan helps recover small codes in wide images up to 24 megapixels and 16,384 pixels per edge.
-- **Batch Rename** previews changes from find and replace, case conversion, numbering, and date rules. Apply the preview in place and undo the last batch from the tool.
+- **Batch Rename** previews changes from find and replace, case conversion, numbering, and date rules. Date rules can use the original EXIF capture date for photos. Apply the preview in place and undo the last batch from the tool.
 - **Find Duplicates** compares exact file contents inside chosen folders and lets you review copies before moving them to the system Trash.
 - **Keep Awake** prevents idle sleep for a chosen duration or until stopped, with an option to keep the display awake.
 - **JSON Formatter** validates, formats, and minifies JSON, with configurable indentation, key sorting, and duplicate-key warnings.
@@ -149,7 +149,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Network Speed Test** uses macOS Network Quality to measure throughput and responsiveness over the active connection.
 - **Storage Explorer** scans folder and file sizes, distinguishes apparent and allocated bytes, and rechecks selected items before moving them to Trash.
 - **Clipboard History** records supported text and images only after opt-in. It supports session retention, pinning, exclusions, and copy-back.
-- **Translate** uses Apple’s on-device language packs for text, SRT, and VTT. Translated subtitle files retain cue timing.
+- **Translate** uses Apple’s on-device language packs for text, Markdown, SRT, and VTT. Markdown exports preserve supported formatting, link targets, and code. Subtitle exports retain cue timing.
 - **Ask a Document** retrieves source passages locally and uses Apple Intelligence to answer with verified quotations linked to pages or sections.
 - **Reset Permissions** asks macOS to reset one chosen privacy permission for the selected app’s bundle identifier.
 - **Scan Document** imports photos or scans, corrects selectable corners, rotates or recolors pages, and saves the ordered pages as a PDF.
