@@ -9,6 +9,17 @@ struct TextExtractionSettings: View {
     @Binding var options: TextExtractionOptions
     @State private var languages: [String] = []
     @State private var showRegion = false
+    @State private var selectedRegionSource: URL?
+
+    private var regionSources: [URL] {
+        var seen: Set<URL> = []
+        return inputs.filter { seen.insert($0).inserted }
+    }
+
+    private var regionSource: URL? {
+        if let selectedRegionSource, inputs.contains(selectedRegionSource) { return selectedRegionSource }
+        return inputs.first
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -48,9 +59,22 @@ struct TextExtractionSettings: View {
                     showRegion = enabled
                 }
             ))
-            if options.region != nil, let input = inputs.first {
+            if options.region != nil, let input = regionSource {
                 DisclosureGroup("Region preview", isExpanded: $showRegion) {
                     VStack(alignment: .leading, spacing: 8) {
+                        let sources = regionSources
+                        if sources.count > 1 {
+                            SettingRow("Preview source") {
+                                Picker("Region preview source", selection: Binding(
+                                    get: { regionSource }, set: { selectedRegionSource = $0 }
+                                )) {
+                                    ForEach(Array(sources.enumerated()), id: \.element) { index, source in
+                                        Text("\(index + 1). \(source.lastPathComponent)").tag(Optional(source))
+                                    }
+                                }
+                                .labelsHidden()
+                            }
+                        }
                         OCRSourcePreview(input: input, pageNumber: nil, pageRange: options.range, password: options.password, region: $options.region)
                             .frame(height: 205)
                         HStack(spacing: 8) {
@@ -59,7 +83,7 @@ struct TextExtractionSettings: View {
                             regionField("Width %", \.size.width, origin: false, horizontal: true)
                             regionField("Height %", \.size.height, origin: false, horizontal: false)
                         }
-                        Text("Drag to select a region on the first source. The same bounds apply to every selected page or file.")
+                        Text("Drag to select a region. The same proportion of each selected page or file is used.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     .padding(.top, 8)
@@ -155,7 +179,7 @@ private struct OCRSourcePreview: View {
     @State private var preview: Preview?
     @State private var dragRegion: CGRect?
 
-    private struct SourceKey: Equatable {
+    private struct SourceKey: Hashable {
         let input: URL
         let pageNumber: Int?
         let pageRange: String
@@ -191,16 +215,18 @@ private struct OCRSourcePreview: View {
                     }
                     .gesture(DragGesture(minimumDistance: 3)
                         .onChanged { value in
-                            if region != nil {
+                            if self.preview?.source == key, region != nil {
                                 dragRegion = selection(value, width: width, height: height)
                             }
                         }
                         .onEnded { value in
+                            guard self.preview?.source == key else { return }
                             if region != nil, let chosen = selection(value, width: width, height: height) {
                                 region = chosen
                             }
                             dragRegion = nil
                         }, including: region == nil ? .none : .gesture)
+                    .id(key)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if preview?.source == key {
                 Text("Preview unavailable")
@@ -215,6 +241,7 @@ private struct OCRSourcePreview: View {
         .accessibilityLabel("Source preview")
         .task(id: key) {
             guard !Task.isCancelled else { return }
+            preview = nil
             dragRegion = nil
             if isPDF(input) {
                 guard let document = PDFDocument(url: input),
@@ -222,9 +249,9 @@ private struct OCRSourcePreview: View {
                     preview = Preview(source: key, thumbnail: nil)
                     return
                 }
-                let selected = (try? PageSelection.indices(pageRange, pageCount: document.pageCount))?.first
-                let index = pageNumber.map { $0 - 1 } ?? selected ?? 0
-                let thumbnail = document.page(at: index)?
+                let index = try? TextExtraction.previewPageIndex(pageNumber: pageNumber, pageRange: pageRange,
+                                                                  pageCount: document.pageCount)
+                let thumbnail = index.flatMap { document.page(at: $0) }?
                     .thumbnail(of: NSSize(width: 450, height: 450), for: .cropBox)
                 preview = Preview(source: key, thumbnail: thumbnail)
             } else {

@@ -29,6 +29,27 @@ import UtilityCore
     #expect(try Data(contentsOf: source) == original)
 }
 
+@Test func textExtractionBatchAppliesTheSameRelativeRegionAcrossTwoSources() async throws {
+    let folder = try textExtractionFixtureFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appendingPathComponent("first.png")
+    let second = folder.appendingPathComponent("second.png")
+    try writeTextExtractionImage(to: first)
+    try writeTextExtractionImage(to: second, height: 640, top: "UPPER GARDEN")
+    var options = ToolOptions()
+    options.textExtraction.language = "en-US"
+    options.textExtraction.region = CGRect(x: 0, y: 0, width: 1, height: 0.5)
+    let report = try await ToolRunner.run(.extractText, inputs: [first, second],
+                                          destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.failures.isEmpty)
+    #expect(report.textExtractions.map(\.source) == [first, second])
+    let text = report.textExtractions.map { $0.result.text }
+    #expect(text.count == 2)
+    #expect(text.first?.contains("UPPER ORCHARD") == true)
+    #expect(text.last?.contains("UPPER GARDEN") == true)
+    #expect(text.allSatisfy { !$0.contains("LOWER MEADOW") })
+}
+
 @Test func textExtractionHandlesScannedAndEmbeddedPDFText() async throws {
     let folder = try textExtractionFixtureFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
@@ -65,6 +86,17 @@ import UtilityCore
     let forcedOCR = try await TextExtraction.extract(embedded, options: options)
     #expect(forcedOCR.text.contains("SECOND DOCUMENT PAGE"))
     #expect(!forcedOCR.text.contains("FIRST DOCUMENT PAGE"))
+}
+
+@Test func textExtractionPagePreviewRequiresAValidAndNonemptySelection() throws {
+    #expect(try TextExtraction.previewPageIndex(pageNumber: nil, pageRange: "", pageCount: 2) == 0)
+    #expect(try TextExtraction.previewPageIndex(pageNumber: nil, pageRange: "2, 1", pageCount: 2) == 1)
+    #expect(try TextExtraction.previewPageIndex(pageNumber: 1, pageRange: "none", pageCount: 2) == 0)
+    for range in ["none", "3", "garbage"] {
+        #expect(throws: ToolError.self) {
+            try TextExtraction.previewPageIndex(pageNumber: nil, pageRange: range, pageCount: 2)
+        }
+    }
 }
 
 @Test func textExtractionRecognizesAndPreviewsSelectedTIFFPages() async throws {
@@ -180,15 +212,15 @@ private func textExtractionFixtureFolder() throws -> URL {
     return folder
 }
 
-private func writeTextExtractionImage(to url: URL) throws {
+private func writeTextExtractionImage(to url: URL, height: Int = 440, top: String = "UPPER ORCHARD") throws {
     let colorSpace = CGColorSpaceCreateDeviceRGB()
     let context = try #require(CGContext(
-        data: nil, width: 720, height: 440, bitsPerComponent: 8, bytesPerRow: 0,
+        data: nil, width: 720, height: height, bitsPerComponent: 8, bytesPerRow: 0,
         space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
     ))
     context.setFillColor(CGColor(gray: 1, alpha: 1))
-    context.fill(CGRect(x: 0, y: 0, width: 720, height: 440))
-    drawOCRFixture("UPPER ORCHARD", in: context, at: .init(x: 55, y: 305))
+    context.fill(CGRect(x: 0, y: 0, width: 720, height: height))
+    drawOCRFixture(top, in: context, at: .init(x: 55, y: height - 135))
     drawOCRFixture("LOWER MEADOW", in: context, at: .init(x: 55, y: 85))
     let image = try #require(context.makeImage())
     let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))

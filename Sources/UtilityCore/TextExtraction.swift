@@ -144,19 +144,25 @@ public enum TextExtraction {
         let source = try imageSource(input)
         let index: Int
         if isTIFF(source) {
-            let count = CGImageSourceGetCount(source)
-            if let pageNumber {
-                guard pageNumber > 0, pageNumber <= count else {
-                    throw ToolError.invalid("This TIFF page is unavailable.")
-                }
-                index = pageNumber - 1
-            } else {
-                index = try PageSelection.indices(pageRange, pageCount: count).first ?? 0
-            }
+            index = try previewPageIndex(pageNumber: pageNumber, pageRange: pageRange,
+                                         pageCount: CGImageSourceGetCount(source))
         } else {
             index = CGImageSourceGetPrimaryImageIndex(source)
         }
         return try readImage(source, index: index, maximumSize: 600)
+    }
+
+    package static func previewPageIndex(pageNumber: Int?, pageRange: String, pageCount: Int) throws -> Int {
+        if let pageNumber {
+            guard pageNumber > 0, pageNumber <= pageCount else {
+                throw ToolError.invalid("This page is unavailable.")
+            }
+            return pageNumber - 1
+        }
+        guard let selected = try PageSelection.indices(pageRange, pageCount: pageCount).first else {
+            throw ToolError.invalid("Select at least one page to preview.")
+        }
+        return selected
     }
 
     private static func imageSource(_ input: URL) throws -> CGImageSource {
