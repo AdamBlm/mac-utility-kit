@@ -37,6 +37,24 @@ public struct BatchRenameRule: Identifiable, Equatable, Sendable {
 }
 
 public struct BatchRenameOptions: Equatable, Sendable {
+    public enum NumberingOrder: String, CaseIterable, Identifiable, Sendable {
+        case queue = "Queue order"
+        case nameAscending = "Name ascending"
+        case nameDescending = "Name descending"
+
+        public var id: Self { self }
+
+        fileprivate func order(_ files: [URL]) -> [URL] {
+            guard self != .queue else { return files }
+            return files.sorted { first, second in
+                let names = first.lastPathComponent.localizedStandardCompare(second.lastPathComponent)
+                if names == .orderedSame { return first.path.utf8.lexicographicallyPrecedes(second.path.utf8) }
+                return names == (self == .nameAscending ? .orderedAscending : .orderedDescending)
+            }
+        }
+    }
+
+    public var numberingOrder = NumberingOrder.queue
     public var includesExtension = false
     public var rules = [BatchRenameRule()]
 
@@ -124,7 +142,8 @@ public enum BatchRename {
         formatter.calendar = Calendar(identifier: .gregorian)
         var changes: [BatchRenameChange] = []
         var moves: [Move] = []
-        for (index, input) in files.enumerated() {
+        let orderedFiles = options.rules.contains { $0.kind == .number } ? options.numberingOrder.order(files) : files
+        for (index, input) in orderedFiles.enumerated() {
             guard input.isFileURL else { throw BatchRenameError.missingFile(input.lastPathComponent) }
             let parent = input.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
             let source = parent.appendingPathComponent(input.lastPathComponent)

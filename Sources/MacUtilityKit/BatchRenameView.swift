@@ -71,6 +71,16 @@ struct BatchRenameView: View {
     private func rulesSection(_ palette: WorkspacePalette) -> some View {
         WorkspaceSection("Rules", palette: palette) {
             Toggle("Include file extensions when applying rules", isOn: $draft.options.includesExtension)
+            if draft.options.rules.contains(where: { $0.kind == .number }) {
+                SettingRow("Numbering order") {
+                    Picker("Numbering order", selection: $draft.options.numberingOrder) {
+                        ForEach(BatchRenameOptions.NumberingOrder.allCases) { order in
+                            Text(order.rawValue).tag(order)
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
             ForEach($draft.options.rules) { $rule in
                 Divider()
                 HStack(spacing: 10) {

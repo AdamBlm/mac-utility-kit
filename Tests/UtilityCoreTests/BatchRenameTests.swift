@@ -3,6 +3,37 @@ import Testing
 import UtilityCore
 
 @Suite struct BatchRenameTests {
+    @Test func assignsNumbersInQueueOrNaturalNameOrderAndAppliesThePreview() throws {
+        try fixture { directory in
+            let ten = try file("File 10.txt", in: directory)
+            let two = try file("File 2.txt", in: directory)
+            let one = try file("File 1.txt", in: directory)
+            let files = [ten, one, two]
+            var number = BatchRenameRule(kind: .number)
+            number.start = 3
+            number.increment = 2
+            number.padding = 2
+            var options = BatchRenameOptions()
+            options.rules = [number]
+
+            let queue = try BatchRename.plan(files: files, options: options)
+            #expect(queue.changes.map { $0.destination.lastPathComponent } == ["File 10-03.txt", "File 1-05.txt", "File 2-07.txt"])
+            options.numberingOrder = .nameAscending
+            let ascending = try BatchRename.plan(files: files, options: options)
+            #expect(ascending.changes.map { $0.destination.lastPathComponent } == ["File 1-03.txt", "File 2-05.txt", "File 10-07.txt"])
+            options.numberingOrder = .nameDescending
+            let descending = try BatchRename.plan(files: files, options: options)
+            #expect(descending.changes.map { $0.destination.lastPathComponent } == ["File 10-03.txt", "File 2-05.txt", "File 1-07.txt"])
+
+            let receipt = try ascending.apply()
+            for change in ascending.changes {
+                #expect(try String(contentsOf: change.destination, encoding: .utf8) == change.source.lastPathComponent)
+            }
+            try receipt.undo()
+            for input in files { #expect(FileManager.default.fileExists(atPath: input.path)) }
+        }
+    }
+
     @Test func stackedRulesKeepExtensionsAndUndoRestoresContents() throws {
         try fixture { directory in
             let source = try file("draft-file.JPG", in: directory)
