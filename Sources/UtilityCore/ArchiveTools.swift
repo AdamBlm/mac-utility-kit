@@ -16,6 +16,11 @@ public struct ArchiveEntry: Identifiable, Equatable, Sendable {
     public let isEncrypted: Bool
 }
 
+package struct ArchiveListing: Sendable {
+    package let entries: [ArchiveEntry]
+    fileprivate let stamp: DuplicateFileStamp
+}
+
 public enum ArchiveConflictPolicy: String, CaseIterable, Identifiable, Sendable {
     case skip = "Skip"
     case rename = "Rename"
@@ -31,13 +36,17 @@ public struct ArchiveExtractionSummary: Sendable {
 
 public enum ArchiveTools {
     public static func list(_ archive: URL, password: String? = nil) async throws -> [ArchiveEntry] {
-        try withReader(archive, password: password) { reader in
+        try await readContents(archive, password: password).entries
+    }
+
+    package static func readContents(_ archive: URL, password: String? = nil) async throws -> ArchiveListing {
+        try withStampedReader(archive, password: password) { reader, stamp in
             var entries: [ArchiveEntry] = []
             try visit(reader) { entry in
                 entries.append(entry)
                 try check(archive_read_data_skip(reader), reader)
             }
-            return entries
+            return ArchiveListing(entries: entries, stamp: stamp)
         }
     }
 
@@ -45,6 +54,22 @@ public enum ArchiveTools {
         _ archive: URL, to destination: URL, selected: Set<ArchiveEntry.ID>? = nil,
         password: String? = nil, conflicts: ArchiveConflictPolicy
     ) async throws -> ArchiveExtractionSummary {
+        try extract(archive, to: destination, selected: selected, password: password,
+                    conflicts: conflicts, expected: nil)
+    }
+
+    package static func extract(
+        _ archive: URL, listing: ArchiveListing, to destination: URL, selected: Set<ArchiveEntry.ID>,
+        password: String? = nil, conflicts: ArchiveConflictPolicy
+    ) async throws -> ArchiveExtractionSummary {
+        try extract(archive, to: destination, selected: selected, password: password,
+                    conflicts: conflicts, expected: listing.stamp)
+    }
+
+    private static func extract(
+        _ archive: URL, to destination: URL, selected: Set<ArchiveEntry.ID>?,
+        password: String?, conflicts: ArchiveConflictPolicy, expected: DuplicateFileStamp?
+    ) throws -> ArchiveExtractionSummary {
         guard destination.isFileURL else { throw ToolError.invalid("Choose a local destination folder.") }
         guard selected?.isEmpty != true else { throw ToolError.invalid("Choose at least one archive entry.") }
         let destinationFD = try ArchivePublication.directory(destination)
@@ -60,7 +85,7 @@ public enum ArchiveTools {
         if let selected {
             folderPrefixes = Set(selected.lazy.filter(\.directory).map { $0.path + "/" })
         }
-        try withReader(archive, password: password) { reader in
+        try withStampedReader(archive, password: password, expected: expected) { reader, _ in
             try visit(reader) { entry in
                 let requested = remaining.remove(entry.id) != nil
                 let parts = entry.path.split(separator: "/").map(String.init)
@@ -182,6 +207,13 @@ public enum ArchiveTools {
     static func withReader<T>(
         _ input: URL, password: String?, _ operation: (OpaquePointer) throws -> T
     ) throws -> T {
+        try withStampedReader(input, password: password) { reader, _ in try operation(reader) }
+    }
+
+    private static func withStampedReader<T>(
+        _ input: URL, password: String?, expected: DuplicateFileStamp? = nil,
+        _ operation: (OpaquePointer, DuplicateFileStamp) throws -> T
+    ) throws -> T {
         guard input.isFileURL else { throw ToolError.invalid("Choose a local archive file.") }
         let fd = open(input.path, O_RDONLY | O_NOFOLLOW | O_CLOEXEC | O_NONBLOCK)
         guard fd >= 0 else { throw ArchivePublication.error(errno, path: input.lastPathComponent) }
@@ -190,6 +222,9 @@ public enum ArchiveTools {
         guard fstat(fd, &info) == 0, info.st_mode & S_IFMT == S_IFREG else {
             throw ToolError.invalid("Choose a regular archive file.")
         }
+        let stamp = DuplicateFileStamp(info)
+        let changed = ToolError.invalid("The archive changed. Read its contents again before extracting.")
+        if let expected, expected != stamp { throw changed }
         let source = ArchiveReadFile(fd: fd)
         guard let reader = archive_read_new() else { throw ToolError.invalid("Could not allocate the archive reader.") }
         defer { withExtendedLifetime(source) { _ = archive_read_free(reader) } }
@@ -208,8 +243,13 @@ public enum ArchiveTools {
         do {
             try Task.checkCancellation()
             try source.open(reader)
-            let result = try operation(reader)
+            let result = try operation(reader, stamp)
             try Task.checkCancellation()
+            var opened = stat()
+            var named = stat()
+            guard fstat(fd, &opened) == 0, lstat(input.path, &named) == 0,
+                  named.st_mode & S_IFMT == S_IFREG,
+                  DuplicateFileStamp(opened) == stamp, DuplicateFileStamp(named) == stamp else { throw changed }
             return result
         } catch {
             try Task.checkCancellation()

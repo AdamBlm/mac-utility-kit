@@ -130,7 +130,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Diff Checker** compares two UTF-8 texts or files, with inline and side-by-side views, word changes, and navigation.
 - **Password Generator** generates random passwords or EFF-wordlist passphrases locally, with configurable rules and a randomness estimate. Generated secrets stay in the current view until copied or cleared.
 - **Disk Speed Test** measures sequential reads and writes on a chosen volume in one or three passes, using temporary storage.
-- **Zip & Unzip** creates standard or AES-256 ZIPs and extracts selected items from ZIP, RAR, 7z, and TAR. Encrypted format support varies with macOS libarchive.
+- **Zip & Unzip** creates standard or AES-256 ZIPs and extracts selected items from ZIP, RAR, 7z, and TAR. Extraction asks you to read the contents again if the reviewed archive changes. Encrypted format support varies with macOS libarchive.
 - **Regex Tester** shows numbered and named ICU regex captures and previews replacements with bounded matching.
 - **CSV ↔ JSON** converts CSV to JSON or Markdown and flat JSON rows to CSV. CSV fields remain strings, and malformed records show their location.
 - **Coordinate Picker** places or moves two map points, converts decimal and DMS coordinates, measures distance, and looks up a pasted list.

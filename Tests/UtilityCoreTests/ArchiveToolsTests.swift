@@ -38,6 +38,48 @@ struct ArchiveToolsTests {
         await #expect(throws: ToolError.self) { try await ArchiveTools.create([source], to: zip) }
     }
 
+    @Test(arguments: [false, true])
+    func reviewedArchiveRejectsChangedContentsWithTheSameEntryIDs(inPlace: Bool) async throws {
+        let stage = try staging()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let member = stage.appending(path: "photo.txt")
+        let reviewedZIP = stage.appending(path: "Reviewed.zip")
+        let replacementZIP = stage.appending(path: "Replacement.zip")
+        let output = stage.appending(path: "Destination")
+        try output.ensureDirectory()
+
+        try Data("original".utf8).write(to: member)
+        try await ArchiveTools.create([member], to: reviewedZIP)
+        let listing = try await ArchiveTools.readContents(reviewedZIP)
+        let selection = Set(listing.entries.map(\.id))
+
+        try Data("modified".utf8).write(to: member)
+        try await ArchiveTools.create([member], to: replacementZIP)
+        let replacement = try Data(contentsOf: replacementZIP)
+        if inPlace {
+            let handle = try FileHandle(forWritingTo: reviewedZIP)
+            defer { try? handle.close() }
+            try handle.write(contentsOf: replacement)
+            try handle.truncate(atOffset: UInt64(replacement.count))
+            try handle.close()
+        } else {
+            try replacement.write(to: reviewedZIP, options: .atomic)
+        }
+        #expect(try await ArchiveTools.list(reviewedZIP).map(\.id) == listing.entries.map(\.id))
+        let error = await #expect(throws: ToolError.self) {
+            try await ArchiveTools.extract(reviewedZIP, listing: listing, to: output,
+                                           selected: selection, conflicts: .skip)
+        }
+        #expect(error?.localizedDescription.contains("archive changed") == true)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: output.path).isEmpty)
+
+        let refreshed = try await ArchiveTools.readContents(reviewedZIP)
+        let extracted = try await ArchiveTools.extract(reviewedZIP, listing: refreshed, to: output,
+                                                       selected: selection, conflicts: .skip)
+        let file = try #require(extracted.published.first)
+        #expect(try Data(contentsOf: file) == Data("modified".utf8))
+    }
+
     @Test func aesPasswordRoundTripAndWrongPasswordLeavesDestinationIntact() async throws {
         let stage = try staging()
         defer { try? FileManager.default.removeItem(at: stage) }

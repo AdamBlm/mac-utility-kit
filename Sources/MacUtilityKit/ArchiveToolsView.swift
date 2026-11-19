@@ -23,7 +23,8 @@ struct ArchiveToolsView: View {
     @Binding var draft: ArchiveToolsDraft
     @State private var password = ""
     @State private var protectsZIP = false
-    @State private var entries: [ArchiveEntry]?
+    @State private var listing: ArchiveListing?
+    private var entries: [ArchiveEntry]? { listing?.entries }
     @State private var selection: Set<ArchiveEntry.ID> = []
     @State private var filter = ""
     @State private var task: Task<Void, Never>?
@@ -207,7 +208,7 @@ struct ArchiveToolsView: View {
             }
             if draft.archive != first { password = "" }
             draft.archive = first
-            entries = nil
+            listing = nil
             selection.removeAll()
             filter = ""
         }
@@ -255,23 +256,23 @@ struct ArchiveToolsView: View {
     private func readContents() {
         guard let archive = draft.archive else { return }
         let secret = password.isEmpty ? nil : password
-        entries = nil
+        listing = nil
         selection.removeAll()
         perform("Reading archive…") {
-            let listed = try await ArchiveTools.list(archive, password: secret)
+            let reviewed = try await ArchiveTools.readContents(archive, password: secret)
             try Task.checkCancellation()
-            entries = listed
-            selection = Set(listed.map(\.id))
+            listing = reviewed
+            selection = Set(reviewed.entries.map(\.id))
         }
     }
 
     private func extract() {
-        guard let archive = draft.archive, let destination = draft.destination else { return }
+        guard let archive = draft.archive, let listing, let destination = draft.destination else { return }
         let chosen = selection
         let conflicts = draft.conflicts
         let secret = password.isEmpty ? nil : password
         perform("Extracting…") {
-            let summary = try await ArchiveTools.extract(archive, to: destination, selected: chosen,
+            let summary = try await ArchiveTools.extract(archive, listing: listing, to: destination, selected: chosen,
                                                         password: secret, conflicts: conflicts)
             password = ""
             let details = [summary.renamed.isEmpty ? nil : "\(summary.renamed.count) renamed",
