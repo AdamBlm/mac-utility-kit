@@ -120,6 +120,59 @@ struct TranslationDocumentTests {
         }
     }
 
+    @Test func markdownTranslatesTextWithoutChangingHeadingsListsLinksOrCode() throws {
+        let source = """
+        ## Étude
+
+        - Une **note** et [ce lien](https://example.test/path "Doc")
+        - Lancez `echo bonjour`
+
+        ```sh
+        printf 'bonjour'
+        ```
+        """
+        let markdown = try TranslationDocument(source, kind: .markdown)
+        #expect(markdown.requests == ["Étude", "Une", "note", "et", "ce lien", "Lancez"])
+        let output = try markdown.rendering(["Study", "A", "note", "and", "this link", "Run"])
+        #expect(output.contains("## Study"))
+        #expect(output.contains("A **note** and [this link](https://example.test/path \"Doc\")"))
+        #expect(output.contains("Run `echo bonjour`"))
+        #expect(output.contains("printf 'bonjour'"))
+        #expect(try markdown.applyingEdits(output.replacingOccurrences(of: "Study", with: "Overview"))
+                .contains("## Overview"))
+        for changed in [
+            output.replacingOccurrences(of: "## Study", with: "# Study"),
+            output.replacingOccurrences(of: "https://example.test/path", with: "https://example.test/other"),
+            output.replacingOccurrences(of: "echo bonjour", with: "echo hello")
+        ] {
+            #expect(throws: ToolError.self) { try markdown.applyingEdits(changed) }
+        }
+    }
+
+    @Test func markdownTranslatesImageDescriptionsButKeepsAssetTitlesAndAddresses() throws {
+        let markdown = try TranslationDocument(
+            "## Image\r\n\r\n![Petit chat](images/chat.png \"Asset title\")\r\n\r\n<https://example.test>", kind: .markdown
+        )
+        #expect(markdown.requests == ["Image", "Petit chat"])
+        let output = try markdown.rendering(["Picture", "Small cat"])
+        #expect(output.contains("![Small cat](images/chat.png \"Asset title\")"))
+        #expect(output.contains("<https://example.test>"))
+        #expect(!output.contains("\r"))
+    }
+
+    @Test func markdownEscapesTranslatedPunctuationAndRejectsUnsupportedStructures() throws {
+        let markdown = try TranslationDocument("Bonjour", kind: .markdown)
+        let output = try markdown.rendering(["<b>Hello</b> and **literal**"])
+        #expect(try TranslationDocument(output, kind: .markdown).requests == ["<b>Hello</b> and **literal**"])
+        #expect(throws: ToolError.self) {
+            try TranslationDocument("| A | B |\n| - | - |\n| C | D |", kind: .markdown)
+        }
+        for unsupported in ["Bonjour <b>monde</b>", "- [x] Bonjour", "~~Bonjour~~", "Bonjour[^a]\n\n[^a]: Note.",
+                            "\u{FEFF}---\r\ntitle: Bonjour\r\n---\r\n\r\nTexte", "+++\ntitle = 'Bonjour'\n+++\n\nTexte"] {
+            #expect(throws: ToolError.self) { try TranslationDocument(unsupported, kind: .markdown) }
+        }
+    }
+
     @Test func plainTextPreservesParagraphSeparation() throws {
         let document = try TranslationDocument("Bonjour\r\n\r\nA bientôt", kind: .text)
         #expect(document.requests == ["Bonjour", "A bientôt"])
@@ -148,5 +201,11 @@ struct TranslationDocumentTests {
         #expect(formatted.hasPrefix("WEBVTT\n\n00:01.000 --> 00:03.000\n<v Narrator><b>"))
         #expect(formatted.hasSuffix("</b></v>\n"))
         #expect(formatted.localizedCaseInsensitiveContains("bonjour"))
+
+        let markdown = try TranslationDocument("# Good morning\n\n[Good morning](https://example.test)", kind: .markdown)
+        let translatedMarkdown = try await AppleTranslationProvider.translate(markdown, using: session, source: source, target: target)
+        #expect(translatedMarkdown.hasPrefix("# "))
+        #expect(translatedMarkdown.localizedCaseInsensitiveContains("bonjour"))
+        #expect(translatedMarkdown.contains("](https://example.test)"))
     }
 }

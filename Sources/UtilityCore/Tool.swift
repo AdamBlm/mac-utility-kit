@@ -178,7 +178,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .annotateScreenshot, .removeBackground, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .watermark: [.image, .pdf, .movie]
-        case .wordCounter, .translate: [.plainText]
+        case .wordCounter: [.plainText]
+        case .translate: TranslationDocument.acceptedInputTypes
         case .textToSpeech, .summarize, .askDocument: [.plainText, .rtf, .pdf]
         case .excelToPDF:
             ["xls", "xlsx", "ods"].compactMap { UTType(filenameExtension: $0) }

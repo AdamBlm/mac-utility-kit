@@ -33,8 +33,11 @@ public struct MarkdownPDFDocument: Sendable {
     public let options: MarkdownPDFOptions
 }
 
+enum MarkdownSyntax {
+    static let registeredExtensions: Void = cmark_gfm_core_extensions_ensure_registered()
+}
+
 public enum MarkdownPDF {
-    private static let registeredExtensions: Void = cmark_gfm_core_extensions_ensure_registered()
 
     public static func prepare(_ markdown: String, options: MarkdownPDFOptions = .init()) async throws -> MarkdownPDFDocument {
         let bytes = markdown.utf8.count
@@ -48,7 +51,7 @@ public enum MarkdownPDF {
     }
 
     private static func render(_ text: String, bytes: Int, imageFolder: URL?) throws -> (String, [String]) {
-        _ = registeredExtensions
+        _ = MarkdownSyntax.registeredExtensions
         let flags = CMARK_OPT_VALIDATE_UTF8
         guard let parser = cmark_parser_new(flags) else {
             throw ToolError.invalid("Could not start the Markdown parser.")

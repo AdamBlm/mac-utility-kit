@@ -1,6 +1,5 @@
 import SwiftUI
 @preconcurrency import Translation
-import UniformTypeIdentifiers
 import UtilityCore
 
 struct TranslateDraft {
@@ -182,8 +181,7 @@ struct TranslateView: View {
     }
 
     private func open() {
-        let types = [UTType.plainText] + ["srt", "vtt"].compactMap { UTType(filenameExtension: $0) }
-        guard let url = DeveloperToolFiles.choose(allowedTypes: types) else { return }
+        guard let url = DeveloperToolFiles.choose(allowedTypes: TranslationDocument.acceptedInputTypes) else { return }
         isLoadingFile = true
         issue = nil
         Task {
@@ -191,11 +189,12 @@ struct TranslateView: View {
             do {
                 let data = try await DeveloperToolFiles.read(url)
                 guard data.count <= 512 * 1024 else {
-                    throw ToolError.invalid("Choose text or subtitles no larger than 512 KiB.")
+                    throw ToolError.invalid("Choose a document no larger than 512 KiB.")
                 }
                 let kind = switch url.pathExtension.lowercased() {
                 case "srt": TranslationDocument.Kind.srt
                 case "vtt": TranslationDocument.Kind.vtt
+                case "md", "markdown", "mdown": TranslationDocument.Kind.markdown
                 default: TranslationDocument.Kind.text
                 }
                 let text = try DeveloperToolFiles.utf8(data)

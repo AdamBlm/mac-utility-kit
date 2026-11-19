@@ -1,18 +1,25 @@
 import Foundation
+import UniformTypeIdentifiers
 
 public struct TranslationDocument: Sendable {
     public enum Kind: String, CaseIterable, Identifiable, Sendable {
         case text = "Text"
         case srt = "SRT"
         case vtt = "WebVTT"
+        case markdown = "Markdown"
         public var id: Self { self }
         public var fileExtension: String {
             switch self {
             case .text: "txt"
             case .srt: "srt"
             case .vtt: "vtt"
+            case .markdown: "md"
             }
         }
+    }
+
+    package static var acceptedInputTypes: [UTType] {
+        [.plainText] + ["srt", "vtt", "md", "markdown", "mdown"].compactMap { UTType(filenameExtension: $0) }
     }
 
     private struct Line: Sendable {
@@ -42,12 +49,31 @@ public struct TranslationDocument: Sendable {
     private let lines: [Line]
     private let editableIndices: [Int]
     private let dialogue: [Dialogue]
+    private let markdown: MarkdownTranslation?
 
-    public var requests: [String] { dialogue.map(\.source) }
+    public var requests: [String] { markdown?.requests ?? dialogue.map(\.source) }
 
     public init(_ source: String, kind: Kind) throws {
         guard source.utf8.count <= Self.maximumBytes else {
-            throw ToolError.invalid("Choose text or subtitles no larger than 512 KiB.")
+            throw ToolError.invalid("Choose a document no larger than 512 KiB.")
+        }
+        if kind == .markdown {
+            let markdown = try MarkdownTranslation(source)
+            guard !markdown.requests.isEmpty else {
+                throw ToolError.invalid("The source does not contain text to translate.")
+            }
+            guard markdown.requests.count <= Self.maximumRequests else {
+                throw ToolError.invalid("Translate up to 3,000 text segments per operation.")
+            }
+            guard markdown.requests.allSatisfy({ $0.utf8.count <= Self.maximumLineBytes }) else {
+                throw ToolError.invalid("Break Markdown text segments over 8,000 UTF-8 bytes into smaller paragraphs.")
+            }
+            self.kind = kind
+            self.lines = []
+            self.editableIndices = []
+            self.dialogue = []
+            self.markdown = markdown
+            return
         }
         let lines = Self.splitLines(source)
         let indices = try Self.editableLines(lines, kind: kind)
@@ -77,9 +103,11 @@ public struct TranslationDocument: Sendable {
         self.lines = lines
         self.editableIndices = indices
         self.dialogue = dialogue
+        self.markdown = nil
     }
 
     public func rendering(_ translations: [String]) throws -> String {
+        if let markdown { return try applyingEdits(markdown.rendering(translations)) }
         guard translations.count == dialogue.count else {
             throw ToolError.invalid("The translation did not return all dialogue segments.")
         }
@@ -110,6 +138,13 @@ public struct TranslationDocument: Sendable {
     }
 
     public func applyingEdits(_ output: String) throws -> String {
+        if let markdown {
+            guard output.utf8.count <= Self.maximumBytes else {
+                throw ToolError.invalid("Choose a document no larger than 512 KiB.")
+            }
+            try markdown.validate(output)
+            return output
+        }
         guard kind != .text else { return output }
         let proposed = try TranslationDocument(output, kind: kind)
         guard proposed.lines.count == lines.count, proposed.editableIndices == editableIndices else {
