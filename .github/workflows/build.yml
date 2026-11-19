@@ -103,11 +103,28 @@ jobs:
           PYTHON
       - run: python3 scripts/check-mcp.py 'build/Mac Utility Kit.app/Contents/MacOS/muk'
       - run: ./scripts/build-dmg.sh
-      - name: Launch the workspace from the packaged disk image
+      - name: Launch the workspace from the disk image and an installed copy
         timeout-minutes: 2
         shell: bash
         run: |
-          mountpoint="$(mktemp -d "$RUNNER_TEMP/muk-preview.XXXXXX")"
+          staging="$(mktemp -d "$RUNNER_TEMP/muk-install.XXXXXX")"
+          mountpoint="$staging/DMG"
+          mkdir "$mountpoint" "$staging/Applications"
           hdiutil attach 'build/Mac Utility Kit Preview.dmg' -quiet -readonly -nobrowse -mountpoint "$mountpoint"
-          trap 'hdiutil detach "$mountpoint" -quiet && rmdir "$mountpoint"' EXIT
-          swift scripts/check-app-launch.swift "$mountpoint/Mac Utility Kit.app"
+          attached=true
+          cleanup() {
+            if [[ "$attached" == true ]]; then
+              hdiutil detach "$mountpoint" -quiet || return 1
+            fi
+            rm -r "$staging"
+          }
+          trap cleanup EXIT
+          test "$(readlink "$mountpoint/Applications")" = /Applications
+          mounted="$mountpoint/Mac Utility Kit.app"
+          installed="$staging/Applications/Mac Utility Kit.app"
+          ditto "$mounted" "$installed"
+          swift scripts/check-app-launch.swift "$mounted"
+          hdiutil detach "$mountpoint" -quiet
+          attached=false
+          codesign --verify --deep --strict "$installed"
+          swift scripts/check-app-launch.swift "$installed"
