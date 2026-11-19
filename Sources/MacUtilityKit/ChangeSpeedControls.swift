@@ -151,10 +151,22 @@ private struct ChangeSpeedPreview: View {
         Group {
             if let issue {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
-            } else if let player {
-                VideoPlayer(player: player)
-                    .frame(height: 210)
-                    .accessibilityLabel("Adjusted speed preview")
+            } else if let player, let item = player.currentItem {
+                VStack(alignment: .leading, spacing: 6) {
+                    VideoPlayer(player: player)
+                        .frame(height: 210)
+                        .accessibilityLabel("Adjusted speed preview")
+                    Text("Short sample from the first visible frame.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
+                .onReceive(item.publisher(for: \.status).receive(on: DispatchQueue.main)) { status in
+                    guard status == .failed else { return }
+                    playbackFailed(item.error, item: item)
+                }
+                .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.failedToPlayToEndTimeNotification,
+                                                                 object: item).receive(on: DispatchQueue.main)) { note in
+                    playbackFailed(note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error, item: item)
+                }
             } else {
                 ProgressView("Preparing preview…").controlSize(.small)
             }
@@ -166,6 +178,12 @@ private struct ChangeSpeedPreview: View {
             if let directory { try? FileManager.default.removeItem(at: directory) }
             directory = nil
         }
+    }
+
+    private func playbackFailed(_ error: (any Error)?, item: AVPlayerItem) {
+        guard player?.currentItem === item else { return }
+        player?.pause()
+        issue = error?.localizedDescription ?? "Could not play the adjusted speed sample."
     }
 
     private func prepare() async {
