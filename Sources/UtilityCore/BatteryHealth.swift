@@ -47,10 +47,12 @@ public enum BatteryHealth {
         accessoryPower: [AccessoryPower]? = nil
     ) -> BatteryHealthSnapshot {
         let powerEntries = profile?["SPPowerDataType"] as? [[String: Any]] ?? []
-        let health = powerEntries.compactMap { $0["sppower_battery_health_info"] as? [String: Any] }.first
-        let chargeInfo = powerEntries.compactMap { $0["sppower_battery_charge_info"] as? [String: Any] }.first
+        let internalProfile = powerEntries.first { $0["_name"] as? String == "spbattery_information" }
+        let batteryEntries = internalProfile.map { [$0] } ?? powerEntries
+        let health = batteryEntries.compactMap { $0["sppower_battery_health_info"] as? [String: Any] }.first
+        let chargeInfo = batteryEntries.compactMap { $0["sppower_battery_charge_info"] as? [String: Any] }.first
         let battery: BatteryHealthSnapshot.InternalBattery?
-        if internalSource != nil || registry != nil {
+        if internalSource != nil || registry != nil || internalProfile != nil {
             let current = integer(internalSource?[kIOPSCurrentCapacityKey])
             let maximum = positive(internalSource?[kIOPSMaxCapacityKey])
             let charge: Int?
@@ -60,6 +62,7 @@ public enum BatteryHealth {
                 charge = percent(chargeInfo?["sppower_battery_state_of_charge"])
             }
             let charging = internalSource?[kIOPSIsChargingKey] as? Bool ?? registry?["IsCharging"] as? Bool
+                ?? profilerCharging(chargeInfo?["sppower_battery_is_charging"])
             let data = registry?["BatteryData"] as? [String: Any]
             let design = positive(registry?["DesignCapacity"]) ?? positive(data?["DesignCapacity"])
             let rawFull = positive(registry?["AppleRawMaxCapacity"]) ?? positive(data?["AppleRawMaxCapacity"])
@@ -108,6 +111,14 @@ public enum BatteryHealth {
         }
         return .init(powerSource: power, battery: battery, accessories: accessories,
                      accessoryReadAvailable: wireless != nil || accessoryPower != nil)
+    }
+
+    private static func profilerCharging(_ value: Any?) -> Bool? {
+        switch value as? String {
+        case "TRUE": true
+        case "FALSE": false
+        default: nil
+        }
     }
 
     private static func integer(_ value: Any?) -> Int? {

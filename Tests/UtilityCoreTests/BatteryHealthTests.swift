@@ -72,6 +72,29 @@ struct BatteryHealthTests {
         #expect(BatteryHealth.parseAccessoryPower(Data("unexpected report".utf8)) == nil)
     }
 
+    @Test func fallsBackToSystemProfilerInternalBatteryAndRespectsNativeChargingState() throws {
+        let internalProfile: [String: Any] = [
+            "_name": "spbattery_information",
+            "sppower_battery_charge_info": ["sppower_battery_state_of_charge": 62, "sppower_battery_is_charging": "FALSE"],
+            "sppower_battery_health_info": ["sppower_battery_cycle_count": 10, "sppower_battery_health": "Good"]
+        ]
+        let chargerProfile = ["_name": "spaccharger_information", "sppower_battery_is_charging": "TRUE"]
+        let profile = ["SPPowerDataType": [chargerProfile, internalProfile]]
+        let fallback = BatteryHealth.assemble(power: nil, internalSource: nil, registry: nil, profile: profile)
+        let battery = try #require(fallback.battery)
+        #expect(battery.charge == 62)
+        #expect(battery.isCharging == false)
+        #expect(battery.cycleCount == 10)
+        #expect(battery.condition == "Good")
+        #expect(battery.designCapacity == nil)
+
+        let native = BatteryHealth.assemble(power: nil, internalSource: ["Is Charging": true], registry: nil, profile: profile)
+        #expect(native.battery?.isCharging == true)
+        let desktop = BatteryHealth.assemble(power: nil, internalSource: nil, registry: nil,
+                                            profile: ["SPPowerDataType": [chargerProfile]])
+        #expect(desktop.battery == nil)
+    }
+
     @Test func distinguishesMissingBatteryAndUnreportedFields() throws {
         let desktop = BatteryHealth.assemble(power: "AC Power", internalSource: nil, registry: nil, profile: nil)
         #expect(desktop.battery == nil)
