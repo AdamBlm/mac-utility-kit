@@ -22,7 +22,7 @@ struct AudioTrimControls: View {
         let active = loaded?.url == input ? loaded : nil
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Method") {
-                Picker("Method", selection: Binding(get: { options.mode }, set: selectMode)) {
+                Picker("Method", selection: Binding(get: { options.mode }, set: { selectMode($0) })) {
                     ForEach(AudioTrimMode.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .labelsHidden()

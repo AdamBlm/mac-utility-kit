@@ -82,8 +82,8 @@ struct TextExtractionSettings: View {
                 let limit = horizontal ? region.maxX : region.maxY
                 let offset = horizontal ? region.minX : region.minY
                 let remaining = origin ? 1 - (limit - offset) : 1 - offset
-                let minimum = origin ? 0.0 : 0.01
-                region[keyPath: path] = min(remaining, max(minimum, CGFloat(percent) / 100))
+                let minimum: CGFloat = origin ? 0 : 0.01
+                region[keyPath: path] = min(remaining, max(minimum, CGFloat(percent) / CGFloat(100)))
                 options.region = region
             }
         )

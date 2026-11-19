@@ -24,7 +24,7 @@ struct WordCounterView: View {
         let input = AnalysisInput(text: draft.text, options: draft.options)
         InteractiveToolLayout(tool: .wordCounter) { palette in
             WorkspaceSection("Text", palette: palette) {
-                TextEditor(text: Binding(get: { draft.text }, set: replaceText))
+                TextEditor(text: Binding(get: { draft.text }, set: { replaceText($0) }))
                     .font(.body)
                     .frame(minHeight: 150, idealHeight: 205)
                     .scrollContentBackground(.hidden)

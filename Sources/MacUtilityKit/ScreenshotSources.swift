@@ -24,15 +24,16 @@ enum ScreenshotSources {
         let displays = content.displays.map {
             Source(id: $0.displayID, name: displayNames[$0.displayID] ?? "Display", isUtilityWindow: false)
         }
-        let windows = content.windows.filter(availableWindow).map { window in
+        let windows: [Source] = content.windows.filter { availableWindow($0) }.map { window in
             let title = window.title?.trimmingCharacters(in: .whitespacesAndNewlines)
             let app = window.owningApplication?.applicationName ?? "Window"
             let dimensions = "\(Int(window.frame.width)) × \(Int(window.frame.height))"
             let name = title.flatMap { $0.isEmpty ? nil : "\(app) — \($0)" } ?? app
             return Source(id: window.windowID, name: name + " · " + dimensions,
                           isUtilityWindow: window.owningApplication?.processID == ProcessInfo.processInfo.processIdentifier)
-        }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
-        return Listings(displays: displays, windows: windows)
+        }
+        let sortedWindows = windows.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        return Listings(displays: displays, windows: sortedWindows)
     }
 
     static func display(_ id: UInt32, showsCursor: Bool) async throws -> CGImage {
