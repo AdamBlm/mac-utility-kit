@@ -80,6 +80,8 @@ Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom
 
 Use **Add Password** for an unencrypted PDF or **Remove Password** after opening an encrypted PDF. The protection tool receives the file and prompts separately for the password.
 
+Use **Paste PDF** to open a PDF file copied in Finder or PDF content copied from another app. Pasted PDF content remains available to the reader and its tool handoffs while the workspace is open.
+
 ### PDF page tools
 
 **Split PDF** exports individual pages, fixed-size groups, or named ranges with filename previews. **Organize PDF** supports reordering, rotation, removal, restoration, and in-session undo and redo. **Delete Pages** takes a typed range or thumbnail selections and previews the marked and remaining pages.

@@ -116,7 +116,8 @@ struct Workspace: View {
                 case .pdfReader:
                     PDFReaderView(source: $readerSource,
                                   canHandoffForms: session.drafts[.fillFlattenForms]?.pdfForms.exportTask == nil,
-                                  onHandoff: handoffPDF)
+                                  onHandoff: handoffPDF,
+                                  stageClipboardPDF: session.stageClipboardPDF)
                 case .tool(let selection):
                     ToolWorkspace(
                         tool: selection,

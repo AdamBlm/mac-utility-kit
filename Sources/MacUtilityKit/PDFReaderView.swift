@@ -8,6 +8,7 @@ struct PDFReaderView: View {
     @Binding var source: URL?
     let canHandoffForms: Bool
     let onHandoff: (Tool, URL) -> Void
+    let stageClipboardPDF: (Data) throws -> URL
 
     @Environment(\.colorScheme) private var colorScheme
     @State private var reader = PDFReaderSession()
@@ -48,7 +49,7 @@ struct PDFReaderView: View {
                         }
                         handoffButton(.removePassword)
                         Button("Open Another PDF…", action: choosePDF)
-                        ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
+                        pastePDFButton
                     }
                 }
             } else {
@@ -58,7 +59,7 @@ struct PDFReaderView: View {
                     Text(reader.error ?? "Open a PDF or drop it here.")
                 } actions: {
                     Button("Open PDF…", action: choosePDF).buttonStyle(.borderedProminent)
-                    ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
+                    pastePDFButton
                 }
             }
         }
@@ -91,7 +92,7 @@ struct PDFReaderView: View {
                 Button("Open PDF…", systemImage: "folder", action: choosePDF)
                     .labelStyle(.iconOnly)
                     .help("Open PDF")
-                ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: open)
+                pastePDFButton
                     .labelStyle(.iconOnly)
                 Text(source?.lastPathComponent ?? "PDF Reader")
                     .font(.headline)
@@ -197,6 +198,12 @@ struct PDFReaderView: View {
                     .labelStyle(.iconOnly)
             }
         }
+    }
+
+    private var pastePDFButton: some View {
+        ClipboardFileButton(allowedTypes: [.pdf], onPastePDF: { data in
+            open(try stageClipboardPDF(data))
+        }, onPasteFile: open)
     }
 
     private func choosePDF() {

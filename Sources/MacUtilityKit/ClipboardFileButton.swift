@@ -7,21 +7,24 @@ struct ClipboardFileButton: View {
     let allowedTypes: [UTType]
     let allowsMultiple: Bool
     let onPasteImage: ((CGImage) throws -> Void)?
+    let onPastePDF: ((Data) throws -> Void)?
     let onPaste: ([URL]) -> Void
     @State private var message: String?
     @Environment(\.isEnabled) private var isEnabled
 
     init(allowedTypes: [UTType], allowsMultiple: Bool = true,
-         onPasteImage: ((CGImage) throws -> Void)? = nil, onPaste: @escaping ([URL]) -> Void) {
+         onPasteImage: ((CGImage) throws -> Void)? = nil,
+         onPastePDF: ((Data) throws -> Void)? = nil, onPaste: @escaping ([URL]) -> Void) {
         self.allowedTypes = allowedTypes
         self.allowsMultiple = allowsMultiple
         self.onPaste = onPaste
         self.onPasteImage = onPasteImage
+        self.onPastePDF = onPastePDF
     }
 
     init(allowedTypes: [UTType], onPasteImage: ((CGImage) throws -> Void)? = nil,
-         onPasteFile: @escaping (URL) -> Void) {
-        self.init(allowedTypes: allowedTypes, allowsMultiple: false, onPasteImage: onPasteImage) { urls in
+         onPastePDF: ((Data) throws -> Void)? = nil, onPasteFile: @escaping (URL) -> Void) {
+        self.init(allowedTypes: allowedTypes, allowsMultiple: false, onPasteImage: onPasteImage, onPastePDF: onPastePDF) { urls in
             if let file = urls.first { onPasteFile(file) }
         }
     }
@@ -43,6 +46,9 @@ struct ClipboardFileButton: View {
     private var pasteButton: some View {
         if onPasteImage != nil {
             Button("Paste Image", systemImage: "clipboard") { paste() }
+        } else if onPastePDF != nil {
+            Button("Paste PDF", systemImage: "clipboard") { paste() }
+                .onPasteCommand(of: [.fileURL, .pdf]) { _ in paste() }
         } else {
             Button(allowsMultiple ? "Paste Files" : "Paste File", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL]) { _ in paste() }
@@ -62,11 +68,20 @@ struct ClipboardFileButton: View {
             do {
                 if let onPasteImage, let image = try ClipboardFiles.readImage(from: board) {
                     try onPasteImage(image)
+                } else if let onPastePDF, let data = board.data(forType: .pdf) {
+                    guard data.count <= 256 * 1024 * 1024 else {
+                        throw ToolError.invalid("The copied PDF exceeds 256 MB. Save it to a file and open it in the reader.")
+                    }
+                    try onPastePDF(data)
                 } else {
                     guard reportsMissingInput else { return false }
-                    message = onPasteImage == nil
-                        ? "Copy a supported file in Finder, then try again."
-                        : "Copy an image or a supported file, then try again."
+                    if onPastePDF != nil {
+                        message = "Copy PDF content or a PDF file in Finder, then try again."
+                    } else {
+                        message = onPasteImage == nil
+                            ? "Copy a supported file in Finder, then try again."
+                            : "Copy an image or a supported file, then try again."
+                    }
                 }
             } catch {
                 message = error.localizedDescription

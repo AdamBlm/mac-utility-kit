@@ -138,7 +138,7 @@ final class WorkspaceSession {
     private(set) var reports: [Tool: JobReport] = [:]
     private(set) var errors: [Tool: String] = [:]
     @ObservationIgnored private var job: Task<Void, Never>?
-    @ObservationIgnored private var mergePreviewDirectory: PDFMergePreviewDirectory?
+    @ObservationIgnored private var temporaryPDFDirectory: WorkspacePDFDirectory?
 
     init() {
         let retention = DraftRetention.shared
@@ -246,6 +246,16 @@ final class WorkspaceSession {
         }
     }
 
+    func stageClipboardPDF(_ data: Data) throws -> URL {
+        try pdfDirectory().stageClipboardPDF(data)
+    }
+
+    private func pdfDirectory() throws -> WorkspacePDFDirectory {
+        let directory = try temporaryPDFDirectory ?? WorkspacePDFDirectory()
+        temporaryPDFDirectory = directory
+        return directory
+    }
+
     func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false) {
         guard !isRunning, reports[tool]?.videoReviews.isEmpty != false else { return }
         runningTool = tool
@@ -274,14 +284,7 @@ final class WorkspaceSession {
                     options.pdfMergeOrder = plan
                     options.pdfMergeSourceStamps = mergeStamps(draft, plan: plan)
                 }
-                let destination: URL
-                if preview {
-                    let directory = try mergePreviewDirectory ?? PDFMergePreviewDirectory()
-                    mergePreviewDirectory = directory
-                    destination = directory.url
-                } else {
-                    destination = draft.destination
-                }
+                let destination = preview ? try pdfDirectory().url : draft.destination
                 let report = try await ToolRunner.run(
                     tool, inputs: draft.inputs,
                     destination: destination,
