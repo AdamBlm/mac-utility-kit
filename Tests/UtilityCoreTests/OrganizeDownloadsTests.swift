@@ -4,6 +4,27 @@ import Testing
 @testable import UtilityCore
 
 struct OrganizeDownloadsTests {
+    @Test func subfolderScanIsOptInAndLabelsDuplicateNamesWithoutFollowingLinks() throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        defer { try? manager.removeItem(at: root) }
+        let source = root.appending(path: "Downloads")
+        let outside = root.appending(path: "Outside")
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
+        for directory in [source, source.appending(path: "Nested"), source.appending(path: ".Hidden"), outside] {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: true)
+            try bytes.write(to: directory.appending(path: "Image.png"))
+        }
+        try manager.createSymbolicLink(at: source.appending(path: "External"), withDestinationURL: outside)
+        try manager.createSymbolicLink(at: source.appending(path: "Loop"), withDestinationURL: source)
+        try manager.createSymbolicLink(at: source.appending(path: "Alias.png"), withDestinationURL: outside.appending(path: "Image.png"))
+
+        #expect(try OrganizeDownloads.scan(source).map(\.relativePath) == ["Image.png"])
+        let recursive = try OrganizeDownloads.scan(source, includesSubfolders: true)
+        #expect(recursive.map(\.relativePath) == ["Image.png", "Nested/Image.png"])
+        #expect(recursive.allSatisfy { $0.origin == nil && $0.fileType == "PNG" })
+    }
+
     @Test func rejectsReplacedDestinationAndSymlinkOriginWithoutMovingSource() throws {
         let manager = FileManager.default
         let root = manager.temporaryDirectory.appending(path: UUID().uuidString)

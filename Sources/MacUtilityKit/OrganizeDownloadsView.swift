@@ -5,6 +5,7 @@ import UtilityCore
 
 struct OrganizeDownloadsDraft {
     var source: URL?
+    var includesSubfolders = false
     var items: [DownloadImage] = []
     var selected: Set<URL> = []
     var busy = false
@@ -48,6 +49,8 @@ struct OrganizeDownloadsView: View {
                     if draft.busy { ProgressView().controlSize(.small) }
                 }
                 .disabled(draft.busy)
+                Toggle("Include subfolders", isOn: $draft.includesSubfolders)
+                    .disabled(draft.busy)
                 if let path = draft.source?.path { Text(path).font(.callout).textSelection(.enabled) }
                 if draft.source != nil && draft.items.isEmpty && !draft.busy && draft.issue == nil {
                     Text("No images were found in the folder.").foregroundStyle(.secondary)
@@ -90,6 +93,9 @@ struct OrganizeDownloadsView: View {
             }
         }
         .quickLookPreview($preview)
+        .onChange(of: draft.includesSubfolders) {
+            if let source = draft.source { scan(source) }
+        }
         .confirmationDialog("Move selected images?", isPresented: Binding(get: { pending != nil }, set: { shown in
             if !shown { pending = nil }
         }), titleVisibility: .visible, presenting: pending) { request in
@@ -115,7 +121,7 @@ struct OrganizeDownloadsView: View {
             LazyVStack(alignment: .leading) {
                 ForEach(items) { item in
                     HStack {
-                        Toggle(item.file.lastPathComponent, isOn: Binding(
+                        Toggle(item.relativePath, isOn: Binding(
                             get: { draft.selected.contains(item.file) },
                             set: { on in
                                 if on { draft.selected.insert(item.file) }
@@ -156,10 +162,13 @@ struct OrganizeDownloadsView: View {
         draft.selected = []
         originFilter = ""
         typeFilter = ""
+        let includesSubfolders = draft.includesSubfolders
         Task {
             defer { draft.busy = false }
             do {
-                draft.items = try await Task.detached { try OrganizeDownloads.scan(directory) }.value
+                draft.items = try await Task.detached {
+                    try OrganizeDownloads.scan(directory, includesSubfolders: includesSubfolders)
+                }.value
             } catch { draft.issue = error.localizedDescription }
         }
     }
@@ -189,7 +198,10 @@ struct OrganizeDownloadsView: View {
                 defer { center.finish(job) }
                 draft.result = try await worker.value
                 if action == .move, let source = draft.source {
-                    draft.items = try await Task.detached { try OrganizeDownloads.scan(source) }.value
+                    let includesSubfolders = draft.includesSubfolders
+                    draft.items = try await Task.detached {
+                        try OrganizeDownloads.scan(source, includesSubfolders: includesSubfolders)
+                    }.value
                     draft.selected.formIntersection(draft.items.map(\.file))
                 }
             } catch { draft.issue = error.localizedDescription }

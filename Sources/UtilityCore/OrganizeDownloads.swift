@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 public struct DownloadImage: Identifiable, Sendable {
     public var id: URL { file }
     public let file: URL
+    public let relativePath: String
     public let origin: String?
     public let fileType: String
     fileprivate let stamp: DuplicateFileStamp
@@ -29,24 +30,49 @@ public enum OrganizeDownloads {
         public var id: Self { self }
     }
 
-    public static func scan(_ directory: URL) throws -> [DownloadImage] {
+    public static func scan(_ directory: URL, includesSubfolders: Bool = false) throws -> [DownloadImage] {
         let root = directory.resolvingSymlinksInPath().standardizedFileURL
         guard root.isFileURL, try root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
             throw ToolError.invalid("Choose a local source folder.")
         }
-        let files = try FileManager.default.contentsOfDirectory(at: root, includingPropertiesForKeys: [.isRegularFileKey],
-                                                                options: [.skipsHiddenFiles])
-        guard files.count <= 20_000 else { throw ToolError.invalid("Choose a folder containing up to 20,000 items.") }
-        return try files.compactMap { file -> DownloadImage? in
+        var options: FileManager.DirectoryEnumerationOptions = [.skipsHiddenFiles, .skipsPackageDescendants]
+        if !includesSubfolders { options.insert(.skipsSubdirectoryDescendants) }
+        let keys: Set<URLResourceKey> = [.isDirectoryKey, .isSymbolicLinkKey, .isRegularFileKey]
+        var scanError: (any Error)?
+        guard let walker = FileManager.default.enumerator(at: root, includingPropertiesForKeys: Array(keys),
+                                                         options: options, errorHandler: { _, error in
+            scanError = error
+            return false
+        }) else { throw ToolError.invalid("Could not open the source folder.") }
+
+        let rootComponents = root.pathComponents
+        var images: [DownloadImage] = []
+        var visited = 0
+        while let file = walker.nextObject() as? URL {
             try Task.checkCancellation()
-            guard let type = UTType(filenameExtension: file.pathExtension), type.conforms(to: .image),
-                  let stamp = try? DuplicateFileIO.inspect(file) else { return nil }
+            visited += 1
+            guard visited <= 20_000 else { throw ToolError.invalid("Choose a source with up to 20,000 items to scan.") }
+            let properties = try file.resourceValues(forKeys: keys)
+            if properties.isSymbolicLink == true { continue }
+            guard properties.isRegularFile == true,
+                  let type = UTType(filenameExtension: file.pathExtension), type.conforms(to: .image),
+                  let stamp = try? DuplicateFileIO.inspect(file) else { continue }
             let canonical = file.resolvingSymlinksInPath().standardizedFileURL
-            guard (try? DuplicateFileIO.inspect(canonical)) == stamp,
+            guard canonical.pathComponents.starts(with: rootComponents),
+                  (try? DuplicateFileIO.inspect(canonical)) == stamp,
                   let image = CGImageSourceCreateWithURL(canonical as CFURL, nil),
-                  CGImageSourceGetCount(image) > 0 else { return nil }
-            return DownloadImage(file: canonical, origin: sourceOrigin(canonical), fileType: file.pathExtension.uppercased(), stamp: stamp)
-        }.sorted { $0.file.lastPathComponent.localizedStandardCompare($1.file.lastPathComponent) == .orderedAscending }
+                  CGImageSourceGetCount(image) > 0 else { continue }
+            let path = canonical.pathComponents.dropFirst(rootComponents.count).joined(separator: "/")
+            images.append(DownloadImage(file: canonical, relativePath: path, origin: sourceOrigin(canonical),
+                                        fileType: file.pathExtension.uppercased(), stamp: stamp))
+        }
+        try Task.checkCancellation()
+        if let scanError { throw scanError }
+        return images.sorted {
+            let nameOrder = $0.file.lastPathComponent.localizedStandardCompare($1.file.lastPathComponent)
+            if nameOrder != .orderedSame { return nameOrder == .orderedAscending }
+            return $0.relativePath < $1.relativePath
+        }
     }
 
     public static func inspectDestination(_ url: URL) throws -> DownloadDestination {
