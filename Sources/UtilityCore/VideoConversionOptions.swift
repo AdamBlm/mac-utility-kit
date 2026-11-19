@@ -50,7 +50,7 @@ public enum VideoConversionAudio: String, CaseIterable, Sendable {
     public var title: String { self == .keep ? "Keep audio" : "Remove audio" }
 }
 
-public struct VideoConversionOptions: Sendable {
+public struct VideoConversionOptions: Equatable, Sendable {
     public var format: VideoConversionFormat = .mp4
     public var mode: VideoConversionMode = .transcode
     public var codec: VideoConversionCodec = .h264

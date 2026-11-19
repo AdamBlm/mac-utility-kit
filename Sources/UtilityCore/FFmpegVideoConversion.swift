@@ -1,8 +1,8 @@
 import Foundation
 
 enum FFmpegVideoConversion {
-    static func checkWebMPassthrough(_ input: URL, audio: VideoConversionAudio, executable: URL) async throws {
-        let folder = FileManager.default.temporaryDirectory.appending(path: ".webm-check-\(UUID())", directoryHint: .isDirectory)
+    static func checkPassthrough(_ input: URL, options: VideoConversionOptions, executable: URL) async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: ".video-check-\(UUID())", directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
                                                 attributes: [.posixPermissions: 0o700])
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -10,8 +10,8 @@ enum FFmpegVideoConversion {
                          "-protocol_whitelist", "file", "-i", input.path]
             // Require normal video, then check the exact set of streams used by export.
             + ["-map", "0:V:0", "-map", "-0:V:0"]
-            + passthroughArguments(audio: audio)
-            + ["-t", "0", "-f", "webm", folder.appending(path: "Check.webm").path]
+            + passthroughArguments(audio: options.audio)
+            + ["-t", "0", "-f", options.format.ffmpegMuxer, folder.appending(path: "Check.\(options.format.rawValue)").path]
         try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: folder)
     }
 

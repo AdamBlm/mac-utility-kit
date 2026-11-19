@@ -5,6 +5,23 @@ enum AVFoundationVideoConversion {
         _ input: AVURLAsset, to output: URL, options: VideoConversionOptions,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws {
+        let (export, fileType) = try await preparedExport(input, options: options)
+        let states = export.states(updateInterval: 0.2)
+        let monitor = Task {
+            for await state in states {
+                guard !Task.isCancelled else { return }
+                if case .exporting(let exportProgress) = state {
+                    await progress(min(0.99, exportProgress.fractionCompleted))
+                }
+            }
+        }
+        defer { monitor.cancel() }
+        try await export.exportMedia(to: output, as: fileType)
+    }
+
+    static func preparedExport(
+        _ input: AVURLAsset, options: VideoConversionOptions
+    ) async throws -> (AVAssetExportSession, AVFileType) {
         let videoTracks = try await input.loadTracks(withMediaType: .video)
         guard !videoTracks.isEmpty, let fileType = options.format.nativeFileType else {
             throw ToolError.invalid("This file or format is unavailable for native video conversion.")
@@ -38,17 +55,7 @@ enum AVFoundationVideoConversion {
               let export = AVAssetExportSession(asset: asset, presetName: preset) else {
             throw ToolError.invalid("These streams are incompatible with the selected output. Try Transcode or another container.")
         }
-        let states = export.states(updateInterval: 0.2)
-        let monitor = Task {
-            for await state in states {
-                guard !Task.isCancelled else { return }
-                if case .exporting(let exportProgress) = state {
-                    await progress(min(0.99, exportProgress.fractionCompleted))
-                }
-            }
-        }
-        defer { monitor.cancel() }
-        try await export.exportMedia(to: output, as: fileType)
+        return (export, fileType)
     }
 
     static func summary(

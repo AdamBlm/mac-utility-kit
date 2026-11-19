@@ -21,28 +21,27 @@ struct ToolWorkspace: View {
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
     @State private var compressionReview: CompressionReview?
-    @State private var webMReview: WebMPassthroughReview?
+    @State private var passthroughReview: VideoPassthroughReview?
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
     private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
 
-    private struct WebMPassthroughRequest: Equatable {
+    private struct VideoPassthroughRequest: Equatable {
         let inputs: [URL]
-        let audio: VideoConversionAudio
-        let executable: URL
+        let options: VideoConversionOptions
     }
 
-    private struct WebMPassthroughReview {
-        let request: WebMPassthroughRequest
+    private struct VideoPassthroughReview {
+        let request: VideoPassthroughRequest
         let failures: [String]
     }
 
-    private var webMRequest: WebMPassthroughRequest? {
+    private var passthroughRequest: VideoPassthroughRequest? {
         let options = draft.options.conversion
-        guard tool == .convertVideo, options.format == .webm, options.mode == .passthrough,
-              !draft.inputs.isEmpty, let executable = options.ffmpegExecutable else { return nil }
-        return .init(inputs: draft.inputs, audio: options.audio, executable: executable)
+        guard tool == .convertVideo, options.mode == .passthrough, !draft.inputs.isEmpty,
+              !options.requiresFFmpeg || options.ffmpegExecutable != nil else { return nil }
+        return .init(inputs: draft.inputs, options: options)
     }
 
     var body: some View {
@@ -56,20 +55,20 @@ struct ToolWorkspace: View {
                 editor(for: tool)
             }
         }
-        .task(id: webMRequest) { [request = webMRequest] in
+        .task(id: passthroughRequest) { [request = passthroughRequest] in
             guard let request else { return }
-            webMReview = nil
+            passthroughReview = nil
             var failures: [String] = []
             for input in request.inputs {
                 do {
-                    try await VideoConversion.checkWebMPassthrough(input, audio: request.audio, executable: request.executable)
+                    try await VideoConversion.checkPassthrough(input, options: request.options)
                 } catch {
                     guard !Task.isCancelled else { return }
                     failures.append("\(input.lastPathComponent) · \(error.localizedDescription)")
                 }
             }
             guard !Task.isCancelled else { return }
-            webMReview = .init(request: request, failures: failures)
+            passthroughReview = .init(request: request, failures: failures)
         }
         .sheet(isPresented: Binding(get: { comparison != nil }, set: { if !$0 { comparison = nil } })) {
             if let comparison { ImageComparisonView(pair: comparison) }
@@ -148,7 +147,7 @@ struct ToolWorkspace: View {
         switch tool {
         case .convertVideo:
             (draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil)
-                || (webMRequest.map { webMReview?.request != $0 || webMReview?.failures.count == $0.inputs.count } ?? false)
+                || (passthroughRequest.map { passthroughReview?.request != $0 || passthroughReview?.failures.count == $0.inputs.count } ?? false)
         case .trimVideo:
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
                 || trimReview?.permitsExport != true
@@ -246,8 +245,8 @@ struct ToolWorkspace: View {
                             }
                         case .convertVideo:
                             conversionControls()
-                            if let request = webMRequest {
-                                if let review = webMReview, review.request == request {
+                            if let request = passthroughRequest {
+                                if let review = passthroughReview, review.request == request {
                                     if !review.failures.isEmpty {
                                         Text("Compatible files can still be exported. Remove the files listed below or try Transcode or different audio settings.")
                                             .font(.callout).foregroundStyle(.secondary)
@@ -256,7 +255,7 @@ struct ToolWorkspace: View {
                                         }
                                     }
                                 } else {
-                                    ProgressView("Checking WebM compatibility…").controlSize(.small)
+                                    ProgressView("Checking passthrough compatibility…").controlSize(.small)
                                 }
                             }
                         case .changeSpeed:
