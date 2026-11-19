@@ -65,6 +65,12 @@ import UniformTypeIdentifiers
     options.range = "2,1"
     options.dpi = 144
     options.transparent = true
+    let firstPreview = try await PDFToImages.preview(input, pageNumber: 1, options: options)
+    let secondPreview = try await PDFToImages.preview(input, pageNumber: 2, options: options)
+    #expect(firstPreview.width == 420 && firstPreview.height == 252)
+    #expect(secondPreview.width == 263 && secondPreview.height == 420)
+    let previewCorner = try conversionPixel(secondPreview, x: 3, y: 3)
+    #expect(previewCorner.alpha == 0)
     let files = try await PDFToImages.export(input, into: exports, options: options) { _ in }
     #expect(files.map(\.lastPathComponent) == ["Input-2.png", "Input-1.png"])
     let rotated = try conversionReadImage(files[0])

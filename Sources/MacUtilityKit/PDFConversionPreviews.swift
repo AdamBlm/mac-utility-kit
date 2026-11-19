@@ -9,18 +9,21 @@ struct PDFRasterExportPreview: View {
     @Binding var valid: Bool
     @State private var plans: [PDFPageRasterPlan] = []
     @State private var error: String?
+    @State private var selectedPage: Int?
+    @State private var plannedKey: RenderKey?
 
-    private var renderKey: String {
-        [
-            input.path, options.range, options.format.rawValue, options.resolution.rawValue,
-            String(options.dpi), String(options.maxWidth), String(options.maxHeight),
-            options.filenamePattern, String(options.transparent), String(options.quality)
-        ].joined(separator: "\u{0}")
+    private struct RenderKey: Hashable {
+        let input: URL
+        let options: PDFToImagesOptions
     }
+
+    private var renderKey: RenderKey { RenderKey(input: input, options: options) }
 
     var body: some View {
         Group {
-            if let error {
+            if plannedKey != renderKey {
+                ProgressView("Planning image export…").controlSize(.small)
+            } else if let error {
                 Text(error).font(.caption).foregroundStyle(.secondary)
             } else if !plans.isEmpty {
                 DisclosureGroup("\(plans.count) images to export") {
@@ -40,27 +43,47 @@ struct PDFRasterExportPreview: View {
                     }
                     .frame(maxHeight: 160)
                 }
-                DisclosureGroup("First-page render preview") {
-                    PDFRasterThumbnail(input: input, pageNumber: plans[0].pageNumber, options: options)
+                DisclosureGroup("Render preview") {
+                    let page = plans.first(where: { $0.pageNumber == selectedPage }) ?? plans[0]
+                    if plans.count > 1 {
+                        SettingRow("Preview page") {
+                            Picker("Preview page", selection: Binding(
+                                get: { page.pageNumber },
+                                set: { selectedPage = $0 }
+                            )) {
+                                ForEach(plans) { plan in
+                                    Text("Page \(plan.pageNumber)").tag(plan.pageNumber)
+                                }
+                            }
+                            .labelsHidden()
+                        }
+                    }
+                    PDFRasterThumbnail(input: input, pageNumber: page.pageNumber, options: options)
+                        .id(page.pageNumber)
                         .id(renderKey)
                         .padding(.top, 6)
                 }
             }
         }
-        .task(id: renderKey) {
+        .onChange(of: input) { selectedPage = nil }
+        .task(id: renderKey) { [request = renderKey] in
             plans = []
             error = nil
             valid = false
             do {
                 let planned = try await Task.detached(priority: .utility) {
-                    try PDFToImages.plans(input, options: options)
+                    try PDFToImages.plans(request.input, options: request.options)
                 }.value
                 if !Task.isCancelled {
                     plans = planned
+                    plannedKey = request
                     valid = !planned.isEmpty
                 }
             } catch {
-                if !Task.isCancelled { self.error = error.localizedDescription }
+                if !Task.isCancelled {
+                    self.error = error.localizedDescription
+                    plannedKey = request
+                }
             }
         }
     }
@@ -157,31 +180,12 @@ private struct PDFRasterThumbnail: View {
         }
         .task {
             do {
-                let preview = try await render()
+                let preview = try await PDFToImages.preview(input, pageNumber: pageNumber, options: options)
                 guard !Task.isCancelled else { return }
                 image = preview
-                failed = preview == nil
             } catch {
                 if !Task.isCancelled { failed = true }
             }
         }
-    }
-
-    private nonisolated func render() async throws -> CGImage? {
-        let folder = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacUtilityKit-PagePreview-" + UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
-                                                attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: folder) }
-        var preview = options
-        preview.range = String(pageNumber)
-        preview.format = .png
-        preview.resolution = .bounds
-        preview.maxWidth = 420
-        preview.maxHeight = 420
-        preview.filenamePattern = "Preview-{page}"
-        let output = try await PDFToImages.export(input, into: folder, options: preview) { _ in }
-        guard let url = output.first, let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
-        return CGImageSourceCreateImageAtIndex(source, 0, [kCGImageSourceShouldCacheImmediately: true] as CFDictionary)
     }
 }

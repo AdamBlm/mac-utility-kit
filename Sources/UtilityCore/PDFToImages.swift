@@ -29,7 +29,7 @@ public enum PDFImageResolution: String, CaseIterable, Identifiable, Sendable {
     public var id: Self { self }
 }
 
-public struct PDFToImagesOptions: Sendable {
+public struct PDFToImagesOptions: Hashable, Sendable {
     public var range = ""
     public var password = ""
     public var format: PDFPageImageFormat = .png
@@ -55,6 +55,20 @@ public struct PDFPageRasterPlan: Identifiable, Sendable {
 public enum PDFToImages {
     public static func plans(_ input: URL, options: PDFToImagesOptions) throws -> [PDFPageRasterPlan] {
         try plans(input, document: open(input, password: options.password), options: options)
+    }
+
+    package static func preview(_ input: URL, pageNumber: Int, options: PDFToImagesOptions) async throws -> CGImage {
+        try Task.checkCancellation()
+        let document = try open(input, password: options.password)
+        guard pageNumber > 0, let page = document.page(at: pageNumber - 1), let reference = page.pageRef else {
+            throw ToolError.invalid("Choose an available page to preview.")
+        }
+        var scaled = options
+        scaled.resolution = .bounds
+        scaled.maxWidth = 420
+        scaled.maxHeight = 420
+        let (width, height) = try dimensions(of: reference, options: scaled)
+        return try rasterize(page, width: width, height: height, transparent: options.transparent, pageNumber: pageNumber)
     }
 
     public static func export(
