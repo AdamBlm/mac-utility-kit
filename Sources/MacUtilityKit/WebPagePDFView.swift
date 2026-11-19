@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import SwiftUI
 import UtilityCore
 import WebKit
@@ -14,6 +15,7 @@ struct WebPagePDFView: View {
     @State private var loadTask: Task<Void, Never>?
     @State private var exportTask: Task<Void, Never>?
     @State private var exportError: String?
+    @State private var renderedPreview: WebPageRenderedPreview?
 
     var body: some View {
         InteractiveToolLayout(tool: .webPageToPDF) { palette in
@@ -89,9 +91,11 @@ struct WebPagePDFView: View {
             .disabled(exportTask != nil)
 
             HStack {
-                Button("Export PDF…", systemImage: "square.and.arrow.up", action: export)
+                Button("Preview PDF", systemImage: "doc.viewfinder") { render(showPreview: true) }
+                    .disabled(!canRender)
+                Button("Export PDF…", systemImage: "square.and.arrow.up") { render(showPreview: false) }
                     .buttonStyle(.borderedProminent)
-                    .disabled(browser.currentURL == nil || browser.isLoading || exportTask != nil)
+                    .disabled(!canRender)
                 if exportTask != nil {
                     ProgressView("Rendering PDF…").controlSize(.small)
                     Button("Cancel") { exportTask?.cancel() }
@@ -106,6 +110,11 @@ struct WebPagePDFView: View {
             exportTask?.cancel()
         }
         .onChange(of: draft.options) { exportError = nil }
+        .sheet(item: $renderedPreview) { preview in WebPageRenderedPreviewSheet(preview: preview) }
+    }
+
+    private var canRender: Bool {
+        browser.currentURL != nil && !browser.isLoading && browser.failure == nil && exportTask == nil
     }
 
     private var address: URL? { try? WebPagePDF.address(draft.address) }
@@ -121,8 +130,8 @@ struct WebPagePDFView: View {
         }
     }
 
-    private func export() {
-        guard let url = browser.currentURL, exportTask == nil else { return }
+    private func render(showPreview: Bool) {
+        guard canRender, let url = browser.currentURL else { return }
         let options = draft.options
         exportError = nil
         exportTask = Task {
@@ -130,13 +139,72 @@ struct WebPagePDFView: View {
             do {
                 let data = try await browser.export(options: options)
                 try Task.checkCancellation()
-                let title = url.host() ?? "Webpage"
-                try DeveloperToolFiles.save(data, as: title + ".pdf")
+                let filename = (url.host() ?? "Webpage") + ".pdf"
+                if showPreview {
+                    guard let document = PDFDocument(data: data), document.pageCount > 0 else {
+                        throw ToolError.invalid("Could not open the rendered PDF preview.")
+                    }
+                    let view = PDFView()
+                    view.displayMode = .singlePageContinuous
+                    view.document = document
+                    view.autoScales = true
+                    renderedPreview = WebPageRenderedPreview(data: data, filename: filename, view: view)
+                } else {
+                    try DeveloperToolFiles.save(data, as: filename)
+                }
             } catch is CancellationError {
                 return
             } catch {
                 exportError = error.localizedDescription
             }
+        }
+    }
+}
+
+private struct WebPageRenderedPreview: Identifiable {
+    let id = UUID()
+    let data: Data
+    let filename: String
+    let view: PDFView
+}
+
+private struct WebPageRenderedPreviewSheet: View {
+    let preview: WebPageRenderedPreview
+    @Environment(\.dismiss) private var dismiss
+    @State private var issue: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("PDF Preview").font(.headline)
+                Spacer()
+                Button("Zoom Out", systemImage: "minus.magnifyingglass") { preview.view.zoomOut(nil) }
+                    .labelStyle(.iconOnly)
+                Button("Zoom In", systemImage: "plus.magnifyingglass") { preview.view.zoomIn(nil) }
+                    .labelStyle(.iconOnly)
+            }
+            PDFReaderCanvas(view: preview.view)
+                .accessibilityLabel("Rendered PDF")
+            if let issue {
+                Text(issue).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+            }
+            HStack {
+                Spacer()
+                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Save Preview…", systemImage: "square.and.arrow.up", action: save)
+                    .buttonStyle(.borderedProminent)
+            }
+        }
+        .padding(16)
+        .frame(minWidth: 620, minHeight: 490)
+    }
+
+    private func save() {
+        do {
+            try DeveloperToolFiles.save(preview.data, as: preview.filename)
+            issue = nil
+        } catch {
+            issue = error.localizedDescription
         }
     }
 }
