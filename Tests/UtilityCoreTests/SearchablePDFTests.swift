@@ -59,6 +59,28 @@ struct SearchablePDFTests {
     }
 
     @Test
+    func previewsPagesAndRecognizedTextFromEachSourceInABatch() async throws {
+        let folder = try Self.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let scan = folder.appending(path: "Scan.pdf")
+        let native = folder.appending(path: "Native.pdf")
+        try Self.makeScan(to: scan, rotation: 0)
+        try Self.pdf { context in
+            Self.draw("Second document", in: context, at: CGPoint(x: 100, y: 200), size: 20)
+        }.write(to: native)
+        var options = SearchablePDFOptions()
+        options.range = "1"
+        options.language = "en-US"
+        #expect(try await SearchablePDF.pageNumbers(scan, options: options) == [1])
+        #expect(try await SearchablePDF.pageNumbers(native, options: options) == [1])
+        let scannedPreview = try await SearchablePDF.preview(scan, pageNumber: 1, options: options)
+        let nativePreview = try await SearchablePDF.preview(native, pageNumber: 1, options: options)
+        #expect(scannedPreview.result.text.contains("Searchable sample 7429"))
+        #expect(nativePreview.result.text.contains("Second document"))
+        #expect(nativePreview.result.status == .alreadySearchable)
+    }
+
+    @Test
     func keepsExcludedAndSearchablePagesAndReportsBlankScans() async throws {
         let folder = try Self.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }

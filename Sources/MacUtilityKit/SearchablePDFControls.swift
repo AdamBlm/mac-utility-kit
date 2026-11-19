@@ -7,6 +7,7 @@ struct SearchablePDFControls: View {
     @State private var languages: [String] = []
     @State private var selection: PageListing?
     @State private var page: Int?
+    @State private var selectedSource: URL?
     @State private var rendered: Preview?
     @State private var previewTask: Task<Void, Never>?
 
@@ -31,10 +32,23 @@ struct SearchablePDFControls: View {
         let result: Result<SearchablePDFPreview, any Error>
     }
 
+    private var previewSources: [URL] {
+        var seen: Set<URL> = []
+        return inputs.filter { seen.insert($0).inserted }
+    }
+
+    private var previewSource: URL? {
+        if let selectedSource, inputs.contains(selectedSource) { return selectedSource }
+        return inputs.first
+    }
+
     var body: some View {
-        let request = inputs.first.map { RangeRequest(input: $0, range: options.range) }
+        let request = previewSource.map { RangeRequest(input: $0, range: options.range) }
         let current = selection?.request == request ? selection : nil
-        let preview = request.flatMap { query in page.map { PreviewRequest(input: query.input, page: $0, options: options) } }
+        let preview = current.flatMap { listing -> PreviewRequest? in
+            guard let page, let pages = try? listing.result.get(), pages.contains(page) else { return nil }
+            return PreviewRequest(input: listing.request.input, page: page, options: options)
+        }
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Language") {
                 Picker("Recognition language", selection: $options.language) {
@@ -50,6 +64,17 @@ struct SearchablePDFControls: View {
                     .accessibilityLabel("PDF page range")
             }
             Toggle("Skip pages that already contain searchable text", isOn: $options.skipsSearchablePages)
+            let sources = previewSources
+            if sources.count > 1 {
+                SettingRow("Preview source") {
+                    Picker("Preview source", selection: Binding(get: { previewSource }, set: { selectedSource = $0 })) {
+                        ForEach(Array(sources.enumerated()), id: \.element) { index, source in
+                            Text("\(index + 1). \(source.lastPathComponent)").tag(Optional(source))
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
             if let current {
                 switch current.result {
                 case .success(let pages):
@@ -58,6 +83,8 @@ struct SearchablePDFControls: View {
                 case .failure(let error):
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
                 }
+            } else if request != nil {
+                ProgressView("Reading preview pages…").controlSize(.small)
             }
         }
         .task { loadLanguages() }
@@ -68,10 +95,6 @@ struct SearchablePDFControls: View {
 
     private func previewControls(_ pages: [Int], request: PreviewRequest) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            if inputs.count > 1 {
-                Text(request.input.lastPathComponent).lineLimit(1).truncationMode(.middle)
-                    .font(.callout).foregroundStyle(.secondary)
-            }
             SettingRow("Preview page") {
                 Picker("Preview page", selection: $page) {
                     ForEach(pages, id: \.self) { number in Text("Page \(number)").tag(Optional(number)) }
@@ -113,8 +136,10 @@ struct SearchablePDFControls: View {
             selected.range = request.range
             let pages = try await SearchablePDF.pageNumbers(request.input, options: selected)
             if !Task.isCancelled {
+                if selection?.request.input != request.input || !pages.contains(page ?? 0) {
+                    page = pages.first
+                }
                 selection = PageListing(request: request, result: .success(pages))
-                if page == nil || !pages.contains(page ?? 0) { page = pages.first }
             }
         } catch {
             if !Task.isCancelled {
