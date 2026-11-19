@@ -16,6 +16,7 @@ struct MarkdownPDFView: View {
     @State private var completed: Request?
     @State private var previewError: String?
     @State private var fileError: String?
+    @State private var renderedPreview: RenderedPDFPreview?
     @State private var exportError: String?
     @State private var task: Task<Void, Never>?
 
@@ -112,7 +113,9 @@ struct MarkdownPDFView: View {
                         .clipShape(RoundedRectangle(cornerRadius: 8))
                         .accessibilityLabel("Rendered Markdown preview")
                     HStack {
-                        Button("Export PDF…", systemImage: "square.and.arrow.up") { export(prepared) }
+                        Button("Preview PDF", systemImage: "doc.viewfinder") { render(prepared, showPreview: true) }
+                            .disabled(task != nil)
+                        Button("Export PDF…", systemImage: "square.and.arrow.up") { render(prepared, showPreview: false) }
                             .buttonStyle(.borderedProminent)
                             .disabled(task != nil)
                         if task != nil {
@@ -139,6 +142,7 @@ struct MarkdownPDFView: View {
             return true
         }
         .onDisappear { task?.cancel() }
+        .sheet(item: $renderedPreview) { preview in RenderedPDFPreviewSheet(preview: preview) }
     }
 
     private func chooseFolder() {
@@ -192,7 +196,7 @@ struct MarkdownPDFView: View {
         }
     }
 
-    private func export(_ document: MarkdownPDFDocument) {
+    private func render(_ document: MarkdownPDFDocument, showPreview: Bool) {
         guard task == nil else { return }
         let filename = (draft.source?.deletingPathExtension().lastPathComponent ?? "Markdown") + ".pdf"
         exportError = nil
@@ -201,7 +205,11 @@ struct MarkdownPDFView: View {
             do {
                 let data = try await MarkdownPDFPrint.render(document)
                 try Task.checkCancellation()
-                try DeveloperToolFiles.save(data, as: filename)
+                if showPreview {
+                    renderedPreview = try RenderedPDFPreview(data: data, filename: filename)
+                } else {
+                    try DeveloperToolFiles.save(data, as: filename)
+                }
             } catch is CancellationError {
                 return
             } catch {

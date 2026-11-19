@@ -1,5 +1,4 @@
 import AppKit
-import PDFKit
 import SwiftUI
 import UtilityCore
 import WebKit
@@ -15,7 +14,7 @@ struct WebPagePDFView: View {
     @State private var loadTask: Task<Void, Never>?
     @State private var exportTask: Task<Void, Never>?
     @State private var exportError: String?
-    @State private var renderedPreview: WebPageRenderedPreview?
+    @State private var renderedPreview: RenderedPDFPreview?
 
     var body: some View {
         InteractiveToolLayout(tool: .webPageToPDF) { palette in
@@ -110,7 +109,7 @@ struct WebPagePDFView: View {
             exportTask?.cancel()
         }
         .onChange(of: draft.options) { exportError = nil }
-        .sheet(item: $renderedPreview) { preview in WebPageRenderedPreviewSheet(preview: preview) }
+        .sheet(item: $renderedPreview) { preview in RenderedPDFPreviewSheet(preview: preview) }
     }
 
     private var canRender: Bool {
@@ -141,14 +140,7 @@ struct WebPagePDFView: View {
                 try Task.checkCancellation()
                 let filename = (url.host() ?? "Webpage") + ".pdf"
                 if showPreview {
-                    guard let document = PDFDocument(data: data), document.pageCount > 0 else {
-                        throw ToolError.invalid("Could not open the rendered PDF preview.")
-                    }
-                    let view = PDFView()
-                    view.displayMode = .singlePageContinuous
-                    view.document = document
-                    view.autoScales = true
-                    renderedPreview = WebPageRenderedPreview(data: data, filename: filename, view: view)
+                    renderedPreview = try RenderedPDFPreview(data: data, filename: filename)
                 } else {
                     try DeveloperToolFiles.save(data, as: filename)
                 }
@@ -157,54 +149,6 @@ struct WebPagePDFView: View {
             } catch {
                 exportError = error.localizedDescription
             }
-        }
-    }
-}
-
-private struct WebPageRenderedPreview: Identifiable {
-    let id = UUID()
-    let data: Data
-    let filename: String
-    let view: PDFView
-}
-
-private struct WebPageRenderedPreviewSheet: View {
-    let preview: WebPageRenderedPreview
-    @Environment(\.dismiss) private var dismiss
-    @State private var issue: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text("PDF Preview").font(.headline)
-                Spacer()
-                Button("Zoom Out", systemImage: "minus.magnifyingglass") { preview.view.zoomOut(nil) }
-                    .labelStyle(.iconOnly)
-                Button("Zoom In", systemImage: "plus.magnifyingglass") { preview.view.zoomIn(nil) }
-                    .labelStyle(.iconOnly)
-            }
-            PDFReaderCanvas(view: preview.view)
-                .accessibilityLabel("Rendered PDF")
-            if let issue {
-                Text(issue).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            }
-            HStack {
-                Spacer()
-                Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
-                Button("Save Preview…", systemImage: "square.and.arrow.up", action: save)
-                    .buttonStyle(.borderedProminent)
-            }
-        }
-        .padding(16)
-        .frame(minWidth: 620, minHeight: 490)
-    }
-
-    private func save() {
-        do {
-            try DeveloperToolFiles.save(preview.data, as: preview.filename)
-            issue = nil
-        } catch {
-            issue = error.localizedDescription
         }
     }
 }
