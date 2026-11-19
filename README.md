@@ -129,7 +129,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Hash Generator** calculates MD5, SHA-1, SHA-256, SHA-384, and SHA-512 digests for text and files and compares them with supplied checksums.
 - **UUID Generator** generates v4 and v7 identifiers in batches and inspects UUID variants, versions, and v7 timestamps.
 - **Timestamp Converter** converts Unix seconds, milliseconds, and microseconds and exposes both possible instants when a local clock repeats.
-- **Clean Links** previews the tracking parameters it removes and decodes supported redirects locally. It preserves unknown query fields, fragments, and recognized signed links.
+- **Clean Links** previews the tracking parameters it removes and decodes supported redirects locally. It preserves internationalized addresses, unknown query fields, fragments, and recognized signed links.
 - **Lorem Ipsum** generates a specified number of words, sentences, or paragraphs and exports plain text, HTML, or Markdown.
 - **Unicode Inspector** shows graphemes, scalar names, invisible characters, and possible lookalikes from Unicode 18.0.0. NFC and NFD can be previewed before applying.
 - **Battery Health** reports available charge, power source, cycles, condition, capacity, and connected Bluetooth accessory readings.

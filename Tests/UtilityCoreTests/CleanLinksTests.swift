@@ -9,6 +9,14 @@ struct CleanLinksTests {
         #expect(result.removedParameters == ["UTM_Source", "fbclid"])
     }
 
+    @Test func preservesInternationalizedAddressAndFunctionalQuery() throws {
+        let result = try CleanLinks.clean("https://bücher.example/été?q=東京%2f+été&utm_source=x&\u{301}tag=λ#章节")
+        #expect(result.cleaned == "https://bücher.example/été?q=東京%2f+été&\u{301}tag=λ#章节")
+        #expect(result.removedParameters == ["utm_source"])
+        let signed = "https://bücher.example/été?X-Amz-Signature=123&utm_source=keep#章节"
+        #expect(try CleanLinks.clean(signed).cleaned == signed)
+    }
+
     @Test func unwrapsOnlyRecognizedRedirectsAndPreservesSignedLinks() throws {
         let redirected = try CleanLinks.clean("https://www.google.com/url?q=https%3A%2F%2Fexample.test%2F%3Futm_source%3Dx%26id%3D4")
         #expect(redirected.redirectDestination == "https://example.test/?utm_source=x&id=4")
@@ -29,6 +37,8 @@ struct CleanLinksTests {
 
     @Test func rejectsMalformedLinksAndAmbiguousRedirects() {
         #expect(throws: ToolError.self) { try CleanLinks.clean("https://example.test/?q=%ZZ") }
+        #expect(throws: ToolError.self) { try CleanLinks.clean("https://bücher.example/?q=%ZZ") }
+        #expect(throws: ToolError.self) { try CleanLinks.clean("https://bücher.example/<été>") }
         #expect(throws: ToolError.self) { try CleanLinks.clean("https://www.google.com/url?q=https://a.test&q=https://b.test") }
         #expect(throws: ToolError.self) { try CleanLinks.clean("https://www.google.com/url?q=https://a.test&url=https://b.test") }
         #expect(throws: ToolError.self) { try CleanLinks.clean("https://www.google.com/url?q=javascript%3Aalert%281%29") }

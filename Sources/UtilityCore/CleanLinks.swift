@@ -25,35 +25,43 @@ public enum CleanLinks {
         let source = try parse(original)
         let redirect = try redirectDestination(in: source)
         let address = redirect ?? original
-        let components = redirect == nil ? source : try parse(address)
-        let items = queryFields(components)
+        let scalars = address.unicodeScalars
+        let fragmentOrEnd = scalars.firstIndex(of: "#") ?? scalars.endIndex
+        guard let questionMark = scalars[..<fragmentOrEnd].firstIndex(of: "?") else {
+            return Result(original: original, cleaned: address, removedParameters: [], redirectDestination: redirect)
+        }
+        let items = queryFields(scalars[scalars.index(after: questionMark)..<fragmentOrEnd])
         guard !items.contains(where: { signatureKeys.contains(asciiKey($0.key)) }) else {
             return Result(original: original, cleaned: address, removedParameters: [], redirectDestination: redirect)
         }
         let removed = items.filter { trackingKeys.contains(asciiKey($0.key)) }
-        let fragmentOrEnd = address.firstIndex(of: "#") ?? address.endIndex
-        guard !removed.isEmpty, let query = components.percentEncodedQuery,
-              let questionMark = address[..<fragmentOrEnd].firstIndex(of: "?"),
-              address[address.index(after: questionMark)..<fragmentOrEnd] == query else {
+        guard !removed.isEmpty else {
             return Result(original: original, cleaned: address, removedParameters: [], redirectDestination: redirect)
         }
         let kept = items.filter { !trackingKeys.contains(asciiKey($0.key)) }.map(\.raw)
         let suffix = kept.isEmpty ? "" : "?" + kept.joined(separator: "&")
-        let cleaned = String(address[..<questionMark]) + suffix + address[fragmentOrEnd...]
+        let cleaned = String(scalars[..<questionMark]) + suffix + String(scalars[fragmentOrEnd...])
         return Result(original: original, cleaned: cleaned, removedParameters: removed.map(\.key), redirectDestination: redirect)
     }
 
     private static func parse(_ address: String) throws -> URLComponents {
         guard address.utf8.count <= 32_768, !address.isEmpty,
               !address.unicodeScalars.contains(where: { CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains($0) }),
-              URL(string: address, encodingInvalidCharacters: false) != nil,
+              !address.contains("\\"), validPercentEscapes(address),
+              hasValidASCIISyntax(address),
               let components = URLComponents(string: address),
               let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
               let host = components.host, !host.isEmpty, components.user == nil, components.password == nil,
-              !address.contains("\\"), validPercentEscapes(address) else {
+              components.url != nil else {
             throw ToolError.invalid("Enter a valid HTTP or HTTPS link.")
         }
         return components
+    }
+
+    private static func hasValidASCIISyntax(_ address: String) -> Bool {
+        // Let Foundation encode Unicode while checking that it has no malformed ASCII syntax to repair.
+        let projection = String(decoding: address.utf8.map { $0 < 128 ? $0 : 120 }, as: UTF8.self)
+        return URL(string: projection, encodingInvalidCharacters: false) != nil
     }
 
     private static func asciiKey(_ key: String) -> String {
@@ -71,8 +79,7 @@ public enum CleanLinks {
         (48...57).contains(byte) || (65...70).contains(byte) || (97...102).contains(byte)
     }
 
-    private static func queryFields(_ components: URLComponents) -> [(raw: String, key: String)] {
-        guard let query = components.percentEncodedQuery else { return [] }
+    private static func queryFields(_ query: String.UnicodeScalarView.SubSequence) -> [(raw: String, key: String)] {
         return query.split(separator: "&", omittingEmptySubsequences: false).map { field in
             let name = field.prefix { $0 != "=" }
             return (String(field), String(name).removingPercentEncoding ?? String(name))
