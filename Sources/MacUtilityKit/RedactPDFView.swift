@@ -128,6 +128,19 @@ struct RedactPDFView: View {
                         .disabled(!preview.hasSelection)
                 }
             }
+            if !draft.marks.isEmpty {
+                let adjacent = PDFRedaction.adjacentMarkedPages(to: preview.pageNumber, in: draft.marks)
+                HStack {
+                    Button("Previous Marked Page", systemImage: "chevron.left") {
+                        if let page = adjacent.previous { revealMarkedPage(page) }
+                    }
+                    .disabled(adjacent.previous == nil)
+                    Button("Next Marked Page", systemImage: "chevron.right") {
+                        if let page = adjacent.next { revealMarkedPage(page) }
+                    }
+                    .disabled(adjacent.next == nil)
+                }
+            }
             PDFRedactionPreview(session: preview, drawsRectangles: mode == .region) { add([$0]) }
                 .frame(minHeight: 320, idealHeight: 380)
                 .clipShape(.rect(cornerRadius: 8))
@@ -136,6 +149,11 @@ struct RedactPDFView: View {
             }
         }
         .disabled(work != nil)
+    }
+
+    private func revealMarkedPage(_ page: Int) {
+        focusedMark = nil
+        preview.navigate(page)
     }
 
     private func reviews(reveal: @escaping () -> Void) -> some View {
@@ -149,8 +167,7 @@ struct RedactPDFView: View {
             let byPage = Dictionary(grouping: draft.marks, by: \.page)
             ForEach(byPage.keys.sorted(), id: \.self) { page in
                 Button("Page \(page)", systemImage: "doc") {
-                    focusedMark = nil
-                    preview.navigate(page)
+                    revealMarkedPage(page)
                     reveal()
                 }
                 .buttonStyle(.plain).font(.callout.weight(.semibold))

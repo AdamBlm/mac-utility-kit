@@ -6,6 +6,22 @@ import Testing
 
 @Suite(.serialized)
 struct PDFRedactionTests {
+    @Test func adjacentMarkedPagesSkipUnmarkedPagesAndRepeatedMarks() {
+        let marks = [7, 2, 5, 2, 7].map {
+            PDFRedactionMark(page: $0, rect: CGRect(x: 0.1, y: 0.1, width: 0.2, height: 0.2), kind: .region)
+        }
+        let beforeFirst = PDFRedaction.adjacentMarkedPages(to: 1, in: marks)
+        #expect(beforeFirst.previous == nil && beforeFirst.next == 2)
+        let onMarked = PDFRedaction.adjacentMarkedPages(to: 5, in: marks)
+        #expect(onMarked.previous == 2 && onMarked.next == 7)
+        let onUnmarked = PDFRedaction.adjacentMarkedPages(to: 6, in: marks)
+        #expect(onUnmarked.previous == 5 && onUnmarked.next == 7)
+        let atLast = PDFRedaction.adjacentMarkedPages(to: 7, in: marks)
+        #expect(atLast.previous == 5 && atLast.next == nil)
+        let empty = PDFRedaction.adjacentMarkedPages(to: 1, in: [])
+        #expect(empty.previous == nil && empty.next == nil)
+    }
+
     @Test(arguments: [0, 90, 180, 270])
     func removesTextImagePixelsAndHiddenDataFromRotatedCopies(rotation: Int) async throws {
         let folder = try Self.folder()

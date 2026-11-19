@@ -42,6 +42,22 @@ public struct PDFRedactionResult: Sendable {
 }
 
 public enum PDFRedaction {
+    package static func adjacentMarkedPages(
+        to page: Int, in marks: [PDFRedactionMark]
+    ) -> (previous: Int?, next: Int?) {
+        var previous: Int?
+        var next: Int?
+        for mark in marks where mark.page > 0 {
+            if mark.page < page, previous.map({ mark.page > $0 }) ?? true {
+                previous = mark.page
+            }
+            if mark.page > page, next.map({ mark.page < $0 }) ?? true {
+                next = mark.page
+            }
+        }
+        return (previous, next)
+    }
+
     public static func open(_ url: URL) async throws -> PDFRedactionSource {
         guard url.isFileURL else { throw ToolError.invalid("Choose a local PDF.") }
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])

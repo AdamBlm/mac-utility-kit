@@ -35,6 +35,7 @@ final class PDFRedactionPreviewSession {
 
     func navigate(_ pageNumber: Int) {
         guard pageNumber > 0, let page = view.document?.page(at: pageNumber - 1) else { return }
+        view.clearSelection()
         view.go(to: page)
         synchronize()
     }
