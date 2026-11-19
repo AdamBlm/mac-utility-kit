@@ -64,6 +64,32 @@ struct MuteVideoTests {
         }
     }
 
+    @Test func rejectsAReplacementWithTheSameReviewedAudioTrackID() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = try await Self.fixture(in: directory)
+        let reviewed = try await MuteVideo.review(input)
+        let selected = try #require(reviewed.streams.first(where: \.isAudio)?.id)
+        var options = MuteVideoOptions()
+        options.removal = .selected
+        options.removedTrackIDs[input] = [selected]
+        options.reviewedSources[input] = reviewed.source
+        try await MuteVideo.checkCompatibility(input, options: options)
+
+        let replacement = directory.appending(path: "replacement.mov")
+        try FileManager.default.copyItem(at: input, to: replacement)
+        _ = try FileManager.default.replaceItemAt(input, withItemAt: replacement)
+        #expect(try await MuteVideo.inspect(input).contains { $0.id == selected && $0.isAudio })
+        let output = directory.appending(path: "unexpected.mov")
+        await #expect(throws: ToolError.self) {
+            try await MuteVideo.checkCompatibility(input, options: options)
+        }
+        await #expect(throws: ToolError.self) {
+            try await MuteVideo.export(input, to: output, options: options) { _ in }
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
+
     @Test func checksRetainedTracksAndExportsOnlyCompatibleFilesInAMixedBatch() async throws {
         let directory = try Self.directory()
         defer { try? FileManager.default.removeItem(at: directory) }

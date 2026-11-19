@@ -15,6 +15,7 @@ public struct MuteVideoOptions: Equatable, Sendable {
     public var removal = Removal.all
     public var container = Container.original
     public var removedTrackIDs: [URL: Set<Int32>] = [:]
+    package var reviewedSources: [URL: MuteVideo.Source] = [:]
 
     public init() {}
 
@@ -34,6 +35,11 @@ public struct MuteVideoStream: Sendable, Identifiable {
 }
 
 public enum MuteVideo {
+    package struct Source: Equatable, Sendable {
+        fileprivate let resolved: URL
+        fileprivate let stamp: DuplicateFileStamp
+    }
+
     private enum Format: String {
         case mov, mp4, m4v
 
@@ -72,6 +78,13 @@ public enum MuteVideo {
                                            language: languageTag ?? languageCode, channels: channels, audioIndex: audioIndex))
         }
         return streams
+    }
+
+    package static func review(_ input: URL) async throws -> (streams: [MuteVideoStream], source: Source) {
+        let source = try sourceStamp(input)
+        let streams = try await inspect(source.resolved)
+        try verify(source, for: input)
+        return (streams, source)
     }
 
     public static func checkCompatibility(_ input: URL, options: MuteVideoOptions) async throws {
@@ -119,6 +132,7 @@ public enum MuteVideo {
             throw ToolError.invalid("The output could not preserve every retained stream in this container.")
         }
         try Task.checkCancellation()
+        try verifyReviewedSource(input, options: options)
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return "\(input.lastPathComponent) · \(prepared.removedCount) audio track\(prepared.removedCount == 1 ? "" : "s") removed · Video copied"
@@ -133,6 +147,7 @@ public enum MuteVideo {
 
     private static func prepare(_ input: URL, format: Format, options: MuteVideoOptions) async throws -> Prepared {
         try Task.checkCancellation()
+        try verifyReviewedSource(input, options: options)
         let asset = try localAsset(input)
         let sourceTracks = try await asset.load(.tracks)
         let audioIDs = Set(sourceTracks.filter { $0.mediaType == .audio }.map(\.trackID))
@@ -186,7 +201,29 @@ public enum MuteVideo {
             throw ToolError.invalid("These streams cannot be copied into \(format.rawValue.uppercased()). Choose another compatible container.")
         }
         try Task.checkCancellation()
+        try verifyReviewedSource(input, options: options)
         return Prepared(asset: asset, session: session, retained: retained, removedCount: selected.count)
+    }
+
+    private static func sourceStamp(_ input: URL) throws -> Source {
+        guard input.isFileURL else { throw ToolError.invalid("Choose a readable local video.") }
+        let resolved = input.resolvingSymlinksInPath().standardizedFileURL
+        guard let stamp = try DuplicateFileIO.inspect(resolved) else {
+            throw ToolError.invalid("Choose a readable local video.")
+        }
+        return Source(resolved: resolved, stamp: stamp)
+    }
+
+    package static func verify(_ expected: Source, for input: URL) throws {
+        guard (try? sourceStamp(input)) == expected else {
+            throw ToolError.invalid("The video changed after its tracks were reviewed. Recheck Streams and select the tracks again.")
+        }
+    }
+
+    private static func verifyReviewedSource(_ input: URL, options: MuteVideoOptions) throws {
+        if options.removal == .selected, let source = options.reviewedSources[input] {
+            try verify(source, for: input)
+        }
     }
 
     private struct StreamSignature: Hashable {

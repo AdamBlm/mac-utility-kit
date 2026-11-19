@@ -30,7 +30,7 @@ struct MuteVideoControls: View {
     let inputs: [URL]
     @Binding var review: MuteVideoReview?
     @Binding var options: MuteVideoOptions
-    @State private var streams: [URL: [MuteVideoStream]] = [:]
+    @State private var sources: [URL: (streams: [MuteVideoStream], source: MuteVideo.Source)] = [:]
     @State private var issues: [URL: String] = [:]
     @State private var preview: AudioPreview?
     @State private var player: AVAudioPlayer?
@@ -40,6 +40,7 @@ struct MuteVideoControls: View {
     private struct AudioPreview: Equatable {
         let input: URL
         let audioIndex: Int
+        let source: MuteVideo.Source
     }
 
     private struct CheckKey<Value: Equatable>: Equatable {
@@ -86,8 +87,8 @@ struct MuteVideoControls: View {
                         .help(input.path)
                     if let issue = issues[input] {
                         Text(issue).font(.callout).foregroundStyle(.secondary)
-                    } else if let tracks = streams[input] {
-                        streamPreview(tracks, for: input)
+                    } else if let source = sources[input] {
+                        streamPreview(source.streams, for: input, reviewedSource: source.source)
                     } else {
                         ProgressView("Reading streams…").controlSize(.small)
                     }
@@ -107,14 +108,14 @@ struct MuteVideoControls: View {
         }
         .task(id: CheckKey(value: inputs, revision: reviewRevision)) { [revision = reviewRevision] in
             guard !Task.isCancelled, reviewRevision == revision else { return }
-            streams = [:]
+            sources = [:]
             issues = [:]
             for input in inputs {
                 do {
-                    let result = try await MuteVideo.inspect(input)
+                    let result = try await MuteVideo.review(input)
                     try Task.checkCancellation()
                     guard reviewRevision == revision else { return }
-                    streams[input] = result
+                    sources[input] = result
                 } catch is CancellationError {
                     return
                 } catch {
@@ -126,7 +127,7 @@ struct MuteVideoControls: View {
     }
 
     @ViewBuilder
-    private func streamPreview(_ tracks: [MuteVideoStream], for input: URL) -> some View {
+    private func streamPreview(_ tracks: [MuteVideoStream], for input: URL, reviewedSource: MuteVideo.Source) -> some View {
         if tracks.allSatisfy({ !$0.isAudio }) {
             Text("This video already has no audio tracks.")
                 .font(.callout)
@@ -155,7 +156,7 @@ struct MuteVideoControls: View {
                 }
                 Spacer()
                 if let audioIndex = track.audioIndex {
-                    let sample = AudioPreview(input: input, audioIndex: audioIndex)
+                    let sample = AudioPreview(input: input, audioIndex: audioIndex, source: reviewedSource)
                     Button(preview == sample ? "Stop Preview" : "Preview Audio",
                            systemImage: preview == sample ? "stop.circle" : "play.circle") {
                         if preview == sample {
@@ -170,7 +171,7 @@ struct MuteVideoControls: View {
                     .help("Listen to five seconds of this track")
                 }
                 if options.removal == .selected, track.isAudio {
-                    Toggle("Remove", isOn: binding(for: track, input: input))
+                    Toggle("Remove", isOn: binding(for: track, input: input, reviewedSource: reviewedSource))
                         .toggleStyle(.checkbox)
                         .accessibilityLabel("Remove audio track \(track.id)")
                 } else {
@@ -206,9 +207,10 @@ struct MuteVideoControls: View {
         stopPreview()
         previewIssue = nil
         review = nil
-        streams = [:]
+        sources = [:]
         issues = [:]
         options.removedTrackIDs = [:]
+        options.reviewedSources = [:]
         reviewRevision += 1
     }
 
@@ -218,11 +220,13 @@ struct MuteVideoControls: View {
         defer { try? FileManager.default.removeItem(at: directory) }
         let localFile = directory.appendingPathComponent("track.m4a")
         do {
+            try MuteVideo.verify(request.source, for: request.input)
             try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
             var audio = AudioExtractionOptions()
             audio.trackIndex = request.audioIndex
             try await AudioExtraction.preview(request.input, to: localFile, options: audio)
             try Task.checkCancellation()
+            try MuteVideo.verify(request.source, for: request.input)
             let sample = try AVAudioPlayer(contentsOf: localFile)
             guard preview == request else { return }
             guard sample.duration.isFinite, sample.duration > 0, sample.play() else {
@@ -246,10 +250,14 @@ struct MuteVideoControls: View {
         preview = nil
     }
 
-    private func binding(for track: MuteVideoStream, input: URL) -> Binding<Bool> {
+    private func binding(for track: MuteVideoStream, input: URL, reviewedSource: MuteVideo.Source) -> Binding<Bool> {
         Binding {
-            options.removes(track, from: input)
+            options.reviewedSources[input] == reviewedSource && options.removes(track, from: input)
         } set: { remove in
+            if options.reviewedSources[input] != reviewedSource {
+                options.removedTrackIDs[input] = []
+                options.reviewedSources[input] = reviewedSource
+            }
             if remove {
                 options.removedTrackIDs[input, default: []].insert(track.id)
             } else {
