@@ -32,6 +32,20 @@ import UtilityCore
     #expect(report.summary.contains("Frame timing: Variable intervals observed"))
 }
 
+@Test(arguments: [false, true])
+func nativeMediaInspectionSamplesTimingBeyondTheOpeningFrames(cadenceChanges: Bool) async throws {
+    let folder = try mediaInspectionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let video = folder.appending(path: "Longer.mov")
+    let opening = (0..<190).map { $0 * 25 }
+    let ending = (1...40).map { 189 * 25 + $0 * (cadenceChanges ? 50 : 25) }
+    try await writeInspectionVideo(to: video, ticks: opening + ending)
+
+    let report = try await MediaInspection.inspect(video)
+    let expected = cadenceChanges ? "Variable intervals observed" : "Even intervals in sampled frames"
+    #expect(report.summary.contains("Frame timing: " + expected))
+}
+
 @Test func mediaInspectionRejectsNonMedia() async throws {
     let folder = try mediaInspectionFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
@@ -76,7 +90,9 @@ private func writeInspectionAudio(to url: URL) throws {
     try file.write(from: buffer)
 }
 
-private func writeInspectionVideo(to url: URL) async throws {
+private func writeInspectionVideo(
+    to url: URL, ticks: [Int] = [0, 20, 40, 100, 120, 160, 220, 240]
+) async throws {
     let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
     let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
         AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 96, AVVideoHeightKey: 64
@@ -94,7 +110,7 @@ private func writeInspectionVideo(to url: URL) async throws {
         memset(pixels, 64, CVPixelBufferGetBytesPerRow(frame) * CVPixelBufferGetHeight(frame))
     }
     CVPixelBufferUnlockBaseAddress(frame, [])
-    for tick in [0, 20, 40, 100, 120, 160, 220, 240] {
+    for tick in ticks {
         for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
             try await Task.sleep(for: .milliseconds(2))
         }

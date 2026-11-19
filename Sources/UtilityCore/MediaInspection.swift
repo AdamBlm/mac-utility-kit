@@ -124,7 +124,7 @@ public enum MediaInspection {
             rows += [
                 row("Dimensions", dimensions(displayed.width, displayed.height)),
                 row("Frame rate (nominal)", frameRate(rate)),
-                row("Frame timing", frameTiming(track, start: range.start))
+                row("Frame timing", frameTiming(track, range: range))
             ]
         } else if track.mediaType == .audio {
             let stream = formats.first.flatMap { CMAudioFormatDescriptionGetStreamBasicDescription($0)?.pointee }
@@ -136,16 +136,26 @@ public enum MediaInspection {
         return Section(title: "\(name) track \(index)", rows: rows)
     }
 
-    private static func frameTiming(_ track: AVAssetTrack, start: CMTime) -> String {
-        guard let cursor = track.makeSampleCursor(presentationTimeStamp: start) else { return "Unavailable" }
-        var previous = cursor.presentationTimeStamp
+    private static func frameTiming(_ track: AVAssetTrack, range: CMTimeRange) -> String {
+        guard range.start.isNumeric, range.duration.isNumeric, range.duration > .zero else { return "Unavailable" }
+
+        // Use independent cursors so the gaps between sampling windows are never counted.
+        var sampled = Set<CMTime>()
         var intervals: [Double] = []
-        for _ in 0..<119 {
-            guard !Task.isCancelled, cursor.stepInPresentationOrder(byCount: 1) == 1 else { break }
-            let next = cursor.presentationTimeStamp
-            let interval = (next - previous).seconds
-            if interval.isFinite, interval > 0 { intervals.append(interval) }
-            previous = next
+        for position in [0.0, 0.25, 0.5, 0.75, 0.9] {
+            let start = range.start + CMTimeMultiplyByFloat64(range.duration, multiplier: position)
+            guard let cursor = track.makeSampleCursor(presentationTimeStamp: start) else { continue }
+            var previous = cursor.presentationTimeStamp
+            for _ in 0..<24 {
+                guard !Task.isCancelled else { return "Unavailable" }
+                guard cursor.stepInPresentationOrder(byCount: 1) == 1 else { break }
+                let next = cursor.presentationTimeStamp
+                let interval = (next - previous).seconds
+                if interval.isFinite, interval > 0, sampled.insert(previous).inserted {
+                    intervals.append(interval)
+                }
+                previous = next
+            }
         }
         guard intervals.count > 2, let shortest = intervals.min(), let longest = intervals.max() else {
             return "Unavailable"

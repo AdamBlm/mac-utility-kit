@@ -27,7 +27,7 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 - **Download Video** inspects a URL using a selected yt-dlp executable. Choose a stream and output format, then download with separate video, audio, and finishing progress and cancellation. Stream merging and conversion require FFmpeg.
 
 - **Convert Video** converts to MP4, MOV, and M4V with AVFoundation. A user-selected FFmpeg adds WebM export and resolution and frame rate options. Passthrough requires streams compatible with the destination container. WebM results identify observed codecs and report dropped tracks.
-- **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections, while the optional user-selected ffprobe exports its detailed stream metadata. Frame-timing results describe observed samples only.
+- **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections, while the optional user-selected ffprobe exports its detailed stream metadata. The native frame-timing check samples five short windows across the track and labels the result as an observation.
 - **Extract Audio** selects a track by language or number, previews a chosen source, and exports to M4A, WAV, or AIFF. Language selection matches each file independently and reports missing or ambiguous tracks. A user-selected FFmpeg adds MP3 and FLAC. Source track discovery uses AVFoundation. Passthrough is supported for AAC and ALAC tracks in M4A.
 
 Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the external Media Info integration fixture.
