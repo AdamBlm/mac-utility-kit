@@ -136,7 +136,7 @@ enum AVFoundationEncoding {
         }
         if let error = reader.error { throw error }
         if sample { writer.endSession(atSourceTime: exportDuration) }
-        await writer.finishWriting()
+        await writer.finishMediaWriting()
         try Task.checkCancellation()
         guard writer.status == .completed else {
             throw writer.error ?? ToolError.invalid("Could not finish encoding the video.")

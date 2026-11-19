@@ -189,7 +189,7 @@ private func writeVideoFixture(
         try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 30)))
     }
     input.markAsFinished()
-    await writer.finishWriting()
+    await writer.finishMediaWriting()
     try #require(writer.status == .completed)
 }
 

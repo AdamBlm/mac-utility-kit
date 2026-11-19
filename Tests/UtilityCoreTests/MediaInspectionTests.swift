@@ -102,6 +102,6 @@ private func writeInspectionVideo(to url: URL) async throws {
         try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(tick), timescale: 600)))
     }
     input.markAsFinished()
-    await writer.finishWriting()
+    await writer.finishMediaWriting()
     try #require(writer.status == .completed)
 }

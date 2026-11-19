@@ -79,7 +79,7 @@ enum TranscriptionAudio {
         if let error = reader.error { throw error }
         guard wroteAudio else { throw ToolError.invalid("No audio frames were found in the selected range.") }
         sink.markAsFinished()
-        await writer.finishWriting()
+        await writer.finishMediaWriting()
         try Task.checkCancellation()
         guard writer.status == .completed else {
             throw writer.error ?? ToolError.invalid("Could not finish local audio conversion.")

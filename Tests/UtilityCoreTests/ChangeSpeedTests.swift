@@ -121,7 +121,7 @@ struct ChangeSpeedTests {
             try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 24)))
         }
         input.markAsFinished()
-        await writer.finishWriting()
+        await writer.finishMediaWriting()
         try #require(writer.status == .completed)
         if !audio { return url }
 

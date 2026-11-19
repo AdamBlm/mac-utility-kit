@@ -97,7 +97,7 @@ struct MuteVideoTests {
             try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 24)))
         }
         sink.markAsFinished()
-        await writer.finishWriting()
+        await writer.finishMediaWriting()
         try #require(writer.status == .completed)
 
         let wav = directory.appending(path: "tone.wav")

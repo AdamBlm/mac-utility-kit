@@ -97,7 +97,7 @@ enum AVFoundationAudioExtraction {
         try await transfer(trackOutput, to: trackInput, reader: reader, writer: writer,
                            range: reader.timeRange, progress: progress)
         if preview { writer.endSession(atSourceTime: sourceRange.start + duration) }
-        await writer.finishWriting()
+        await writer.finishMediaWriting()
         try Task.checkCancellation()
         guard writer.status == .completed else {
             throw writer.error ?? ToolError.invalid("Could not finish writing audio.")
