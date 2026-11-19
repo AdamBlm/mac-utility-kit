@@ -276,6 +276,46 @@ public enum PDFPageEditing {
         try manager.moveItem(at: stagedOutput, to: output)
     }
 
+    private static func copyBookmarks(from original: PDFDocument, to output: PDFDocument, using pages: [PDFPageEdit]) throws {
+        guard let sourceRoot = original.outlineRoot else { return }
+        let pageMapping = Dictionary(uniqueKeysWithValues: pages.enumerated().map { ($0.element.pageNumber - 1, $0.offset) })
+        let outputRoot = PDFOutline()
+        var visited = [ObjectIdentifier(sourceRoot): sourceRoot]
+        var stack: [(source: PDFOutline, target: PDFOutline, destination: PDFDestination?, nextChild: Int)] =
+            [(sourceRoot, outputRoot, nil, 0)]
+        while let current = stack.last {
+            try Task.checkCancellation()
+            if current.nextChild < current.source.numberOfChildren {
+                stack[stack.count - 1].nextChild += 1
+                guard let child = current.source.child(at: current.nextChild) else { continue }
+                let identity = ObjectIdentifier(child)
+                guard visited[identity] == nil else { continue }
+                visited[identity] = child
+                let bookmark = PDFOutline()
+                bookmark.label = child.label
+                var remapped: PDFDestination?
+                if let destination = child.destination, let page = destination.page,
+                   let index = pageMapping[original.index(for: page)], let retained = output.page(at: index) {
+                    let mapped = PDFDestination(page: retained, at: destination.point)
+                    mapped.zoom = destination.zoom
+                    remapped = mapped
+                }
+                stack.append((child, bookmark, remapped, 0))
+            } else {
+                stack.removeLast()
+                if let parent = stack.last?.target {
+                    // Keep chapter navigation if its own page was removed but a subsection survives.
+                    let firstChild = current.target.numberOfChildren > 0 ? current.target.child(at: 0) : nil
+                    guard let destination = current.destination ?? firstChild?.destination else { continue }
+                    parent.insertChild(current.target, at: parent.numberOfChildren)
+                    current.target.destination = destination
+                    current.target.isOpen = current.source.isOpen
+                }
+            }
+        }
+        if outputRoot.numberOfChildren > 0 { output.outlineRoot = outputRoot }
+    }
+
     private static func writePages(_ pages: [PDFPageEdit], from original: PDFDocument, to output: URL) throws {
         guard !pages.isEmpty else { throw ToolError.invalid("Leave at least one page in the PDF.") }
         guard Set(pages.map(\.pageNumber)).count == pages.count else {
@@ -299,6 +339,7 @@ public enum PDFPageEditing {
             document.insert(page, at: document.pageCount)
             rotations.append(rotation)
         }
+        try copyBookmarks(from: original, to: document, using: pages)
         try Task.checkCancellation()
         guard document.write(to: output), let exported = PDFDocument(url: output),
               exported.pageCount == pages.count,

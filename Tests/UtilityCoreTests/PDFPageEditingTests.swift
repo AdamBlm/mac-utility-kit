@@ -85,6 +85,47 @@ import UtilityCore
     }
 }
 
+@Test func editedPDFRetainsNestedBookmarksAndRemapsReorderedDestinations() async throws {
+    try await withPDFEditingFixture { _, directory in
+        let input = directory.appendingPathComponent("Bookmarked.pdf")
+        try pdfFixtureData(objects: [
+            "<< /Type /Catalog /Pages 2 0 R /Outlines 8 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R 4 0 R 5 0 R 6 0 R 7 0 R] /Count 5 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 101 200] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 102 200] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 103 200] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 104 200] >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 105 200] >>",
+            "<< /Type /Outlines /First 9 0 R /Last 12 0 R /Count 4 >>",
+            "<< /Title (Chapter) /Parent 8 0 R /Dest [3 0 R /Fit] /First 10 0 R /Last 10 0 R /Count 1 /Next 11 0 R >>",
+            "<< /Title (Kept section) /Parent 9 0 R /Dest [6 0 R /Fit] >>",
+            "<< /Title (Removed section) /Parent 8 0 R /Dest [5 0 R /Fit] /Prev 9 0 R /Next 12 0 R >>",
+            "<< /Title (Second output page) /Parent 8 0 R /Dest [4 0 R /Fit] /Prev 11 0 R >>"
+        ]).write(to: input)
+        let source = try #require(PDFDocument(url: input))
+        try #require(source.outlineRoot?.numberOfChildren == 3)
+
+        let output = directory.appendingPathComponent("Extracted.pdf")
+        var options = PDFExtractOptions()
+        options.range = "4, 2"
+        options.order = .selection
+        try await PDFPageEditing.extract(input, to: output, options: options) { _ in }
+        let document = try #require(PDFDocument(url: output))
+        let outline = try #require(document.outlineRoot)
+        #expect(outline.numberOfChildren == 2)
+        let chapter = try #require(outline.child(at: 0))
+        let section = try #require(chapter.child(at: 0))
+        let second = try #require(outline.child(at: 1))
+        #expect(chapter.label == "Chapter")
+        #expect(section.label == "Kept section")
+        #expect(second.label == "Second output page")
+        #expect(document.index(for: try #require(chapter.destination?.page)) == 0)
+        #expect(document.index(for: try #require(section.destination?.page)) == 0)
+        #expect(document.index(for: try #require(second.destination?.page)) == 1)
+        #expect(try pdfPageNumbers(output) == [4, 2])
+    }
+}
+
 @Test func deletePDFPagesExportsTheComplementOfAThumbnailRange() async throws {
     try await withPDFEditingFixture { source, directory in
         let marks = PageSelection.updating([], at: 3, extendingFrom: nil)
