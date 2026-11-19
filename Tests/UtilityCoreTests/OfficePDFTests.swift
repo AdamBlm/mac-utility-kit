@@ -37,11 +37,20 @@ struct OfficePDFTests {
         let fullPDF = try #require(PDFDocument(data: preview.pdf))
         #expect(fullPDF.page(at: 0)?.string?.contains("FIRST PAGE") == true)
 
+        let original = try Data(contentsOf: docx)
+        options.wordPaper = .a4
+        let reflowed = try await OfficePDF.preview(docx, kind: .word, options: options)
+        #expect(reflowed.selectedPages == [2])
+        let paper = try OfficePDF.renderedPage(reflowed, page: 2).size
+        #expect(abs(paper.width - 595.28) < 1 && abs(paper.height - 841.89) < 1)
+
         let destination = folder.appending(path: "Selected.pdf")
         _ = try await OfficePDF.export(docx, to: destination, kind: .word, options: options) { _ in }
         let output = try #require(PDFDocument(url: destination))
         #expect(output.pageCount == 1)
         let page = try #require(output.page(at: 0))
+        #expect(page.bounds(for: .cropBox).size == paper)
+        #expect(try Data(contentsOf: docx) == original)
         let text = try #require(page.string)
         #expect(text.contains("SECOND PAGE Café 東京"))
         #expect(!text.contains("FIRST PAGE"))
@@ -69,6 +78,35 @@ struct OfficePDFTests {
             try await OfficePDF.export(input, to: missing, kind: .word, options: options) { _ in }
         }
         #expect(!FileManager.default.fileExists(atPath: missing.path))
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func selectsPagesAfterPaperSizeReflowsTheDocument() async throws {
+        let folder = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "Reflow.rtf")
+        let header = #"{\rtf1\ansi\deff0{\fonttbl{\f0 Helvetica;}}\paperw12240\paperh15840\margl1440\margr1440\margt1440\margb1440\pard\f0\fs24\sl400\slmult0 "#
+        let lines = (1...39).map { "Line \($0)" }.joined(separator: #"\par "#)
+        try Data((header + lines + "}").utf8).write(to: source)
+
+        var options = OfficePDFOptions()
+        options.libreOfficeExecutable = try Self.executable()
+        options.pageRange = "2"
+        let original = try await OfficePDF.preview(source, kind: .word, options: options)
+        #expect(original.totalPages == 2)
+        #expect(original.selectedPages == [2])
+
+        options.wordPaper = .legal
+        let destination = folder.appending(path: "Reflowed.pdf")
+        await #expect(throws: ToolError.self) {
+            try await OfficePDF.export(source, to: destination, kind: .word, options: options) { _ in }
+        }
+        #expect(!FileManager.default.fileExists(atPath: destination.path))
+        options.pageRange = "1"
+        let reflowed = try await OfficePDF.preview(source, kind: .word, options: options)
+        #expect(reflowed.totalPages == 1)
+        let pdf = try #require(PDFDocument(data: reflowed.pdf))
+        #expect(pdf.page(at: 0)?.string?.contains("Line 39") == true)
     }
 
     @Test func reportsUnsupportedInputAndMissingEngine() {

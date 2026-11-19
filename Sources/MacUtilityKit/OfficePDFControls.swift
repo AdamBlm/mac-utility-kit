@@ -47,7 +47,16 @@ struct OfficePDFControls: View {
             }
             switch kind {
             case .word:
-                Text("Uses the document’s page size and margins. LibreOffice may substitute missing fonts.")
+                SettingRow("Paper size") {
+                    Picker("Paper size", selection: $options.wordPaper) {
+                        Text("Document size").tag(nil as PDFPrintPaper?)
+                        ForEach(PDFPrintPaper.allCases) { paper in
+                            Text(paper.rawValue).tag(Optional(paper))
+                        }
+                    }
+                    .labelsHidden()
+                }
+                Text("A custom paper size can change page breaks. LibreOffice may substitute missing fonts.")
                     .font(.callout).foregroundStyle(.secondary)
             case .powerPoint:
                 Toggle("Include hidden slides", isOn: $options.includesHiddenSlides)

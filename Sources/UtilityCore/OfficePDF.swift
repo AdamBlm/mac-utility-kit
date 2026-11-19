@@ -34,6 +34,7 @@ public enum OfficePDFKind: String, CaseIterable, Identifiable, Sendable {
 public struct OfficePDFOptions: Equatable, Sendable {
     public var libreOfficeExecutable: URL?
     public var pageRange = ""
+    public var wordPaper: PDFPrintPaper?
     public var includesHiddenSlides = false
     public var slideLayout = OfficeSlideLayout.single
     public var handoutPaper = PDFPrintPaper.letter
@@ -189,6 +190,12 @@ public enum OfficePDF {
             prepared = staging.appending(path: "Plain.txt")
             if !FileManager.default.fileExists(atPath: prepared.path) { try Data(text.utf8).write(to: prepared) }
             inputFilter = "Text (encoded):UTF8,LF"
+        }
+        if kind == .word, let paper = options.wordPaper {
+            prepared = try await OfficeWriterPreparation.prepare(
+                prepared, paper: paper, executable: executable, in: staging, inputFilter: inputFilter
+            )
+            inputFilter = OfficeWriterPreparation.flatFilter
         }
         if kind == .excel, !options.singlePageSheets, options.spreadsheetPrint.requiresPreparation {
             prepared = try await OfficeCalcPreparation.prepare(input, options: options.spreadsheetPrint,

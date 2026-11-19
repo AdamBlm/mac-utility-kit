@@ -96,7 +96,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Redact PDF** permanently removes marked content in a rasterized copy of an unencrypted PDF. The copy contains rendered pages, with text selection, links, and forms removed.
 - **Web Page to PDF** previews an HTTP or HTTPS page and exports a continuous or paginated PDF. Paginated export supports paper, margins, and print backgrounds.
 - **Convert Documents** uses Pandoc and LibreOffice for supported conversion pairs, with text previews and batch filename templates. Plain-text export drops formatting and images.
-- **Word to PDF** uses LibreOffice to preview the source layout and export selected pages with searchable text and links. Page setup and font substitution follow LibreOffice.
+- **Word to PDF** uses LibreOffice to preview the document at its saved size, A4, US Letter, or US Legal and export selected pages with searchable text and links. Page ranges apply after layout. LibreOffice may substitute missing fonts.
 - **PowerPoint to PDF** previews selectable slides, including hidden slides when requested, and exports individual slides or 2-, 4-, or 6-slide handouts. Videos and animations export as static slides.
 - **Excel to PDF** previews printed workbook pages and supports sheet and cell ranges, paper and orientation, and fitting to one page wide. Saved print settings are used by default.
 - **Markdown to PDF** previews GFM Markdown and exports searchable, paginated PDF with theme, paper, margin, and source-folder image options.
