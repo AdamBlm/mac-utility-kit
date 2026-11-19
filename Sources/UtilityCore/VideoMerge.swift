@@ -2,7 +2,20 @@ import AVFoundation
 
 public enum VideoMerge {
     public static func plan(_ inputs: [URL], options: VideoMergeOptions) async throws -> VideoMergePlan {
-        try await prepare(inputs, options: options).plan
+        let prepared = try await prepare(inputs, options: options)
+        var plan = prepared.plan
+        if options.mode == .passthrough, let issue = plan.passthroughIssue {
+            plan.exportIssue = issue
+        } else {
+            let timeline = try build(prepared, options: options)
+            do {
+                _ = try await configuredExport(timeline, options: options)
+            } catch {
+                try Task.checkCancellation()
+                plan.exportIssue = error.localizedDescription
+            }
+        }
+        return plan
     }
 
     public static func previewBoundary(
@@ -70,13 +83,7 @@ public enum VideoMerge {
         }
         let timeline = try build(prepared, options: options)
         let fileType = options.format.fileType
-        let preset = options.mode == .passthrough ? AVAssetExportPresetPassthrough : AVAssetExportPresetHighestQuality
-        guard let export = AVAssetExportSession(asset: timeline.composition, presetName: preset),
-              export.supportedFileTypes.contains(fileType) else {
-            throw ToolError.invalid("These streams cannot be written as \(options.format.title) with the selected method.")
-        }
-        export.videoComposition = timeline.videoComposition
-        export.shouldOptimizeForNetworkUse = true
+        let export = try await configuredExport(timeline, options: options)
 
         let staging = output.deletingLastPathComponent().appending(path: ".video-merge-\(UUID().uuidString)")
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)
@@ -97,6 +104,23 @@ public enum VideoMerge {
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return "\(inputs.count) clips · \(options.format.title) · \(options.mode.rawValue)"
+    }
+
+    private typealias Timeline = (composition: AVMutableComposition, videoComposition: AVMutableVideoComposition?)
+
+    private static func configuredExport(_ timeline: Timeline, options: VideoMergeOptions) async throws -> AVAssetExportSession {
+        let fileType = options.format.fileType
+        let preset = options.mode == .passthrough ? AVAssetExportPresetPassthrough : AVAssetExportPresetHighestQuality
+        let compatible = await AVAssetExportSession.compatibility(ofExportPreset: preset, with: timeline.composition,
+                                                                  outputFileType: fileType)
+        try Task.checkCancellation()
+        guard compatible, let export = AVAssetExportSession(asset: timeline.composition, presetName: preset),
+              export.supportedFileTypes.contains(fileType) else {
+            throw ToolError.invalid("These streams cannot be written as \(options.format.title) with the selected method.")
+        }
+        export.videoComposition = timeline.videoComposition
+        export.shouldOptimizeForNetworkUse = true
+        return export
     }
 
     private struct Clip {
@@ -191,7 +215,7 @@ public enum VideoMerge {
 
     private static func build(
         _ prepared: Prepared, options: VideoMergeOptions, window: CMTimeRange? = nil
-    ) throws -> (composition: AVMutableComposition, videoComposition: AVMutableVideoComposition?) {
+    ) throws -> Timeline {
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw ToolError.invalid("Could not create the merged video track.")

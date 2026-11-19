@@ -20,6 +20,7 @@ struct ToolWorkspace: View {
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
+    @State private var videoMergeReview: VideoMergeReview?
     @State private var muteReview: MuteVideoReview?
     @State private var compressionReview: CompressionReview?
     @State private var passthroughReview: VideoPassthroughReview?
@@ -160,7 +161,8 @@ struct ToolWorkspace: View {
         case .videoToGIF:
             draft.options.videoGIF.engineIssue != nil
         case .mergeVideos:
-            draft.inputs.count < 2
+            videoMergeReview?.request.inputs != draft.inputs || videoMergeReview?.request.options != draft.options.videoMerge
+                || videoMergeReview?.permitsExport != true
         case .replaceAudio:
             draft.options.replaceAudio.source == nil
         case .burnSubtitles:
@@ -291,7 +293,7 @@ struct ToolWorkspace: View {
                         case .cropRotateVideo:
                             VideoCropControls(inputs: draft.inputs, options: $draft.options.crop)
                         case .mergeVideos:
-                            VideoMergeControls(inputs: $draft.inputs, options: $draft.options.videoMerge)
+                            VideoMergeControls(inputs: $draft.inputs, options: $draft.options.videoMerge, review: $videoMergeReview)
                         case .replaceAudio:
                             ReplaceAudioControls(inputs: draft.inputs, options: $draft.options.replaceAudio)
                         case .burnSubtitles:

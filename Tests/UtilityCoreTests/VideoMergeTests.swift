@@ -83,6 +83,48 @@ struct VideoMergeTests {
         #expect(CMFormatDescriptionGetMediaSubType(try #require(formats.first)) == kCMVideoCodecType_H264)
     }
 
+    @Test
+    func checksContainerCompatibilityForIdenticalStreamsBeforeExport() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let proRes = try await conversionFixture(in: directory)
+        let inputs = [proRes, proRes]
+        var options = VideoMergeOptions()
+        options.mode = .passthrough
+        options.keepsAudio = false
+        options.format = .mp4
+        let incompatible = try await VideoMerge.plan(inputs, options: options)
+        #expect(incompatible.passthroughIssue == nil)
+        #expect(incompatible.exportIssue?.contains("cannot be written as MP4") == true)
+        let boundary = try await VideoMerge.previewBoundary(inputs, before: 1, options: options)
+        #expect(boundary.before.width > 0)
+        #expect(boundary.after.width > 0)
+        let rejected = directory.appending(path: "unsupported.mp4")
+        await #expect(throws: ToolError.self) {
+            try await VideoMerge.export(inputs, to: rejected, options: options) { _ in }
+        }
+        #expect(!FileManager.default.fileExists(atPath: rejected.path))
+
+        options.format = .mov
+        let compatible = try await VideoMerge.plan(inputs, options: options)
+        #expect(compatible.exportIssue == nil)
+        let output = directory.appending(path: "joined.mov")
+        _ = try await VideoMerge.export(inputs, to: output, options: options) { _ in }
+        let asset = AVURLAsset(url: output)
+        #expect(try await asset.load(.isPlayable))
+        #expect(abs(try await asset.load(.duration).seconds - compatible.duration) < 0.05)
+
+        options.format = .mp4
+        options.mode = .normalize
+        let normalized = try await VideoMerge.plan(inputs, options: options)
+        #expect(normalized.exportIssue == nil)
+        let normalizedOutput = directory.appending(path: "normalized.mp4")
+        _ = try await VideoMerge.export(inputs, to: normalizedOutput, options: options) { _ in }
+        let rendered = AVURLAsset(url: normalizedOutput)
+        #expect(try await rendered.load(.isPlayable))
+        #expect(abs(try await rendered.load(.duration).seconds - normalized.duration) < 0.05)
+    }
+
     @MainActor @Test
     func playbackTrimsBothSidesOfLongClips() async throws {
         let directory = try Self.makeDirectory()

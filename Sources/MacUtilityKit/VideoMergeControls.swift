@@ -3,27 +3,34 @@ import Combine
 import SwiftUI
 import UtilityCore
 
+struct VideoMergeReview {
+    struct Request: Equatable {
+        let inputs: [URL]
+        let options: VideoMergeOptions
+        let revision: Int
+    }
+
+    let request: Request
+    let result: Result<VideoMergePlan, any Error>
+
+    var permitsExport: Bool {
+        guard let plan = try? result.get() else { return false }
+        return plan.exportIssue == nil
+    }
+}
+
 struct VideoMergeControls: View {
     @Binding var inputs: [URL]
     @Binding var options: VideoMergeOptions
+    @Binding var review: VideoMergeReview?
     @State private var selection = 1
-    @State private var analysis: Analysis?
+    @State private var reviewRevision = 0
     @State private var preview: Preview?
     @State private var playbackRequest: BoundaryRequest?
 
-    private struct Request: Equatable {
-        let inputs: [URL]
-        let options: VideoMergeOptions
-    }
-
     private struct BoundaryRequest: Equatable {
-        let request: Request
+        let request: VideoMergeReview.Request
         let index: Int
-    }
-
-    private struct Analysis {
-        let request: Request
-        let result: Result<VideoMergePlan, any Error>
     }
 
     private struct Preview {
@@ -32,8 +39,12 @@ struct VideoMergeControls: View {
     }
 
     var body: some View {
-        let request = Request(inputs: inputs, options: options)
-        let boundary = inputs.count > 1 ? BoundaryRequest(request: request, index: min(selection, inputs.count - 1)) : nil
+        let request = VideoMergeReview.Request(inputs: inputs, options: options, revision: reviewRevision)
+        let currentReview = review?.request == request ? review : nil
+        let plan = try? currentReview?.result.get()
+        let canPreview = plan.map { options.mode == .normalize || $0.passthroughIssue == nil } == true
+        let boundary = inputs.count > 1 && canPreview
+            ? BoundaryRequest(request: request, index: min(selection, inputs.count - 1)) : nil
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Format") {
                 Picker("Format", selection: $options.format) {
@@ -57,19 +68,27 @@ struct VideoMergeControls: View {
             }
             Toggle("Keep primary audio from each clip", isOn: $options.keepsAudio)
             if !inputs.isEmpty {
-                let plan = analysis?.request == request ? try? analysis?.result.get() : nil
                 clipOrder(plan: plan)
+                if inputs.count > 1 {
+                    Button("Recheck Clips", systemImage: "arrow.clockwise") {
+                        review = nil
+                        preview = nil
+                        playbackRequest = nil
+                        reviewRevision += 1
+                    }
+                }
                 if let plan {
                     LabeledContent("Output", value: "\(Int(plan.size.width)) × \(Int(plan.size.height)) · \(time(plan.duration))")
                         .font(.callout.monospacedDigit())
                         .frame(maxWidth: 310)
-                    if options.mode == .passthrough, let issue = plan.passthroughIssue {
+                    if let issue = plan.exportIssue {
                         Text(issue).font(.callout).foregroundStyle(.secondary)
-                    } else if let boundary {
-                        boundaryPreview(boundary)
                     }
-                } else if analysis?.request == request, case .failure(let error) = analysis?.result {
+                    if let boundary { boundaryPreview(boundary) }
+                } else if case .failure(let error) = currentReview?.result {
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                } else if inputs.count > 1 {
+                    ProgressView("Checking merge compatibility…").controlSize(.small)
                 }
                 if inputs.count == 1 {
                     Text("Add a second clip to merge.").font(.callout).foregroundStyle(.secondary)
@@ -79,6 +98,7 @@ struct VideoMergeControls: View {
         .task(id: request) { await analyze(request) }
         .task(id: boundary) { await loadBoundary(boundary) }
         .onChange(of: boundary) { playbackRequest = nil }
+        .onDisappear { review = nil }
     }
 
     private func clipOrder(plan: VideoMergePlan?) -> some View {
@@ -88,7 +108,7 @@ struct VideoMergeControls: View {
                 let input = inputs[index]
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(input.lastPathComponent).lineLimit(1).truncationMode(.middle).help(input.path)
+                        Text("\(index + 1). \(input.lastPathComponent)").lineLimit(1).truncationMode(.middle).help(input.path)
                         if let clip = plan?.clips[index] {
                             let interval = "\(time(clip.start))–\(time(clip.start + clip.duration))"
                             Text([interval, warning(for: clip)].compactMap { $0 }.joined(separator: " · "))
@@ -168,13 +188,18 @@ struct VideoMergeControls: View {
         inputs.swapAt(index, index + offset)
     }
 
-    private func analyze(_ request: Request) async {
-        guard request.inputs.count > 1 else { analysis = nil; return }
+    private func analyze(_ request: VideoMergeReview.Request) async {
+        guard !Task.isCancelled else { return }
+        guard request.inputs.count > 1 else { review = nil; return }
         do {
             let plan = try await VideoMerge.plan(request.inputs, options: request.options)
-            if !Task.isCancelled { analysis = Analysis(request: request, result: .success(plan)) }
+            if !Task.isCancelled, request.revision == reviewRevision {
+                review = VideoMergeReview(request: request, result: .success(plan))
+            }
         } catch {
-            if !Task.isCancelled { analysis = Analysis(request: request, result: .failure(error)) }
+            if !Task.isCancelled, request.revision == reviewRevision {
+                review = VideoMergeReview(request: request, result: .failure(error))
+            }
         }
     }
 

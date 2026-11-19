@@ -55,6 +55,7 @@ public struct VideoMergePlan: Sendable {
     public let duration: Double
     public let size: CGSize
     public let passthroughIssue: String?
+    public internal(set) var exportIssue: String?
 }
 
 public struct VideoMergeBoundaryPreview: Sendable {
