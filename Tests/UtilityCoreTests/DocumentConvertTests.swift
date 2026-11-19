@@ -84,6 +84,8 @@ struct DocumentConvertTests {
         options.filenamePattern = "{index} - {name}.odt"
         #expect(try DocumentConvert.outputStem(base, position: 3, options: options) == "3 - My {index} résumé")
         #expect(DocumentConvert.optionIssue(for: base, options: options)?.contains("Pandoc") == true)
+        options.pandocExecutable = FileManager.default.temporaryDirectory
+        #expect(DocumentConvert.optionIssue(for: base, options: options)?.contains("Pandoc") == true)
         options.target = .docx
         #expect(DocumentConvert.optionIssue(for: base, options: options)?.contains("different") == true)
         options.filenamePattern = "../{name}"

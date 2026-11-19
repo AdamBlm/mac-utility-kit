@@ -3,12 +3,19 @@ import Subprocess
 import System
 
 enum ExternalTool {
+    static func isExecutable(_ url: URL) -> Bool {
+        guard url.isFileURL else { return false }
+        let executable = url.resolvingSymlinksInPath()
+        return (try? executable.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            && FileManager.default.isExecutableFile(atPath: executable.path)
+    }
+
     static func run(
         _ executable: URL, name: String, arguments: [String], directory: URL,
         standardOutput: FileHandle? = nil, diagnostics: URL? = nil
     ) async throws {
         try Task.checkCancellation()
-        guard executable.isFileURL, FileManager.default.isExecutableFile(atPath: executable.path) else {
+        guard isExecutable(executable) else {
             throw ToolError.invalid("Choose an executable \(name) binary.")
         }
         let log = diagnostics ?? directory.appendingPathComponent(UUID().uuidString + ".log")

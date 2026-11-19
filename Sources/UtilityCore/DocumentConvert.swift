@@ -85,8 +85,7 @@ public enum DocumentConvert {
         do {
             let engine = try requiredEngine(for: input, options: options)
             if engine == .pandoc || engine == .both {
-                guard let pandoc = options.pandocExecutable, pandoc.isFileURL,
-                      FileManager.default.isExecutableFile(atPath: pandoc.path) else {
+                guard let pandoc = options.pandocExecutable, ExternalTool.isExecutable(pandoc) else {
                     return "Choose a Pandoc executable for this conversion."
                 }
             }

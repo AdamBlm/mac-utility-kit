@@ -7,10 +7,7 @@ enum LibreOfficeHeadless {
     }
 
     static func hasExecutable(_ selection: URL) -> Bool {
-        guard selection.isFileURL else { return false }
-        let executable = binary(for: selection).resolvingSymlinksInPath()
-        return (try? executable.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
-            && FileManager.default.isExecutableFile(atPath: executable.path)
+        ExternalTool.isExecutable(binary(for: selection))
     }
 
     static func convert(
