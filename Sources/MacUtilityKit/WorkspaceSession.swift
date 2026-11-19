@@ -138,6 +138,7 @@ final class WorkspaceSession {
     private(set) var reports: [Tool: JobReport] = [:]
     private(set) var errors: [Tool: String] = [:]
     @ObservationIgnored private var job: Task<Void, Never>?
+    @ObservationIgnored private var mergePreviewDirectory: PDFMergePreviewDirectory?
 
     init() {
         let retention = DraftRetention.shared
@@ -273,9 +274,17 @@ final class WorkspaceSession {
                     options.pdfMergeOrder = plan
                     options.pdfMergeSourceStamps = mergeStamps(draft, plan: plan)
                 }
+                let destination: URL
+                if preview {
+                    let directory = try mergePreviewDirectory ?? PDFMergePreviewDirectory()
+                    mergePreviewDirectory = directory
+                    destination = directory.url
+                } else {
+                    destination = draft.destination
+                }
                 let report = try await ToolRunner.run(
                     tool, inputs: draft.inputs,
-                    destination: preview ? FileManager.default.temporaryDirectory : draft.destination,
+                    destination: destination,
                     imageSize: draft.pixels, options: options
                 ) { fraction in
                     await self.updateProgress(fraction)
