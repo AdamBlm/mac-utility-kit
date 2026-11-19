@@ -42,7 +42,7 @@ struct ToolWorkspace: View {
     private var passthroughRequest: VideoPassthroughRequest? {
         let options = draft.options.conversion
         guard tool == .convertVideo, options.mode == .passthrough, !draft.inputs.isEmpty,
-              !options.requiresFFmpeg || options.ffmpegExecutable != nil else { return nil }
+              options.validationIssue == nil else { return nil }
         return .init(inputs: draft.inputs, options: options, refreshID: passthroughRefreshID)
     }
 
@@ -148,7 +148,7 @@ struct ToolWorkspace: View {
     private var exportSettingsIncomplete: Bool {
         switch tool {
         case .convertVideo:
-            (draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil)
+            draft.options.conversion.validationIssue != nil
                 || (passthroughRequest.map { passthroughReview?.request != $0 || passthroughReview?.failures.count == $0.inputs.count } ?? false)
         case .trimVideo:
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim

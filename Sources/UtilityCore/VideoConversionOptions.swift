@@ -65,6 +65,15 @@ public struct VideoConversionOptions: Equatable, Sendable {
         format == .webm || maximumHeight != nil || frameRate != nil
     }
 
+    package var validationIssue: String? {
+        do {
+            try validate()
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     func validate() throws {
         if mode == .transcode, !format.supportedCodecs.contains(codec) {
             throw ToolError.invalid("\(codec.title) video is unavailable in \(format.title) transcoding.")
@@ -77,6 +86,9 @@ public struct VideoConversionOptions: Equatable, Sendable {
         }
         if let frameRate, !(1...240).contains(frameRate) {
             throw ToolError.invalid("Enter a frame rate between 1 and 240 fps.")
+        }
+        if let ffmpegExecutable, !ExternalTool.isExecutable(ffmpegExecutable) {
+            throw ToolError.invalid("Choose an executable FFmpeg binary or clear the custom selection.")
         }
         if requiresFFmpeg, ffmpegExecutable == nil {
             throw ToolError.invalid("Select an FFmpeg executable for WebM or custom dimensions and frame rate.")

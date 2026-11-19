@@ -83,10 +83,12 @@ extension ToolWorkspace {
             .padding(.top, 8)
         }
         if conversion.requiresFFmpeg, conversion.ffmpegExecutable == nil {
-            Label("These settings require FFmpeg.", systemImage: "info.circle")
+            executablePicker("FFmpeg", selection: $draft.options.conversion.ffmpegExecutable)
+        }
+        if let issue = conversion.validationIssue {
+            Label(issue, systemImage: "info.circle")
                 .font(.caption)
                 .foregroundStyle(.secondary)
-            executablePicker("FFmpeg", selection: $draft.options.conversion.ffmpegExecutable)
         }
     }
 

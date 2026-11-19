@@ -3,6 +3,17 @@ import Foundation
 import Testing
 @testable import UtilityCore
 
+@Test func videoConversionRejectsAnExecutableDirectory() throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    var options = VideoConversionOptions()
+    options.ffmpegExecutable = folder
+    #expect(options.validationIssue?.contains("Choose an executable FFmpeg binary") == true)
+    #expect(throws: ToolError.self) { try options.validate() }
+    options.ffmpegExecutable = nil
+    #expect(options.validationIssue == nil)
+}
+
 @Test func videoConversionExportsPlayableH264() async throws {
     let folder = try conversionFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
