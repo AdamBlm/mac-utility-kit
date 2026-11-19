@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 private enum UnicodeInspectorMode: String, CaseIterable {
@@ -17,14 +18,35 @@ struct UnicodeInspectorView: View {
     @Binding var draft: UnicodeInspectorDraft
     @State private var rowLimit = 100
     @State private var editorRevision = 0
+    @State private var importTask: Task<Void, Never>?
+    @State private var importIssue: String?
+    @State private var fileName: String?
 
     var body: some View {
         InteractiveToolLayout(tool: .unicodeInspector) { palette in
             WorkspaceSection("Text", palette: palette) {
-                TextEditor(text: $draft.text)
+                HStack {
+                    Button("Open UTF-8 File…", systemImage: "folder") {
+                        if let url = DeveloperToolFiles.choose() { load(url) }
+                    }
+                    .disabled(importTask != nil)
+                    ClipboardFileButton(allowedTypes: [.data], onPasteFile: load)
+                        .disabled(importTask != nil)
+                    if importTask != nil { ProgressView().controlSize(.small) }
+                    else if let fileName { Text(fileName).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
+                }
+                if let importIssue {
+                    Text(importIssue).font(.callout).foregroundStyle(.secondary)
+                }
+                TextEditor(text: Binding(get: { draft.text }, set: { value in
+                    draft.text = value
+                    fileName = nil
+                    importIssue = nil
+                }))
                     .id(editorRevision)
                     .font(.body.monospaced())
                     .frame(minHeight: 105)
+                    .disabled(importTask != nil)
                     .accessibilityLabel("Text to inspect")
                 if !draft.text.isEmpty {
                     Text("\(draft.text.count) graphemes · \(draft.text.unicodeScalars.count) code points · \(draft.text.utf8.count) UTF-8 bytes")
@@ -56,6 +78,27 @@ struct UnicodeInspectorView: View {
         }
         .onChange(of: draft.mode) { rowLimit = 100 }
         .onChange(of: draft.text.utf8.count) { rowLimit = 100 }
+        .onDisappear { importTask?.cancel() }
+    }
+
+    private func load(_ file: URL) {
+        guard importTask == nil else { return }
+        importIssue = nil
+        importTask = Task {
+            defer { importTask = nil }
+            do {
+                let text = try await UnicodeInspector.loadUTF8(file)
+                try Task.checkCancellation()
+                draft.text = text
+                fileName = file.lastPathComponent
+                rowLimit = 100
+                editorRevision += 1
+            } catch is CancellationError {
+                return
+            } catch {
+                if !Task.isCancelled { importIssue = error.localizedDescription }
+            }
+        }
     }
 
     @ViewBuilder
@@ -125,9 +168,10 @@ struct UnicodeInspectorView: View {
                 Button("Copy \(draft.normalization.rawValue)") { DeveloperToolFiles.copy(result) }
                 Button("Apply to Text") {
                     draft.text = result
+                    fileName = nil
                     editorRevision += 1
                 }
-                    .disabled(!changed)
+                    .disabled(!changed || importTask != nil)
                 if !changed { Text("Already normalized").font(.callout).foregroundStyle(.secondary) }
             }
         }

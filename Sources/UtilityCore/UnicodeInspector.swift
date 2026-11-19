@@ -1,6 +1,27 @@
 import Foundation
 
 public enum UnicodeInspector {
+    public static let maximumFileBytes = 1_048_576
+
+    public static func loadUTF8(_ file: URL) async throws -> String {
+        try Task.checkCancellation()
+        guard file.isFileURL else { throw ToolError.invalid("Choose a local UTF-8 file.") }
+        let attributes = try file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard attributes.isRegularFile == true else { throw ToolError.invalid("Choose a local UTF-8 file.") }
+        let sizeIssue = ToolError.invalid("Choose a UTF-8 file no larger than 1 MiB.")
+        if let size = attributes.fileSize, size > maximumFileBytes { throw sizeIssue }
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        let bytes = try handle.read(upToCount: maximumFileBytes + 1) ?? Data()
+        try Task.checkCancellation()
+        guard bytes.count <= maximumFileBytes else { throw sizeIssue }
+        // Keep every scalar, including U+FEFF and NUL, so inspection matches the file bytes.
+        guard let text = String(validating: bytes, as: UTF8.self) else {
+            throw ToolError.invalid("This file contains invalid UTF-8.")
+        }
+        return text
+    }
+
     public enum Normalization: String, CaseIterable, Sendable {
         case nfc = "NFC"
         case nfd = "NFD"
@@ -29,6 +50,8 @@ public enum UnicodeInspector {
             case "\n": return "LF"
             case "\t": return "TAB"
             case " ": return "SPACE"
+            case "\u{0000}": return "NUL"
+            case "\u{FEFF}": return "BOM / ZWNBSP"
             default: break
             }
             let properties = value.properties

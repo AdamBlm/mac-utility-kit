@@ -1,7 +1,27 @@
+import Foundation
 import Testing
 import UtilityCore
 
 struct UnicodeInspectorTests {
+    @Test func importsExactUTF8BytesWithoutNormalizingOrRemovingInvisibleScalars() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appending(path: "utf8.txt")
+        let input = Data([0xEF, 0xBB, 0xBF, 0x00, 0x65, 0xCC, 0x81, 0x0D, 0x0A])
+        try input.write(to: file)
+        let text = try await UnicodeInspector.loadUTF8(file)
+        #expect(Data(text.utf8) == input)
+        let scalars = text.unicodeScalars.map(UnicodeInspector.Scalar.init(value:))
+        #expect(scalars.map(\.codePoint) == ["U+FEFF", "U+0000", "U+0065", "U+0301", "U+000D", "U+000A"])
+        #expect(scalars.map(\.invisibleMarker) == ["BOM / ZWNBSP", "NUL", nil, nil, "CR", "LF"])
+
+        try Data([0xC0, 0x80]).write(to: file)
+        await #expect(throws: ToolError.self) { try await UnicodeInspector.loadUTF8(file) }
+        try Data(repeating: 0x61, count: UnicodeInspector.maximumFileBytes + 1).write(to: file)
+        await #expect(throws: ToolError.self) { try await UnicodeInspector.loadUTF8(file) }
+    }
+
     @Test func emojiAndCombiningMarksPreserveGraphemesAndBytes() throws {
         let source = "👩‍💻e\u{301}"
         #expect(source.count == 2)
