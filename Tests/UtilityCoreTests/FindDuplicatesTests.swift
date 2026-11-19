@@ -4,6 +4,26 @@ import Testing
 
 @Suite(.serialized)
 struct FindDuplicatesTests {
+    @Test func filtersFullPathsButKeepsAllCopiesOfEachMatchingGroup() async throws {
+        let root = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let archive = root.appending(path: "Café archive")
+        try FileManager.default.createDirectory(at: archive, withIntermediateDirectories: false)
+        let first = try Self.write("field notes.txt", Data("same first group".utf8), in: archive)
+        let second = try Self.write("retained.txt", Data("same first group".utf8), in: root)
+        _ = try Self.write("receipt.txt", Data("same second group".utf8), in: root)
+        _ = try Self.write("receipt copy.txt", Data("same second group".utf8), in: root)
+
+        let result = try await FindDuplicates.scan([root], options: .init())
+        for query in ["  cafe archive ", "FIELD NOTES"] {
+            let group = try #require(result.groups(matchingPath: query).first)
+            #expect(result.groups(matchingPath: query).count == 1)
+            #expect(Set(group.files.map(\.url)) == [first, second])
+        }
+        #expect(result.groups(matchingPath: "unmatched").isEmpty)
+        #expect(result.groups(matchingPath: "  ").count == 2)
+    }
+
     @Test
     func groupsExactLargeFilesAndIgnoresRepeatedIdentityAndSymlinks() async throws {
         let folder = try Self.folder()

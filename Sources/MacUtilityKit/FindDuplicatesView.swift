@@ -21,6 +21,7 @@ struct FindDuplicatesView: View {
     @State private var confirmation = false
     @State private var preview: URL?
     @State private var error: String?
+    @State private var pathFilter = ""
 
     private var busy: Bool { scanTask != nil || draft.trashInProgress }
 
@@ -90,27 +91,47 @@ struct FindDuplicatesView: View {
     }
 
     private func results(_ report: DuplicateScanResult) -> some View {
-        LazyVStack(alignment: .leading, spacing: 14) {
+        let visible = report.groups(matchingPath: pathFilter)
+        let selectedHidden = hiddenSelectionCount(in: visible)
+        return LazyVStack(alignment: .leading, spacing: 14) {
             if report.groups.isEmpty {
                 Text("No exact duplicates in \(report.fileCount.formatted()) scanned files.")
                     .foregroundStyle(.secondary)
             } else {
+                SettingRow("Filter") {
+                    TextField("File name or folder path", text: $pathFilter)
+                        .accessibilityLabel("Filter duplicate groups by path")
+                        .disabled(busy)
+                    if !pathFilter.isEmpty {
+                        Button("Clear Filter", systemImage: "xmark.circle") { pathFilter = "" }
+                            .labelStyle(.iconOnly).disabled(busy)
+                    }
+                }
                 HStack(alignment: .top) {
                     VStack(alignment: .leading, spacing: 5) {
-                        Text("\(report.groups.count.formatted()) duplicate groups")
+                        Text(visible.count == report.groups.count
+                             ? "\(report.groups.count.formatted()) duplicate groups"
+                             : "\(visible.count.formatted()) of \(report.groups.count.formatted()) duplicate groups")
                             .font(.callout.weight(.semibold))
                         Text("Estimated reclaimable after emptying Trash · \(bytes(reclaimable(report)))")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     Spacer()
                     Button("Move to Trash…", systemImage: "trash") { confirmation = true }
-                        .disabled(draft.selected.isEmpty || busy)
+                        .disabled(draft.selected.isEmpty || selectedHidden > 0 || busy)
                     if draft.trashInProgress {
                         ProgressView().controlSize(.small)
                         if trashTask != nil { Button("Stop") { trashTask?.cancel() } }
                     }
                 }
-                ForEach(report.groups) { group in
+                if selectedHidden > 0 {
+                    Text("\(selectedHidden.formatted()) selected files are hidden. Clear the filter to review them before moving to Trash.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
+                if visible.isEmpty {
+                    Text("No duplicate groups match this path.").font(.callout).foregroundStyle(.secondary)
+                }
+                ForEach(visible) { group in
                     Divider()
                     LazyVStack(alignment: .leading, spacing: 7) {
                         Text("\(group.files.count) copies · \(bytes(group.fileSize)) each")
@@ -187,6 +208,7 @@ struct FindDuplicatesView: View {
     }
 
     private func clearResults() {
+        pathFilter = ""
         draft.report = nil
         draft.selected = []
         draft.actionIssues = []
@@ -212,8 +234,16 @@ struct FindDuplicatesView: View {
         }
     }
 
+    private func hiddenSelectionCount(in visible: [DuplicateGroup]) -> Int {
+        guard !draft.selected.isEmpty else { return 0 }
+        return draft.selected.count - visible.reduce(0) { count, group in
+            count + group.files.count { draft.selected.contains($0.url) }
+        }
+    }
+
     private func moveToTrash() {
-        guard let report = draft.report, !busy else { return }
+        guard let report = draft.report, !busy, !draft.selected.isEmpty,
+              hiddenSelectionCount(in: report.groups(matchingPath: pathFilter)) == 0 else { return }
         let selected = draft.selected
         preview = nil
         error = nil

@@ -42,6 +42,14 @@ public struct DuplicateScanResult: Sendable {
     public let issues: [DuplicateIssue]
     public let fileCount: Int
 
+    public func groups(matchingPath query: String) -> [DuplicateGroup] {
+        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !search.isEmpty else { return groups }
+        return groups.filter { group in
+            group.files.contains { $0.url.path.localizedStandardContains(search) }
+        }
+    }
+
     public func removing(_ moved: Set<URL>) -> Self {
         let updated = groups.compactMap { group -> DuplicateGroup? in
             let remaining = group.files.filter { !moved.contains($0.url) }
