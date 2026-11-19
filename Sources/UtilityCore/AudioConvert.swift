@@ -47,7 +47,7 @@ public struct AudioConvertOptions: Equatable, Sendable {
         if format == .flac && !(0...8).contains(losslessCompression) {
             return "Choose a FLAC compression level from 0 to 8."
         }
-        if format.requiresFFmpeg && ffmpegExecutable == nil {
+        if format.requiresFFmpeg, ffmpegExecutable.map(ExternalTool.isExecutable) != true {
             return "Choose an FFmpeg executable for \(format.title) output."
         }
         return nil

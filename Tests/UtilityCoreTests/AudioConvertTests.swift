@@ -96,6 +96,15 @@ struct AudioConvertTests {
         try #require(process.terminationStatus == 0)
     }
 
+    @Test func rejectsAChosenDirectoryOnlyForFormatsThatUseFFmpeg() {
+        var options = AudioConvertOptions()
+        options.ffmpegExecutable = FileManager.default.temporaryDirectory
+        options.format = .flac
+        #expect(options.validationIssue == "Choose an FFmpeg executable for FLAC output.")
+        options.format = .wav
+        #expect(options.validationIssue == nil)
+    }
+
     @Test func catchesUnsupportedSampleRateBeforeWriting() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
