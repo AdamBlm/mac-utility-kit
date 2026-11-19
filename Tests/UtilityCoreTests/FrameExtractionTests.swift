@@ -26,7 +26,8 @@ import UtilityCore
         #expect(throws: ToolError.self) { try FrameExtraction.times(duration: 250.01, options: options) }
         options.interval = 0.007
         #expect(try FrameExtraction.times(in: 0.501..<4.001, options: options).count == 500)
-        options.interval = 0
+        options.interval = VideoTimecode.seconds(from: "00:02bad") ?? 0
+        #expect(!options.intervalIsValid)
         #expect(throws: ToolError.self) { try FrameExtraction.times(duration: 3, options: options) }
     }
 
@@ -55,7 +56,7 @@ import UtilityCore
         #expect(first.width == 128 && first.height == 96)
 
         var options = FrameExtractionOptions()
-        options.interval = 0.25
+        options.interval = try #require(VideoTimecode.seconds(from: "00:00:00.25"))
         options.selection = .interval
         let times = try FrameExtraction.times(in: bounds, options: options)
         #expect(Array(times.prefix(2)) == [offset.seconds, offset.seconds + 0.25])
@@ -73,13 +74,13 @@ import UtilityCore
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: folder) }
         let input = try await conversionFixture(in: folder)
-        let length = try await FrameExtraction.duration(of: input)
-        let preview = try await FrameExtraction.preview(input, at: length * 0.51)
+        let timestamp = try #require(VideoTimecode.seconds(from: "00:00:00.125"))
+        let preview = try await FrameExtraction.preview(input, at: timestamp)
         #expect(preview.width == 128)
         #expect(preview.height == 96)
 
         var options = FrameExtractionOptions()
-        options.timestamps = [length * 0.51, 0]
+        options.timestamps = [timestamp, 0]
         options.format = format
         options.naming = .sequence
         let result = try await FrameExtraction.export(input, into: folder, options: options) { _ in }

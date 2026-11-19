@@ -152,6 +152,8 @@ struct ToolWorkspace: View {
         case .convertVideo:
             draft.options.conversion.validationIssue != nil
                 || (passthroughRequest.map { passthroughReview?.request != $0 || passthroughReview?.failures.count == $0.inputs.count } ?? false)
+        case .extractFrames:
+            draft.options.frames.selection == .interval && !draft.options.frames.intervalIsValid
         case .trimVideo:
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
                 || trimReview?.permitsExport != true

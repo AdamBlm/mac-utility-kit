@@ -51,6 +51,8 @@ public struct FrameExtractionOptions: Sendable {
     public var naming = FrameNaming.time
 
     public init() {}
+
+    package var intervalIsValid: Bool { interval.isFinite && interval > 0 }
 }
 
 public struct FrameExtractionResult: Sendable {
@@ -80,7 +82,7 @@ public enum FrameExtraction {
             return Set(times).sorted()
         case .interval:
             let interval = options.interval
-            guard interval.isFinite, interval > 0 else {
+            guard options.intervalIsValid else {
                 throw ToolError.invalid("Enter an interval greater than zero seconds.")
             }
             let firstExcess = bounds.lowerBound + Double(maximumFrames) * interval

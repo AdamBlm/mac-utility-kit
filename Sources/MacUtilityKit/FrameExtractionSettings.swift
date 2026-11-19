@@ -6,8 +6,9 @@ struct FrameExtractionSettings: View {
     @Binding var options: FrameExtractionOptions
     @State private var seconds = 0.0
     @State private var loaded: LoadedVideo?
-    @State private var preview: CGImage?
-    @State private var previewError: String?
+    @State private var timestampText: String?
+    @State private var intervalText: String?
+    @State private var rendered: Rendered?
 
     private struct LoadedVideo {
         let input: URL
@@ -20,6 +21,11 @@ struct FrameExtractionSettings: View {
         let time: Double
     }
 
+    private struct Rendered {
+        let request: PreviewRequest
+        let result: Result<CGImage, Error>
+    }
+
     private var activeVideo: LoadedVideo? { loaded?.input == input ? loaded : nil }
 
     private var request: PreviewRequest? {
@@ -29,7 +35,12 @@ struct FrameExtractionSettings: View {
     }
 
     private var timestampFormat: FloatingPointFormatStyle<Double> {
-        .number.grouping(.never).precision(.fractionLength(0...3))
+        .number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.fractionLength(0...3))
+    }
+
+    private var enteredTimestamp: Double? {
+        guard let timestampText else { return seconds }
+        return VideoTimecode.seconds(from: timestampText)
     }
 
     var body: some View {
@@ -46,9 +57,15 @@ struct FrameExtractionSettings: View {
             timestampControls
         } else {
             SettingRow("Every") {
-                TextField("Interval", value: $options.interval, format: timestampFormat)
+                TextField("Interval", text: Binding(
+                    get: { intervalText ?? options.interval.formatted(timestampFormat) },
+                    set: { text in
+                        intervalText = text
+                        options.interval = VideoTimecode.seconds(from: text) ?? 0
+                    }
+                ))
                     .frame(width: 90)
-                Text("seconds").foregroundStyle(.secondary)
+                    .help("Seconds, MM:SS, or HH:MM:SS")
             }
         }
         if let bounds = activeVideo?.bounds {
@@ -92,16 +109,20 @@ struct FrameExtractionSettings: View {
     private var previewControls: some View {
         if let bounds = activeVideo?.bounds {
             let maximum = scrubMaximum(bounds)
-            if let preview {
+            if let rendered, rendered.request == request, case .success(let preview) = rendered.result {
                 Image(decorative: preview, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
                     .frame(maxWidth: .infinity, maxHeight: 220)
                     .accessibilityLabel("Frame preview")
             }
-            if let previewError { Text(previewError).font(.callout).foregroundStyle(.secondary) }
+            if let rendered, rendered.request == request, case .failure(let error) = rendered.result {
+                Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+            } else if request != nil, rendered?.request != request {
+                ProgressView("Preparing frame…").controlSize(.small)
+            }
             Slider(value: Binding(get: { min(max(bounds.lowerBound, seconds), maximum) },
-                                  set: { seconds = $0 }), in: bounds.lowerBound...maximum)
+                                  set: { setTimestamp($0) }), in: bounds.lowerBound...maximum)
                 .accessibilityLabel("Scrub video")
                 .task(id: request) { await updatePreview(request) }
             if options.selection == .interval {
@@ -114,14 +135,30 @@ struct FrameExtractionSettings: View {
     @ViewBuilder
     private var timestampControls: some View {
         SettingRow("Timestamp") {
-            TextField("Timestamp in seconds", value: $seconds, format: timestampFormat)
+            TextField("Timestamp", text: Binding(
+                get: { timestampText ?? seconds.formatted(timestampFormat) },
+                set: { text in
+                    timestampText = text
+                    if let time = enteredTimestamp, activeVideo?.bounds?.contains(time) == true { seconds = time }
+                }
+            ))
                 .frame(width: 90)
-            Text("seconds").foregroundStyle(.secondary)
+                .help("Seconds, MM:SS, or HH:MM:SS")
             Button("Add", systemImage: "plus") {
-                options.timestamps.append(seconds)
+                guard let time = enteredTimestamp, canAddTimestamp else { return }
+                options.timestamps.append(time)
                 options.timestamps.sort()
             }
             .disabled(!canAddTimestamp)
+        }
+        if timestampText != nil {
+            if let time = enteredTimestamp {
+                if let bounds = activeVideo?.bounds, !bounds.contains(time) {
+                    Text("Enter a timestamp within the video.").font(.callout).foregroundStyle(.red)
+                }
+            } else {
+                Text("Enter seconds, MM:SS, or HH:MM:SS.").font(.callout).foregroundStyle(.red)
+            }
         }
         if options.timestamps.isEmpty {
             Text("Extracts the first frame when the timestamp list is empty.")
@@ -130,7 +167,7 @@ struct FrameExtractionSettings: View {
         ForEach(options.timestamps.indices, id: \.self) { index in
             let time = options.timestamps[index]
             HStack {
-                Button("\(time.formatted(timestampFormat)) s") { seconds = time }
+                Button("\(time.formatted(timestampFormat)) s") { setTimestamp(time) }
                     .buttonStyle(.plain)
                     .monospacedDigit()
                     .help("Preview this timestamp")
@@ -143,10 +180,16 @@ struct FrameExtractionSettings: View {
         }
     }
 
+    private func setTimestamp(_ time: Double) {
+        timestampText = nil
+        seconds = time
+    }
+
     private var canAddTimestamp: Bool {
-        guard seconds.isFinite, seconds >= 0, options.timestamps.count < FrameExtraction.maximumFrames,
-              !options.timestamps.contains(seconds) else { return false }
-        return activeVideo?.bounds?.contains(seconds) == true
+        guard let time = enteredTimestamp, time.isFinite, time >= 0,
+              options.timestamps.count < FrameExtraction.maximumFrames,
+              !options.timestamps.contains(time) else { return false }
+        return activeVideo?.bounds?.contains(time) == true
     }
 
     private func scrubMaximum(_ bounds: Range<Double>) -> Double {
@@ -155,14 +198,17 @@ struct FrameExtractionSettings: View {
     }
 
     private func load(_ url: URL?) async {
-        preview = nil
-        previewError = nil
+        rendered = nil
         loaded = nil
         guard let url else { return }
         do {
             let bounds = try await FrameExtraction.timeBounds(of: url)
             guard !Task.isCancelled else { return }
-            if !seconds.isFinite || !bounds.contains(seconds) { seconds = bounds.lowerBound }
+            if let time = enteredTimestamp, bounds.contains(time) {
+                seconds = time
+            } else if !bounds.contains(seconds) {
+                seconds = bounds.lowerBound
+            }
             loaded = LoadedVideo(input: url, bounds: bounds, error: nil)
         } catch {
             if !Task.isCancelled { loaded = LoadedVideo(input: url, bounds: nil, error: error.localizedDescription) }
@@ -170,19 +216,17 @@ struct FrameExtractionSettings: View {
     }
 
     private func updatePreview(_ request: PreviewRequest?) async {
-        previewError = nil
         guard let request else {
-            preview = nil
+            rendered = nil
             return
         }
         do {
             try await Task.sleep(for: .milliseconds(90))
             let image = try await FrameExtraction.preview(request.input, at: request.time)
-            if !Task.isCancelled { preview = image }
+            if !Task.isCancelled { rendered = Rendered(request: request, result: .success(image)) }
         } catch {
             if !Task.isCancelled {
-                preview = nil
-                previewError = error.localizedDescription
+                rendered = Rendered(request: request, result: .failure(error))
             }
         }
     }
