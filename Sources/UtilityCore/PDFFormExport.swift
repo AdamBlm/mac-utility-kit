@@ -40,7 +40,7 @@ enum PDFFormExport {
 
     try:
         from pypdf import PdfReader, PdfWriter
-        from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, NameObject, StreamObject
+        from pypdf.generic import ArrayObject, DictionaryObject, IndirectObject, NameObject, StreamObject, TextStringObject
     except ImportError:
         sys.exit("Install pypdf in the selected Python environment to export PDF forms.")
 
@@ -56,12 +56,27 @@ enum PDFFormExport {
             return (ref.idnum, ref.generation)
         return (-1, id(ref))
 
-    def widgets(document):
+    def annotations(document):
         for page in document.pages:
             for ref in page.get("/Annots", []) or []:
-                obj = ref.get_object()
-                if obj.get("/Subtype") == "/Widget":
-                    yield ref, obj
+                yield ref, ref.get_object()
+
+    def widgets(document):
+        for ref, obj in annotations(document):
+            if obj.get("/Subtype") == "/Widget":
+                yield ref, obj
+
+    def repair_free_text_defaults(writer):
+        for _, annotation in annotations(writer):
+            default = annotation.get("/DA")
+            if annotation.get("/Subtype") != "/FreeText" or not isinstance(default, NameObject):
+                continue
+            # PDFKit can encode default appearance instructions as a PDF name.
+            # Restore the string type without replacing the normal appearance stream.
+            instructions = str(default).replace("#20", " ")
+            tokens = instructions.split()
+            if len(tokens) >= 3 and tokens[0].startswith("/") and tokens[2] == "Tf":
+                annotation[name("/DA")] = TextStringObject(instructions)
 
     def ancestry(widget):
         seen = set()
@@ -208,6 +223,7 @@ enum PDFFormExport {
         else:
             canonicalize(writer)
             repair_checkboxes(writer)
+            repair_free_text_defaults(writer)
         writer.write(destination)
         verify(PdfReader(destination))
     except Exception as error:
