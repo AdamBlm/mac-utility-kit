@@ -8,15 +8,10 @@ struct PDFProtectionView: View {
     let tool: Tool
     @Binding var input: URL?
     @State private var options = PDFProtectionOptions()
-    @State private var verifiedPreview: Preview?
+    @State private var verifiedPreview: PDFView?
     @State private var task: Task<Void, Never>?
     @State private var savedOutput: URL?
     @State private var issue: String?
-
-    private struct Preview {
-        let firstPage: NSImage
-        let pageCount: Int
-    }
 
     private var removesPassword: Bool { tool == .removePassword }
     private var canExport: Bool {
@@ -42,11 +37,12 @@ struct PDFProtectionView: View {
                     SecureField("Document password", text: $options.password)
                     if removesPassword {
                         Button("Preview Unlocked PDF", systemImage: "lock.open", action: unlockPreview)
-                        if let verifiedPreview {
-                            Text("\(verifiedPreview.pageCount) pages").font(.callout).foregroundStyle(.secondary)
-                            Image(nsImage: verifiedPreview.firstPage).resizable().scaledToFit()
-                                .frame(maxWidth: 300, maxHeight: 280)
-                                .accessibilityLabel("First page of unlocked PDF")
+                        if let verifiedPreview, let document = verifiedPreview.document {
+                            Text("\(document.pageCount) pages").font(.callout).foregroundStyle(.secondary)
+                            PDFReaderCanvas(view: verifiedPreview)
+                                .id(ObjectIdentifier(verifiedPreview))
+                                .frame(height: 320)
+                                .accessibilityLabel("Unlocked PDF preview")
                         }
                     } else {
                         SecureField("Confirm document password", text: $options.confirmation)
@@ -106,12 +102,16 @@ struct PDFProtectionView: View {
         issue = nil
         verifiedPreview = nil
         guard let input, let document = PDFDocument(url: input), document.isEncrypted,
-              document.unlock(withPassword: options.password), let page = document.page(at: 0) else {
+              document.unlock(withPassword: options.password), document.pageCount > 0 else {
             issue = "Could not unlock this PDF. Check the document and its password."
             return
         }
-        verifiedPreview = Preview(firstPage: page.thumbnail(of: CGSize(width: 560, height: 720), for: .cropBox),
-                                  pageCount: document.pageCount)
+        let view = PDFView()
+        view.displayMode = .singlePageContinuous
+        view.document = document
+        view.autoScales = true
+        view.backgroundColor = .windowBackgroundColor
+        verifiedPreview = view
     }
 
     private func export() {

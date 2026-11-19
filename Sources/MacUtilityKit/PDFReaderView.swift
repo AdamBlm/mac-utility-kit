@@ -229,7 +229,7 @@ struct PDFReaderView: View {
     }
 }
 
-private struct PDFReaderCanvas: NSViewRepresentable {
+struct PDFReaderCanvas: NSViewRepresentable {
     let view: PDFView
 
     func makeNSView(context: Context) -> PDFView { view }

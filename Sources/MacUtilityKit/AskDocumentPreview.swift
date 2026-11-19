@@ -66,7 +66,7 @@ struct AskDocumentPreview: View {
         } else if let error = reader.error {
             Text(error).foregroundStyle(.secondary)
         } else {
-            AskPDFCanvas(view: reader.view)
+            PDFReaderCanvas(view: reader.view)
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
@@ -108,11 +108,4 @@ struct AskDocumentPreview: View {
             }
         }
     }
-}
-
-private struct AskPDFCanvas: NSViewRepresentable {
-    let view: PDFView
-
-    func makeNSView(context: Context) -> PDFView { view }
-    func updateNSView(_ view: PDFView, context: Context) {}
 }
