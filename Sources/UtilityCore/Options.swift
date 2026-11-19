@@ -139,10 +139,15 @@ public enum PageSelection {
         return ranges.joined(separator: ", ")
     }
 
-    package static func updating(_ selection: [Int], at index: Int, extendingFrom anchor: Int?) -> [Int] {
+    package static func updating(
+        _ selection: [Int], at index: Int, extendingFrom anchor: Int?, keepsRangeDirection: Bool = false
+    ) -> [Int] {
         if let anchor {
             var seen = Set(selection)
-            return selection + (min(anchor, index)...max(anchor, index)).filter { seen.insert($0).inserted }
+            let start = keepsRangeDirection ? anchor : min(anchor, index)
+            let end = keepsRangeDirection ? index : max(anchor, index)
+            return selection + stride(from: start, through: end, by: start <= end ? 1 : -1)
+                .filter { seen.insert($0).inserted }
         }
         if selection.contains(index) { return selection.filter { $0 != index } }
         return selection + [index]

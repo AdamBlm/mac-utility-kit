@@ -170,7 +170,8 @@ struct PDFExportPagePicker: View {
                 ForEach(0..<document.pageCount, id: \.self) { index in
                     Button {
                         let start = NSEvent.modifierFlags.contains(.shift) ? anchor : nil
-                        let edits = PageSelection.updating(selected, at: index, extendingFrom: start)
+                        let edits = PageSelection.updating(selected, at: index, extendingFrom: start,
+                                                          keepsRangeDirection: allowsDescendingRanges)
                         anchor = index
                         range = PageSelection.expression(for: edits)
                     } label: {

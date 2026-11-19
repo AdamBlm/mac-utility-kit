@@ -19,6 +19,12 @@ import UtilityCore
     #expect(try PDFPageEditing.extractPages(pageCount: 4, options: options) == [1, 2, 3, 4])
     #expect(throws: ToolError.self) { try PageSelection.indices("4–2", pageCount: 4) }
     #expect(throws: ToolError.self) { try PageSelection.indices("1", pageCount: 0) }
+
+    let clicked = PageSelection.updating([0], at: 6, extendingFrom: nil)
+    let extended = PageSelection.updating(clicked, at: 3, extendingFrom: 6, keepsRangeDirection: true)
+    options.range = PageSelection.expression(for: extended)
+    options.order = .selection
+    #expect(try PDFPageEditing.extractPages(pageCount: 7, options: options) == [1, 7, 6, 5, 4])
 }
 
 @Test func extractPublishesTheRequestedPDFPageSequenceAndPreservesTheOriginal() async throws {
