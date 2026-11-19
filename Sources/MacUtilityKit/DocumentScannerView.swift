@@ -11,6 +11,7 @@ struct DocumentScannerDraft {
 
 struct DocumentScannerView: View {
     @Binding var draft: DocumentScannerDraft
+    let stageClipboardPDF: (Data) throws -> URL
     @State private var issue: String?
     @State private var importing = false
     @State private var exporting = false
@@ -40,6 +41,11 @@ struct DocumentScannerView: View {
                     ClipboardFileButton(allowedTypes: [.image, .pdf], onPasteImage: { image in
                         let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Scan.png")
                         importFiles([attachment.url], attachment: attachment)
+                    }, onPastePDF: { data in
+                        guard data.count <= DocumentScanner.inputLimit else {
+                            throw ToolError.invalid("The copied PDF exceeds 48 MB.")
+                        }
+                        importFiles([try stageClipboardPDF(data)])
                     }) { files in importFiles(files) }
                         .disabled(importing || exporting || pendingRetake != nil)
                     if importing { ProgressView().controlSize(.small) }

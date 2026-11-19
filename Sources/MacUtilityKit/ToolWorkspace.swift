@@ -111,7 +111,7 @@ struct ToolWorkspace: View {
         case .resetPermissions: ResetPermissionsView()
         case .appDamageDiagnosis: AppDamageDiagnosisView()
         case .loginBackgroundItems: LoginBackgroundItemsView()
-        case .scanDocument: DocumentScannerView(draft: $draft.scanner)
+        case .scanDocument: DocumentScannerView(draft: $draft.scanner, stageClipboardPDF: session.stageClipboardPDF)
         case .fillFlattenForms: PDFFormsView(draft: $draft.pdfForms, stageClipboardPDF: session.stageClipboardPDF)
         case .hiddenSettings: HiddenSettingsView()
         case .cleanKeyboard: CleanKeyboardView()
