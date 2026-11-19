@@ -70,6 +70,10 @@ extension ToolWorkspace {
             }
         }
 
+        if let issue = ToolRunner.imageResizeEngineIssue(draft.options) {
+            Text(issue).font(.callout).foregroundStyle(.secondary)
+        }
+
         advanced() {
             Toggle("Allow upscaling", isOn: option(\.upscale))
             engineControls(path: \.imageMagickExecutable, name: "ImageMagick", current: draft.options.imageMagickExecutable)

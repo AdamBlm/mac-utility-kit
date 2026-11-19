@@ -192,6 +192,8 @@ struct ToolWorkspace: View {
             draft.inputs.contains { !draft.options.blurFaces.isReviewed($0) }
         case .redactImage:
             draft.inputs.contains { !draft.options.redactImage.hasMasks($0) }
+        case .resizeImages:
+            ToolRunner.imageResizeEngineIssue(draft.options) != nil
         case .convertImages:
             ImageConversion.optionIssue(draft.options.imageConversion) != nil
         case .compressImages:

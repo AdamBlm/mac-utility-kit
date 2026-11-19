@@ -3,7 +3,16 @@ import ImageIO
 import UniformTypeIdentifiers
 
 enum ImageResizing {
+    static func engineIssue(_ options: ToolOptions) -> String? {
+        if let executable = options.imageMagickExecutable {
+            return ExternalTool.isExecutable(executable) ? nil : "Choose an executable ImageMagick binary or use the macOS engine."
+        }
+        let types = CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []
+        return types.contains(options.imageFormat.type.identifier) ? nil : "This version of macOS cannot encode the selected image format."
+    }
+
     static func resize(_ input: URL, output: URL, imageSize: Int, options: ToolOptions) async throws {
+        if let issue = engineIssue(options) { throw ToolError.invalid(issue) }
         let (source, width, height) = try orientedSource(input)
         let size = try imageDimensions(width: width, height: height, longestEdge: imageSize, options: options)
         if let executable = options.imageMagickExecutable {
@@ -62,6 +71,7 @@ enum ImageResizing {
     }
 
     static func preview(_ input: URL, longestEdge: Int, options: ToolOptions) throws -> String {
+        if let issue = engineIssue(options) { throw ToolError.invalid(issue) }
         let (_, width, height) = try orientedSource(input)
         let size = try imageDimensions(width: width, height: height, longestEdge: longestEdge, options: options)
         return "\(size.width) × \(size.height)"

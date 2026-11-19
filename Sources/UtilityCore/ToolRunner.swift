@@ -369,6 +369,10 @@ public enum ToolRunner {
         )
     }
 
+    package static func imageResizeEngineIssue(_ options: ToolOptions) -> String? {
+        ImageResizing.engineIssue(options)
+    }
+
     public static func imagePreview(_ input: URL, longestEdge: Int, options: ToolOptions) throws -> String {
         try ImageResizing.preview(input, longestEdge: longestEdge, options: options)
     }

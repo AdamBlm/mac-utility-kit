@@ -27,6 +27,20 @@ import UtilityCore
     #expect(try Data(contentsOf: valid) == original)
 }
 
+@Test func resizePreviewRejectsAnExecutableDirectory() throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try imageFixture(in: folder)
+    var options = ToolOptions()
+    options.imageMagickExecutable = folder
+    let error = #expect(throws: ToolError.self) {
+        try ToolRunner.imagePreview(source, longestEdge: 40, options: options)
+    }
+    #expect(error?.localizedDescription.contains("Choose an executable ImageMagick binary") == true)
+    options.imageMagickExecutable = nil
+    #expect(try ToolRunner.imagePreview(source, longestEdge: 40, options: options) == "40 × 20")
+}
+
 @Test func resizeBatchShortensLongGeneratedFilenames() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
