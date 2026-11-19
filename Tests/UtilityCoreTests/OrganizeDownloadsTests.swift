@@ -40,35 +40,40 @@ struct OrganizeDownloadsTests {
 
         let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
         let known = source.appending(path: "Known.png")
+        let ascii = source.appending(path: "Punycode.png")
         let unknown = source.appending(path: "Unknown.png")
         try bytes.write(to: known)
+        try bytes.write(to: ascii)
         try bytes.write(to: unknown)
-        let metadata = try PropertyListSerialization.data(
-            fromPropertyList: ["https://cdn.example.test/photo.png", "https://Page.Example.test/gallery"], format: .binary, options: 0
-        )
-        let wrote = metadata.withUnsafeBytes {
-            setxattr(known.path, "com.apple.metadata:kMDItemWhereFroms", $0.baseAddress, $0.count, 0, XATTR_NOFOLLOW)
+        for (file, host) in [(known, "Bücher.example"), (ascii, "xn--bcher-kva.example")] {
+            let metadata = try PropertyListSerialization.data(
+                fromPropertyList: ["https://cdn.example.test/photo.png", "https://\(host)/gallery"], format: .binary, options: 0
+            )
+            let wrote = metadata.withUnsafeBytes {
+                setxattr(file.path, "com.apple.metadata:kMDItemWhereFroms", $0.baseAddress, $0.count, 0, XATTR_NOFOLLOW)
+            }
+            try #require(wrote == 0)
         }
-        #expect(wrote == 0)
-        let originFolder = target.appending(path: "page.example.test")
+        let originFolder = target.appending(path: "xn--bcher-kva.example")
         try FileManager.default.createDirectory(at: originFolder, withIntermediateDirectories: false)
         let prior = originFolder.appending(path: "Known.png")
         try Data("existing".utf8).write(to: prior)
 
         let destination = try OrganizeDownloads.inspectDestination(target)
         let items = try OrganizeDownloads.scan(source)
-        #expect(items.count == 2)
-        #expect(items.first?.origin == "page.example.test")
+        #expect(items.count == 3)
+        #expect(items.compactMap(\.origin) == ["xn--bcher-kva.example", "xn--bcher-kva.example"])
         #expect(items.last?.origin == nil)
         let outcome = try OrganizeDownloads.export(items, to: destination, action: .copy)
-        #expect(outcome.failures.isEmpty && outcome.completed.count == 2, "\(outcome.failures)")
+        #expect(outcome.failures.isEmpty && outcome.completed.count == 3, "\(outcome.failures)")
         #expect(try Data(contentsOf: prior) == Data("existing".utf8))
         #expect(try Data(contentsOf: originFolder.appending(path: "Known 2.png")) == bytes)
+        #expect(try Data(contentsOf: originFolder.appending(path: "Punycode.png")) == bytes)
         #expect(FileManager.default.fileExists(atPath: unknown.path))
 
         try Data("changed".utf8).write(to: known)
         let moved = try OrganizeDownloads.export(items, to: destination, action: .move)
-        #expect(moved.failures.count == 1 && moved.completed.count == 1)
+        #expect(moved.failures.count == 1 && moved.completed.count == 2)
         #expect(FileManager.default.fileExists(atPath: known.path))
         #expect(!FileManager.default.fileExists(atPath: unknown.path))
     }

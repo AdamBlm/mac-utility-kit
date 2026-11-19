@@ -179,7 +179,7 @@ public enum OrganizeDownloads {
         for value in values.reversed() {
             guard let address = URLComponents(string: value),
                   let scheme = address.scheme?.lowercased(), scheme == "http" || scheme == "https",
-                  let host = address.percentEncodedHost?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")),
+                  let host = address.url?.host()?.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".")),
                   !host.isEmpty, host.utf8.count <= 200,
                   host.utf8.allSatisfy({ (97...122).contains($0) || (48...57).contains($0) || $0 == 45 || $0 == 46 }) else { continue }
             return host
