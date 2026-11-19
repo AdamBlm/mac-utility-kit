@@ -3,6 +3,7 @@ import UtilityCore
 
 struct ImageComparisonView: View {
     let pair: ImageComparisonResult
+    var summary: String? = nil
 
     @Environment(\.dismiss) private var dismiss
     @State private var magnification: Double = 0
@@ -19,6 +20,9 @@ struct ImageComparisonView: View {
             HStack(spacing: 14) {
                 comparisonPane("Original", url: pair.source)
                 comparisonPane("Compressed", url: pair.output)
+            }
+            if let summary {
+                Text(summary).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
             }
             Picker("Zoom", selection: $magnification) {
                 Text("Fit").tag(0.0)

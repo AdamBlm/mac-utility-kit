@@ -237,6 +237,7 @@ struct ToolWorkspace: View {
                             WatermarkControls(inputs: draft.inputs, options: $draft.options.watermark)
                         case .compressImages:
                             imageCompressionControls()
+                            ImageCompressionPreviewControls(inputs: draft.inputs, options: draft.options.imageCompression)
                         case .removeMetadata:
                             metadataControls()
                         case .compressVideo:
