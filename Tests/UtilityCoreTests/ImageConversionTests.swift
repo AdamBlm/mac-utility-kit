@@ -80,6 +80,11 @@ import UtilityCore
     await #expect(throws: ToolError.self) {
         try await ImageConversion.convert(source, to: output, options: options)
     }
+    options.imageMagickExecutable = folder
+    #expect(ImageConversion.optionIssue(options) == "Choose an executable ImageMagick binary.")
+    await #expect(throws: ToolError.self) {
+        try await ImageConversion.convert(source, to: output, options: options)
+    }
     #expect(try Data(contentsOf: source) == original)
     #expect(!FileManager.default.fileExists(atPath: output.path))
 }

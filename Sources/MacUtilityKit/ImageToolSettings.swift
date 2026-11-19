@@ -41,11 +41,10 @@ extension ToolWorkspace {
         Text("Exports the primary image from multi-image files.")
             .font(.caption).foregroundStyle(.secondary)
         if options.format.requiresImageMagick {
-            if options.imageMagickExecutable == nil {
-                Text("WebP export requires ImageMagick.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             executablePicker("ImageMagick", selection: $draft.options.imageConversion.imageMagickExecutable)
+        }
+        if let issue = ImageConversion.optionIssue(options) {
+            Text(issue).font(.caption).foregroundStyle(.secondary)
         }
     }
 

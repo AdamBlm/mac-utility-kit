@@ -189,7 +189,7 @@ struct ToolWorkspace: View {
         case .redactImage:
             draft.inputs.contains { !draft.options.redactImage.hasMasks($0) }
         case .convertImages:
-            draft.options.imageConversion.format.requiresImageMagick && draft.options.imageConversion.imageMagickExecutable == nil
+            ImageConversion.optionIssue(draft.options.imageConversion) != nil
         case .compressImages:
             draft.options.imageCompression.format.requiresImageMagick && draft.options.imageCompression.imageMagickExecutable == nil
         case .removeMetadata:

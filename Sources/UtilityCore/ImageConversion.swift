@@ -33,6 +33,26 @@ public struct ImageConversionOptions: Sendable {
 }
 
 public enum ImageConversion {
+    public static func optionIssue(_ options: ImageConversionOptions) -> String? {
+        if options.format.requiresImageMagick {
+            guard let executable = options.imageMagickExecutable else {
+                return "Choose ImageMagick 7 to export WebP."
+            }
+            var isDirectory: ObjCBool = false
+            guard executable.isFileURL,
+                  FileManager.default.fileExists(atPath: executable.path, isDirectory: &isDirectory),
+                  !isDirectory.boolValue, FileManager.default.isExecutableFile(atPath: executable.path) else {
+                return "Choose an executable ImageMagick binary."
+            }
+        } else if !(CGImageDestinationCopyTypeIdentifiers() as? [String] ?? []).contains(options.format.type.identifier) {
+            return "This version of macOS cannot encode \(options.format.title)."
+        }
+        guard options.quality.isFinite, (0...1).contains(options.quality) else {
+            return "Choose a quality between 0 and 100 percent."
+        }
+        return nil
+    }
+
     public static func hasTransparency(_ input: URL) throws -> Bool {
         let source = try loadSource(input)
         let properties = try imageProperties(source)
@@ -50,12 +70,7 @@ public enum ImageConversion {
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose an output file that does not already exist.")
         }
-        if options.format.requiresImageMagick, options.imageMagickExecutable == nil {
-            throw ToolError.invalid("Choose ImageMagick 7 to export WebP.")
-        }
-        guard options.quality.isFinite, (0...1).contains(options.quality) else {
-            throw ToolError.invalid("Choose a quality between 0 and 100 percent.")
-        }
+        if let issue = optionIssue(options) { throw ToolError.invalid(issue) }
         try Task.checkCancellation()
         let source = try loadSource(input)
         let properties = try imageProperties(source)
