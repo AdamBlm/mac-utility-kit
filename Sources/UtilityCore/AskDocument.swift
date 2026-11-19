@@ -97,28 +97,47 @@ public enum AskDocument {
             || (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
     }
 
+    package struct PDFScopeStamp: Sendable {
+        fileprivate let source: URL
+        fileprivate let stamp: DuplicateFileStamp
+    }
+
+    @concurrent
+    package static func previewPDF(_ input: URL, password: String) async throws -> sending (PDFDocument, PDFScopeStamp) {
+        guard isPDF(input) else { throw ToolError.invalid("Choose a PDF to preview its pages.") }
+        try Task.checkCancellation()
+        let stamp = try inspectInput(input)
+        let document = try TextExtraction.openPDF(input, password: password)
+        guard (try? inspectInput(input)) == stamp else {
+            throw ToolError.invalid("The PDF changed while its pages were opening. Reload the page thumbnails.")
+        }
+        try Task.checkCancellation()
+        return (document, PDFScopeStamp(source: input.standardizedFileURL, stamp: stamp))
+    }
+
     public static func index(
         _ input: URL, pages: String = "", password: String = "",
         progress: @Sendable (Progress) async -> Void = { _ in }
     ) async throws -> Index {
+        try await index(input, pages: pages, password: password, reviewedPDF: nil, progress: progress)
+    }
+
+    package static func index(
+        _ input: URL, pages: String, password: String, reviewedPDF: PDFScopeStamp?,
+        progress: @Sendable (Progress) async -> Void = { _ in }
+    ) async throws -> Index {
         try Task.checkCancellation()
-        guard input.isFileURL,
-              let stamp = try DuplicateFileIO.inspect(input), stamp.bytes <= 125 * 1024 * 1024 else {
-            throw ToolError.invalid("Choose a local document under 125 MB.")
+        let stamp = try inspectInput(input)
+        if let reviewedPDF, reviewedPDF.source != input.standardizedFileURL || reviewedPDF.stamp != stamp {
+            throw ToolError.invalid("The PDF changed after its pages were reviewed. Reload the page thumbnails.")
         }
         let isPDF = isPDF(input)
         let sections: [Section]
         let omitted: [Int]
         await progress(Progress(fraction: 0, message: "Reading document"))
         if isPDF {
-            guard let pdf = PDFDocument(url: input) else { throw ToolError.invalid("Could not open this PDF.") }
-            if pdf.isLocked || (pdf.isEncrypted && !password.isEmpty), !pdf.unlock(withPassword: password) {
-                throw ToolError.invalid("Could not open this PDF. Check the password.")
-            }
-            let selectedPages = try PageSelection.indices(pages, pageCount: pdf.pageCount)
-            guard !selectedPages.isEmpty, selectedPages.count <= 100 else {
-                throw ToolError.invalid("Choose up to 100 PDF pages to index.")
-            }
+            let pdf = try TextExtraction.openPDF(input, password: password)
+            try validatePDFScope(pages, count: pdf.pageCount)
             var options = TextExtractionOptions()
             options.range = pages
             options.password = password
@@ -157,6 +176,20 @@ public enum AskDocument {
         await progress(Progress(fraction: 1, message: "Index ready"))
         return Index(source: input, sections: sections, omittedPages: omitted, isPDF: isPDF,
                      stamp: stamp, passages: passages, search: search)
+    }
+
+    package static func validatePDFScope(_ range: String, count: Int) throws {
+        let selected = try PageSelection.indices(range, pageCount: count)
+        guard !selected.isEmpty else { throw ToolError.invalid("Select at least one PDF page to index.") }
+        guard selected.count <= 100 else { throw ToolError.invalid("Choose up to 100 PDF pages to index.") }
+    }
+
+    private static func inspectInput(_ input: URL) throws -> DuplicateFileStamp {
+        guard input.isFileURL,
+              let stamp = try DuplicateFileIO.inspect(input), stamp.bytes <= 125 * 1024 * 1024 else {
+            throw ToolError.invalid("Choose a local document under 125 MB.")
+        }
+        return stamp
     }
 
     public static func answer(_ rawQuestion: String, in index: Index, after previous: Turn? = nil) async throws -> Answer {

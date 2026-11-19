@@ -24,6 +24,8 @@ struct AskDocumentView: View {
     @State private var modelMessage = AppleDocumentAnswerModel.message
     @State private var issue: String?
     @State private var preview: PreviewRequest?
+    @State private var pdfScope: PDFScope?
+    @State private var scopeRevision = UUID()
     @Environment(\.scenePhase) private var phase
 
     private struct PreviewRequest: Identifiable {
@@ -31,6 +33,33 @@ struct AskDocumentView: View {
         let index: AskDocument.Index
         let location: AskDocument.Location
         let quote: String?
+    }
+
+    private struct PDFScopeRequest: Equatable {
+        let input: URL
+        let password: String
+        let revision: UUID
+    }
+
+    private struct PDFScope {
+        let request: PDFScopeRequest
+        let result: Result<(PDFDocument, AskDocument.PDFScopeStamp), any Error>
+    }
+
+    private var scopeRequest: PDFScopeRequest? {
+        guard isPDF, let input = draft.source else { return nil }
+        return PDFScopeRequest(input: input, password: password, revision: scopeRevision)
+    }
+
+    private var currentScope: Result<(PDFDocument, AskDocument.PDFScopeStamp), any Error>? {
+        pdfScope?.request == scopeRequest ? pdfScope?.result : nil
+    }
+
+    private var canIndex: Bool {
+        guard job == nil, draft.source != nil else { return false }
+        guard isPDF else { return true }
+        guard case .success(let scope) = currentScope else { return false }
+        return (try? AskDocument.validatePDFScope(draft.pages, count: scope.0.pageCount)) != nil
     }
 
     private var documentTypes: [UTType] { [.pdf, .plainText, .rtf, UTType(filenameExtension: "md") ?? .plainText] }
@@ -62,6 +91,18 @@ struct AskDocumentView: View {
             AskDocumentPreview(index: request.index, location: request.location, quote: request.quote,
                                initialPDFPassword: password)
         }
+        .task(id: scopeRequest) { [request = scopeRequest] in
+            guard let request else { pdfScope = nil; return }
+            do {
+                let scope = try await AskDocument.previewPDF(request.input, password: request.password)
+                try Task.checkCancellation()
+                pdfScope = PDFScope(request: request, result: .success(scope))
+            } catch {
+                guard !Task.isCancelled else { return }
+                pdfScope = PDFScope(request: request, result: .failure(error))
+            }
+        }
+        .onChange(of: draft.pages) { clearIndex() }
         .onChange(of: phase) { if phase == .active { refreshModel() } }
         .onDisappear {
             job?.cancel()
@@ -84,12 +125,33 @@ struct AskDocumentView: View {
             }
             if isPDF {
                 VStack(alignment: .leading, spacing: 8) {
-                    SettingRow("Pages") {
-                        TextField("All pages, or a range", text: $draft.pages).textFieldStyle(.roundedBorder)
-                            .onChange(of: draft.pages) { clearIndex() }
-                    }
                     SettingRow("PDF password") {
-                        SecureField("If required", text: $password).textFieldStyle(.roundedBorder)
+                        SecureField("If required", text: Binding(
+                            get: { password },
+                            set: { value in
+                                password = value
+                                clearIndex()
+                            }
+                        ))
+                        .textFieldStyle(.roundedBorder)
+                        Button("Reload Page Thumbnails", systemImage: "arrow.clockwise") {
+                            scopeRevision = UUID()
+                            clearIndex()
+                        }
+                        .labelStyle(.iconOnly)
+                    }
+                    switch currentScope {
+                    case .success(let scope):
+                        let count = scope.0.pageCount
+                        PDFExportPagePicker(document: scope.0, range: $draft.pages, startsWithAll: true)
+                        if (try? PageSelection.indices(draft.pages, pageCount: count)) != nil,
+                           case .failure(let error) = Result(catching: { try AskDocument.validatePDFScope(draft.pages, count: count) }) {
+                            Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                        }
+                    case .failure(let error):
+                        Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                    case nil:
+                        ProgressView("Reading PDF pages…").controlSize(.small)
                     }
                 }
                 .disabled(job != nil)
@@ -97,7 +159,7 @@ struct AskDocumentView: View {
             HStack {
                 Button("Index Document", systemImage: "text.magnifyingglass", action: indexDocument)
                     .buttonStyle(.borderedProminent)
-                    .disabled(job != nil || draft.source == nil)
+                    .disabled(!canIndex)
                 if let index = draft.index, let first = index.sections.first {
                     Button("Preview Document", systemImage: "doc.viewfinder") {
                         showPreview(index, location: first.location)
@@ -214,12 +276,13 @@ struct AskDocumentView: View {
     }
 
     private func indexDocument() {
-        guard job == nil, let source = draft.source else { return }
+        guard canIndex, let source = draft.source else { return }
+        let reviewed = try? currentScope?.get().1
         clearIndex()
         let pages = draft.pages
         let secret = password
         run("Reading document…") { id in
-            let result = try await AskDocument.index(source, pages: pages, password: secret) { update in
+            let result = try await AskDocument.index(source, pages: pages, password: secret, reviewedPDF: reviewed) { update in
                 await MainActor.run {
                     if jobID == id { progress = update }
                 }

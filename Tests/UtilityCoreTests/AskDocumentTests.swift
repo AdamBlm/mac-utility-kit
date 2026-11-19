@@ -195,6 +195,29 @@ struct AskDocumentTests {
         }
     }
 
+    @Test func previewsAndIndexesTheSelectedPDFPagesBeforeUsingAnAnswerModel() async throws {
+        let (folder, source) = try makeSource("preview.pdf")
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try makeScan(source)
+        let alias = folder.appending(path: "same-inode.pdf")
+        try FileManager.default.linkItem(at: source, to: alias)
+        let (document, stamp) = try await AskDocument.previewPDF(source, password: "")
+        #expect(document.pageCount == 2)
+        #expect(throws: ToolError.self) { try AskDocument.validatePDFScope("none", count: document.pageCount) }
+        let selected = PageSelection.expression(for: PageSelection.updating([], at: 1, extendingFrom: nil))
+        let index = try await AskDocument.index(source, pages: selected, password: "", reviewedPDF: stamp)
+        #expect(index.sections.map(\.location) == [.page(2)])
+        await #expect(throws: ToolError.self) {
+            try await AskDocument.index(alias, pages: selected, password: "", reviewedPDF: stamp)
+        }
+        let original = try Data(contentsOf: source)
+        try original.write(to: source, options: .atomic)
+        let stale = await #expect(throws: ToolError.self) {
+            try await AskDocument.index(source, pages: selected, password: "", reviewedPDF: stamp)
+        }
+        #expect(stale?.localizedDescription.contains("changed after its pages were reviewed") == true)
+    }
+
     @Test func citesActualPageNumberForCroppedRotatedScanAndReportsBlankPage() async throws {
         let (folder, source) = try makeSource("scan.pdf")
         defer { try? FileManager.default.removeItem(at: folder) }
