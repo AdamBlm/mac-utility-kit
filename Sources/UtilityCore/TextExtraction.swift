@@ -60,7 +60,21 @@ public enum TextExtraction {
         if type?.conforms(to: .pdf) == true {
             return try await extractPDF(input, options: options, progress: progress)
         }
-        let text = try recognize(readImage(input), options: options)
+        let stamp = try PDFSourceStamp.read(input)
+        let source = try imageSource(stamp.resolved)
+        if isTIFF(source) {
+            return try await extractPages(
+                count: CGImageSourceGetCount(source), options: options, progress: progress,
+                verifySource: {
+                    guard (try? PDFSourceStamp.read(input)) == stamp else {
+                        throw ToolError.invalid("The source TIFF changed during text extraction. Try again.")
+                    }
+                }
+            ) { index in
+                try recognize(readImage(source, index: index), options: options)
+            }
+        }
+        let text = try recognize(readImage(source, index: CGImageSourceGetPrimaryImageIndex(source)), options: options)
         try Task.checkCancellation()
         await progress(1)
         return TextExtractionResult(pages: [TextExtractionPage(pageNumber: nil, text: text, error: nil)], text: text)
@@ -80,24 +94,37 @@ public enum TextExtraction {
         guard document.allowsCopying else {
             throw ToolError.invalid("This PDF does not allow copying.")
         }
-        let indices = try PageSelection.indices(options.range, pageCount: document.pageCount)
-        guard !indices.isEmpty else { throw ToolError.invalid("Select at least one page.") }
+        return try await extractPages(
+            count: document.pageCount, options: options, progress: progress,
+            verifySource: {
+                guard (try? PDFSourceStamp.read(input)) == stamp else {
+                    throw ToolError.invalid("The source PDF changed during text extraction. Try again.")
+                }
+            }
+        ) { index in
+            guard let page = document.page(at: index) else {
+                throw ToolError.invalid("Could not read page \(index + 1).")
+            }
+            if options.region == nil, options.preferEmbeddedText, let embedded = page.string?
+                .trimmingCharacters(in: .whitespacesAndNewlines), !embedded.isEmpty {
+                return embedded
+            }
+            let image = try PDFToImages.rasterizeForRecognition(page, pageNumber: index + 1)
+            return try recognize(image, options: options)
+        }
+    }
 
+    private static func extractPages(
+        count: Int, options: TextExtractionOptions, progress: @Sendable (Double) async -> Void,
+        verifySource: () throws -> Void, readText: (Int) throws -> String
+    ) async throws -> TextExtractionResult {
+        let indices = try PageSelection.indices(options.range, pageCount: count)
+        guard !indices.isEmpty else { throw ToolError.invalid("Select at least one page.") }
         var pages: [TextExtractionPage] = []
         for (offset, index) in indices.enumerated() {
             try Task.checkCancellation()
             do {
-                guard let page = document.page(at: index) else {
-                    throw ToolError.invalid("Could not read page \(index + 1).")
-                }
-                let text: String
-                if options.region == nil, options.preferEmbeddedText, let embedded = page.string?
-                    .trimmingCharacters(in: .whitespacesAndNewlines), !embedded.isEmpty {
-                    text = embedded
-                } else {
-                    let image = try PDFToImages.rasterizeForRecognition(page, pageNumber: index + 1)
-                    text = try recognize(image, options: options)
-                }
+                let text = try readText(index)
                 pages.append(TextExtractionPage(pageNumber: index + 1, text: text, error: nil))
             } catch {
                 try Task.checkCancellation()
@@ -105,9 +132,7 @@ public enum TextExtraction {
             }
             await progress(Double(offset + 1) / Double(indices.count))
             try Task.checkCancellation()
-            guard (try? PDFSourceStamp.read(input)) == stamp else {
-                throw ToolError.invalid("The source PDF changed during text extraction. Try again.")
-            }
+            try verifySource()
         }
         let text = pages.filter { $0.error == nil && !$0.text.isEmpty }.map { page in
             options.includePageBreaks ? "Page \(page.id)\n\n\(page.text)" : page.text
@@ -115,16 +140,46 @@ public enum TextExtraction {
         return TextExtractionResult(pages: pages, text: text)
     }
 
-    private static func readImage(_ input: URL) throws -> CGImage {
-        guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
-              let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true,
-              let image = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
-                kCGImageSourceCreateThumbnailFromImageAlways: true,
-                kCGImageSourceCreateThumbnailWithTransform: true,
-                kCGImageSourceThumbnailMaxPixelSize: 4_096,
-                kCGImageSourceShouldCacheImmediately: true
-              ] as CFDictionary) else {
+    public static func imagePreview(_ input: URL, pageNumber: Int?, pageRange: String) throws -> CGImage {
+        let source = try imageSource(input)
+        let index: Int
+        if isTIFF(source) {
+            let count = CGImageSourceGetCount(source)
+            if let pageNumber {
+                guard pageNumber > 0, pageNumber <= count else {
+                    throw ToolError.invalid("This TIFF page is unavailable.")
+                }
+                index = pageNumber - 1
+            } else {
+                index = try PageSelection.indices(pageRange, pageCount: count).first ?? 0
+            }
+        } else {
+            index = CGImageSourceGetPrimaryImageIndex(source)
+        }
+        return try readImage(source, index: index, maximumSize: 600)
+    }
+
+    private static func imageSource(_ input: URL) throws -> CGImageSource {
+        guard input.isFileURL, let source = CGImageSourceCreateWithURL(input as CFURL, nil),
+              let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true else {
             throw ToolError.invalid("Could not open this image for text recognition.")
+        }
+        return source
+    }
+
+    private static func isTIFF(_ source: CGImageSource) -> Bool {
+        guard let type = CGImageSourceGetType(source) else { return false }
+        return UTType(type as String)?.conforms(to: .tiff) == true
+    }
+
+    private static func readImage(_ source: CGImageSource, index: Int, maximumSize: Int = 4_096) throws -> CGImage {
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, [
+            kCGImageSourceCreateThumbnailFromImageAlways: true,
+            kCGImageSourceCreateThumbnailWithTransform: true,
+            kCGImageSourceThumbnailMaxPixelSize: maximumSize,
+            kCGImageSourceShouldCacheImmediately: true
+        ] as CFDictionary) else {
+            throw ToolError.invalid("Could not decode the image for text recognition.")
         }
         return image
     }

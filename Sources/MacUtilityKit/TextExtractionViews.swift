@@ -1,5 +1,4 @@
 import AppKit
-import ImageIO
 import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
@@ -23,10 +22,15 @@ struct TextExtractionSettings: View {
                 }
                 .labelsHidden()
             }
-            if inputs.contains(where: isPDF) {
-                SettingRow("PDF pages") {
-                    TextField("All, or e.g. 1, 3–5", text: $options.range).accessibilityLabel("PDF page range")
+            let hasPDF = inputs.contains(where: isPDF)
+            let hasTIFF = inputs.contains { isContentType($0, .tiff) }
+            if hasPDF || hasTIFF {
+                SettingRow("Pages") {
+                    TextField("All, or e.g. 1, 3–5", text: $options.range).accessibilityLabel("PDF or TIFF page range")
                 }
+                Toggle("Include page breaks in text files", isOn: $options.includePageBreaks)
+            }
+            if hasPDF {
                 DisclosureGroup("PDF options") {
                     Toggle("Use embedded text when available", isOn: $options.preferEmbeddedText)
                     if !options.preferEmbeddedText {
@@ -37,7 +41,6 @@ struct TextExtractionSettings: View {
                         .padding(.top, 6)
                 }
             }
-            Toggle("Include PDF page breaks in text files", isOn: $options.includePageBreaks)
             Toggle("Recognize only a region", isOn: Binding(
                 get: { options.region != nil },
                 set: { enabled in
@@ -149,7 +152,7 @@ private struct OCRSourcePreview: View {
     let password: String
     @Binding var region: CGRect?
     @Environment(\.colorScheme) private var colorScheme
-    @State private var thumbnail: NSImage?
+    @State private var preview: Preview?
     @State private var dragRegion: CGRect?
 
     private struct SourceKey: Equatable {
@@ -159,9 +162,16 @@ private struct OCRSourcePreview: View {
         let password: String
     }
 
+    private struct Preview {
+        let source: SourceKey
+        let thumbnail: NSImage?
+    }
+
     var body: some View {
+        let key = SourceKey(input: input, pageNumber: pageNumber, pageRange: pageRange, password: password)
         GeometryReader { geometry in
-            if let thumbnail, thumbnail.size.width > 0, thumbnail.size.height > 0 {
+            if let preview, preview.source == key, let thumbnail = preview.thumbnail,
+               thumbnail.size.width > 0, thumbnail.size.height > 0 {
                 let scale = min(geometry.size.width / thumbnail.size.width, geometry.size.height / thumbnail.size.height)
                 let width = thumbnail.size.width * scale
                 let height = thumbnail.size.height * scale
@@ -192,33 +202,37 @@ private struct OCRSourcePreview: View {
                             dragRegion = nil
                         }, including: region == nil ? .none : .gesture)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
+            } else if preview?.source == key {
                 Text("Preview unavailable")
                     .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else {
+                ProgressView().controlSize(.small)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
         }
         .background(.quaternary.opacity(0.4), in: RoundedRectangle(cornerRadius: 7))
         .accessibilityLabel("Source preview")
-        .task(id: SourceKey(input: input, pageNumber: pageNumber, pageRange: pageRange, password: password)) {
+        .task(id: key) {
+            guard !Task.isCancelled else { return }
+            dragRegion = nil
             if isPDF(input) {
-                guard let document = PDFDocument(url: input) else { thumbnail = nil; return }
-                if document.isLocked, !document.unlock(withPassword: password) { thumbnail = nil; return }
+                guard let document = PDFDocument(url: input),
+                      !document.isLocked || document.unlock(withPassword: password) else {
+                    preview = Preview(source: key, thumbnail: nil)
+                    return
+                }
                 let selected = (try? PageSelection.indices(pageRange, pageCount: document.pageCount))?.first
                 let index = pageNumber.map { $0 - 1 } ?? selected ?? 0
-                thumbnail = document.page(at: index)?
+                let thumbnail = document.page(at: index)?
                     .thumbnail(of: NSSize(width: 450, height: 450), for: .cropBox)
+                preview = Preview(source: key, thumbnail: thumbnail)
             } else {
                 let image = await Task.detached(priority: .utility) {
-                    guard let source = CGImageSourceCreateWithURL(input as CFURL, nil) else { return nil as CGImage? }
-                    return CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
-                        kCGImageSourceCreateThumbnailFromImageAlways: true,
-                        kCGImageSourceCreateThumbnailWithTransform: true,
-                        kCGImageSourceThumbnailMaxPixelSize: 600
-                    ] as CFDictionary)
+                    try? TextExtraction.imagePreview(input, pageNumber: pageNumber, pageRange: pageRange)
                 }.value
                 if !Task.isCancelled {
-                    thumbnail = image.map { NSImage(cgImage: $0, size: .zero) }
+                    preview = Preview(source: key, thumbnail: image.map { NSImage(cgImage: $0, size: .zero) })
                 }
             }
         }
@@ -236,5 +250,9 @@ private struct OCRSourcePreview: View {
 }
 
 private func isPDF(_ url: URL) -> Bool {
-    (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
+    isContentType(url, .pdf)
+}
+
+private func isContentType(_ url: URL, _ type: UTType) -> Bool {
+    (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: type)) == true
 }

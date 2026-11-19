@@ -67,6 +67,40 @@ import UtilityCore
     #expect(!forcedOCR.text.contains("FIRST DOCUMENT PAGE"))
 }
 
+@Test func textExtractionRecognizesAndPreviewsSelectedTIFFPages() async throws {
+    let folder = try textExtractionFixtureFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let file = folder.appending(path: "scanned.tiff")
+    let writer = try #require(CGImageDestinationCreateWithURL(file as CFURL, UTType.tiff.identifier as CFString, 2, nil))
+    for (width, line) in [(720, "FIRST ORCHARD"), (500, "SECOND MEADOW")] {
+        let context = try #require(CGContext(
+            data: nil, width: width, height: 400, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+        ))
+        context.setFillColor(CGColor(gray: 1, alpha: 1))
+        context.fill(CGRect(x: 0, y: 0, width: width, height: 400))
+        drawOCRFixture(line, in: context, at: .init(x: 30, y: 240))
+        CGImageDestinationAddImage(writer, try #require(context.makeImage()), nil)
+    }
+    try #require(CGImageDestinationFinalize(writer))
+    let original = try Data(contentsOf: file)
+    var options = TextExtractionOptions()
+    options.language = "en-US"
+    let all = try await TextExtraction.extract(file, options: options)
+    #expect(all.pages.compactMap(\.pageNumber) == [1, 2])
+    #expect(all.pages.allSatisfy { $0.error == nil })
+    #expect(all.text.contains("FIRST ORCHARD\n\u{000C}\nPage 2"))
+
+    options.range = "2"
+    let selected = try await TextExtraction.extract(file, options: options)
+    #expect(selected.pages.compactMap(\.pageNumber) == [2])
+    #expect(selected.text == "Page 2\n\nSECOND MEADOW")
+    let preview = try TextExtraction.imagePreview(file, pageNumber: nil, pageRange: options.range)
+    let first = try TextExtraction.imagePreview(file, pageNumber: 1, pageRange: options.range)
+    #expect(preview.width < first.width)
+    #expect(try Data(contentsOf: file) == original)
+}
+
 @Test func textExtractionRejectsPDFReplacedBetweenPages() async throws {
     let folder = try textExtractionFixtureFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
