@@ -36,6 +36,12 @@ public struct BurnSubtitlesOptions: Equatable, Sendable {
     public var position: SubtitlePosition = .bottom
     public var ffmpegExecutable: URL?
 
+    package var engineIssue: String? {
+        ffmpegExecutable.map(ExternalTool.isExecutable) == true ? nil : "Choose an FFmpeg executable with libass."
+    }
+
+    package var hasSubtitles: Bool { !srt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+
     public init() {}
 }
 
@@ -74,6 +80,7 @@ public enum BurnSubtitles {
     }
 
     public static func preview(_ input: URL, at seconds: Double, options: BurnSubtitlesOptions) async throws -> CGImage {
+        if let issue = options.engineIssue { throw ToolError.invalid(issue) }
         let duration = try await TrimVideo.duration(of: input)
         guard seconds.isFinite, seconds >= 0, seconds < duration else {
             throw ToolError.invalid("Choose a playhead position inside this video.")
@@ -99,6 +106,7 @@ public enum BurnSubtitles {
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local MP4 file.")
         }
+        if let issue = options.engineIssue { throw ToolError.invalid(issue) }
         let duration = try await TrimVideo.duration(of: input)
         let plan = try plan(duration: duration, options: options)
         let source = AVURLAsset(url: input, options: [

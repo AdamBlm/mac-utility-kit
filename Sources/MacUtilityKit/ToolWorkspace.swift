@@ -160,7 +160,7 @@ struct ToolWorkspace: View {
         case .replaceAudio:
             draft.options.replaceAudio.source == nil
         case .burnSubtitles:
-            draft.options.burnSubtitles.ffmpegExecutable == nil || draft.options.burnSubtitles.srt.isEmpty
+            draft.options.burnSubtitles.engineIssue != nil || !draft.options.burnSubtitles.hasSubtitles
         case .convertAudio:
             draft.options.audioConvert.validationIssue != nil
         case .cleanUpAudio:

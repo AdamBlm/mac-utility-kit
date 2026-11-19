@@ -78,13 +78,16 @@ struct BurnSubtitlesSettings: View {
             .pickerStyle(.segmented)
         }
         executablePicker("FFmpeg with libass", selection: $options.ffmpegExecutable)
+        if let issue = options.engineIssue {
+            Text(issue).font(.callout).foregroundStyle(.secondary)
+        }
         if let input, loadedInput == input, let duration {
-            if !options.srt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            if options.hasSubtitles {
                 switch Result(catching: { try BurnSubtitles.plan(duration: duration, options: options) }) {
                 case .success(let plan):
                     Text("\(plan.cues.count) cues · \(plan.clipped) clipped · \(plan.removed) outside video")
                         .foregroundStyle(.secondary).font(.callout)
-                    if options.ffmpegExecutable != nil {
+                    if options.engineIssue == nil {
                         previewControls(input: input, duration: duration, palette: palette)
                     }
                 case .failure(let error):

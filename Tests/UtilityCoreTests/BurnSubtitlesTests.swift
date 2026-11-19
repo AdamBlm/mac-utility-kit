@@ -5,6 +5,18 @@ import Testing
 import UtilityCore
 
 @Suite struct BurnSubtitlesTests {
+    @Test func rejectsAnInvalidEncoderBeforeReadingTheVideo() async {
+        let folder = FileManager.default.temporaryDirectory
+        var options = BurnSubtitlesOptions()
+        options.srt = " \n"
+        options.ffmpegExecutable = folder
+        #expect(!options.hasSubtitles)
+        let error = await #expect(throws: ToolError.self) {
+            try await BurnSubtitles.preview(folder, at: 0, options: options)
+        }
+        #expect(error?.localizedDescription == "Choose an FFmpeg executable with libass.")
+    }
+
     @Test func validatesAndCanonicalizesSubRipCues() throws {
         let source = "\u{FEFF}5\r\n00:00:00,100 --> 00:00:01,200\r\nHello\r\n世界\r\n\r\n7\r\n00:00:01.200 --> 00:00:02.000\r\nThe end."
         let parsed = try SubRip.parse(source)
