@@ -35,9 +35,18 @@ struct PDFCropControls: View {
                 Text(validationIssue).font(.callout).foregroundStyle(.secondary)
             }
             if let document, document.pageCount > 0 {
+                let selected = try? PageSelection.indices(options.pages, pageCount: document.pageCount)
+                let cropsPreviewPage = selected?.contains(previewPage - 1) == true
                 Stepper("Preview page \(previewPage) of \(document.pageCount)", value: $previewPage, in: 1...document.pageCount)
+                if document.pageCount > 1 {
+                    Button("Crop Only This Page") { options.pages = String(previewPage) }
+                }
+                if selected != nil, !cropsPreviewPage {
+                    Text("This page is outside the selected crop range.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 if let page = document.page(at: previewPage - 1), let reference = page.pageRef {
-                    preview(page, size: PDFSigning.visibleSize(for: reference))
+                    preview(page, size: PDFSigning.visibleSize(for: reference), showsCrop: cropsPreviewPage)
                 }
             }
             Text("Cropping changes the visible area. Use Redact PDF to permanently remove content.")
@@ -97,7 +106,7 @@ struct PDFCropControls: View {
         }
     }
 
-    private func preview(_ page: PDFPage, size: CGSize) -> some View {
+    private func preview(_ page: PDFPage, size: CGSize, showsCrop: Bool) -> some View {
         let scale = min(1, 280 / max(1, max(size.width, size.height)))
         let canvas = CGSize(width: size.width * scale, height: size.height * scale)
         let thumbnail = page.thumbnail(of: canvas, for: .cropBox)
@@ -105,7 +114,7 @@ struct PDFCropControls: View {
             .resizable()
             .frame(width: canvas.width, height: canvas.height)
             .overlay(alignment: .topLeading) {
-                if let bounds = dragBounds ?? (try? options.offsets.displayedBounds(in: size)) {
+                if showsCrop, let bounds = dragBounds ?? (try? options.offsets.displayedBounds(in: size)) {
                     Rectangle()
                         .strokeBorder(Color.accentColor, lineWidth: 2)
                         .frame(width: bounds.width * scale, height: bounds.height * scale)
@@ -115,10 +124,12 @@ struct PDFCropControls: View {
             .contentShape(Rectangle())
             .gesture(DragGesture(minimumDistance: 4)
                 .onChanged { gesture in
+                    guard showsCrop else { return }
                     dragBounds = bounds(from: gesture, scale: scale, size: size)
                 }
                 .onEnded { gesture in
                     defer { dragBounds = nil }
+                    guard showsCrop else { return }
                     let selection = bounds(from: gesture, scale: scale, size: size)
                     guard selection.width >= 1, selection.height >= 1 else { return }
                     var offsets = PDFCropOffsets()
