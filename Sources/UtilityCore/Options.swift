@@ -81,6 +81,7 @@ public struct ToolOptions: Sendable {
     public var keepLargerVideos = false
     package var reviewLargerVideos = false
     public var conversion = VideoConversionOptions()
+    package var videoPassthroughRecheck: Set<Int> = []
     public var speed = ChangeSpeedOptions()
     public var frames = FrameExtractionOptions()
     public var trim = TrimVideoOptions()

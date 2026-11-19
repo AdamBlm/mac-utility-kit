@@ -181,6 +181,16 @@ func videoConversionReportsObservedWebMCodecsAndDroppedStreams() async throws {
         #expect(!summary.contains("dropped"))
     }
 
+    var batch = ToolOptions()
+    batch.conversion = options
+    batch.videoPassthroughRecheck = [0]
+    let report = try await ToolRunner.run(.convertVideo,
+                                          inputs: [incompatible, folder.appending(path: "VP9.webm")],
+                                          destination: folder, imageSize: 0, options: batch) { _ in }
+    #expect(report.outputs.map(\.lastPathComponent) == ["2 - VP9.webm"])
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.hasPrefix("H264.mp4 — Passthrough check failed") == true)
+
     let subtitle = folder.appending(path: "Sample.srt")
     try Data("1\n00:00:00,100 --> 00:00:00,900\nCaption\n".utf8).write(to: subtitle)
     let multi = try fixture([

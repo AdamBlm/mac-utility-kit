@@ -264,7 +264,7 @@ final class WorkspaceSession {
         return directory
     }
 
-    func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false) {
+    func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false, recheckVideoInputs: Set<Int> = []) {
         guard !isRunning, reports[tool]?.videoReviews.isEmpty != false else { return }
         runningTool = tool
         progress = 0
@@ -281,6 +281,7 @@ final class WorkspaceSession {
             }
             do {
                 var options = draft.options
+                options.videoPassthroughRecheck = recheckVideoInputs
                 options.reviewLargerVideos = tool == .compressVideo && !preview
                 options.pageRanges = draft.inputs.indices.map { draft.ranges[$0, default: ""] }
                 options.pdfOutputName = draft.outputName

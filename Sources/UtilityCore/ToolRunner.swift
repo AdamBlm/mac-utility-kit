@@ -177,6 +177,14 @@ public enum ToolRunner {
                         }
                         summaries.append(sizes.summary)
                     case .convertVideo:
+                        if options.videoPassthroughRecheck.contains(index) {
+                            do {
+                                try await VideoConversion.checkPassthrough(input, options: options.conversion)
+                            } catch {
+                                try Task.checkCancellation()
+                                throw ToolError.invalid("Passthrough check failed: \(error.localizedDescription)")
+                            }
+                        }
                         let summary = try await VideoConversion.convert(input, to: output, options: options.conversion) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }

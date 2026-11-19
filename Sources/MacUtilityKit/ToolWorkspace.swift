@@ -34,7 +34,7 @@ struct ToolWorkspace: View {
 
     private struct VideoPassthroughReview {
         let request: VideoPassthroughRequest
-        let failures: [String]
+        let failures: [(index: Int, message: String)]
     }
 
     private var passthroughRequest: VideoPassthroughRequest? {
@@ -58,13 +58,13 @@ struct ToolWorkspace: View {
         .task(id: passthroughRequest) { [request = passthroughRequest] in
             guard let request else { return }
             passthroughReview = nil
-            var failures: [String] = []
-            for input in request.inputs {
+            var failures: [(index: Int, message: String)] = []
+            for (index, input) in request.inputs.enumerated() {
                 do {
                     try await VideoConversion.checkPassthrough(input, options: request.options)
                 } catch {
                     guard !Task.isCancelled else { return }
-                    failures.append("\(input.lastPathComponent) · \(error.localizedDescription)")
+                    failures.append((index, "\(input.lastPathComponent) · \(error.localizedDescription)"))
                 }
             }
             guard !Task.isCancelled else { return }
@@ -248,10 +248,10 @@ struct ToolWorkspace: View {
                             if let request = passthroughRequest {
                                 if let review = passthroughReview, review.request == request {
                                     if !review.failures.isEmpty {
-                                        Text("Compatible files can still be exported. Remove the files listed below or try Transcode or different audio settings.")
+                                        Text("Compatible files can still be exported. Files listed below are checked again and skipped if they are still incompatible.")
                                             .font(.callout).foregroundStyle(.secondary)
-                                        ForEach(Array(review.failures.enumerated()), id: \.offset) { _, failure in
-                                            Text(failure).font(.caption).textSelection(.enabled)
+                                        ForEach(review.failures, id: \.index) { failure in
+                                            Text(failure.message).font(.caption).textSelection(.enabled)
                                         }
                                     }
                                 } else {
@@ -422,7 +422,10 @@ struct ToolWorkspace: View {
                     Button("Preview") { session.start(tool, draft: draft, preview: true) }
                         .disabled(draft.inputs.isEmpty || session.isRunning || exportSettingsIncomplete)
                 }
-                Button(tool == .mediaInfo ? "Inspect media" : tool.title) { session.start(tool, draft: draft) }
+                Button(tool == .mediaInfo ? "Inspect media" : tool.title) {
+                    let failures = passthroughReview.flatMap { $0.request == passthroughRequest ? $0.failures : nil } ?? []
+                    session.start(tool, draft: draft, recheckVideoInputs: Set(failures.map(\.index)))
+                }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.inputs.isEmpty || session.isRunning || exportSettingsIncomplete
