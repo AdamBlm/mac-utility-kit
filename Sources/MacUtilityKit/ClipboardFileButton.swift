@@ -44,7 +44,10 @@ struct ClipboardFileButton: View {
 
     @ViewBuilder
     private var pasteButton: some View {
-        if onPasteImage != nil {
+        if onPasteImage != nil, onPastePDF != nil {
+            Button("Paste Image or PDF", systemImage: "clipboard") { paste() }
+                .onPasteCommand(of: [.fileURL, .pdf, .image]) { _ in paste() }
+        } else if onPasteImage != nil {
             Button("Paste Image", systemImage: "clipboard") { paste() }
         } else if onPastePDF != nil {
             Button("Paste PDF", systemImage: "clipboard") { paste() }
@@ -66,16 +69,18 @@ struct ClipboardFileButton: View {
             onPaste(files)
         } else {
             do {
-                if let onPasteImage, let image = try ClipboardFiles.readImage(from: board) {
-                    try onPasteImage(image)
-                } else if let onPastePDF, let data = board.data(forType: .pdf) {
+                if let onPastePDF, let data = board.data(forType: .pdf) {
                     guard data.count <= 256 * 1024 * 1024 else {
-                        throw ToolError.invalid("The copied PDF exceeds 256 MB. Save it to a file and open it in the reader.")
+                        throw ToolError.invalid("The copied PDF exceeds 256 MB. Save it to a file and import the file instead.")
                     }
                     try onPastePDF(data)
+                } else if let onPasteImage, let image = try ClipboardFiles.readImage(from: board) {
+                    try onPasteImage(image)
                 } else {
                     guard reportsMissingInput else { return false }
-                    if onPastePDF != nil {
+                    if onPastePDF != nil, onPasteImage != nil {
+                        message = "Copy an image, PDF content, or a supported file, then try again."
+                    } else if onPastePDF != nil {
                         message = "Copy PDF content or a PDF file in Finder, then try again."
                     } else {
                         message = onPasteImage == nil

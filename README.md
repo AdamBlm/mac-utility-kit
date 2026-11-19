@@ -82,6 +82,8 @@ Use **Add Password** for an unencrypted PDF or **Remove Password** after opening
 
 Use **Paste PDF** to open a PDF file copied in Finder or PDF content copied from another app. Pasted PDF content remains available to the reader and its tool handoffs while the workspace is open.
 
+In **Merge PDFs**, use **Paste Image or PDF** to add copied content to the source list. The pasted PDF has the same page-selection controls as a PDF opened from disk.
+
 ### PDF page tools
 
 **Split PDF** exports individual pages, fixed-size groups, or named ranges with filename previews. **Organize PDF** supports reordering, rotation, removal, restoration, and in-session undo and redo. **Delete Pages** takes a typed range or thumbnail selections and previews the marked and remaining pages.
