@@ -15,12 +15,27 @@ public struct ChangeSpeedOptions: Equatable, Sendable {
 }
 
 public enum ChangeSpeed {
+    public struct SourceInfo: Sendable {
+        public let duration: Double
+        public let hasAudio: Bool
+    }
+
     public static func sourceDuration(_ input: URL) async throws -> Double {
         let asset = try localAsset(input)
         guard let video = try await primaryTrack(.video, in: asset) else {
             throw ToolError.invalid("Choose a readable file with a video track.")
         }
         return try await videoDuration(video).seconds
+    }
+
+    public static func sourceInfo(_ input: URL) async throws -> SourceInfo {
+        let asset = try localAsset(input)
+        guard let video = try await primaryTrack(.video, in: asset) else {
+            throw ToolError.invalid("Choose a readable file with a video track.")
+        }
+        let duration = try await videoDuration(video).seconds
+        let hasAudio = try await primaryTrack(.audio, in: asset) != nil
+        return SourceInfo(duration: duration, hasAudio: hasAudio)
     }
 
     public static func export(

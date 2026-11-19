@@ -10,7 +10,9 @@ struct ChangeSpeedTests {
         defer { try? FileManager.default.removeItem(at: directory) }
         let source = try await Self.makeVideo(in: directory, audio: withAudio)
         let output = directory.appending(path: "speed.mp4")
-        let originalDuration = try await ChangeSpeed.sourceDuration(source)
+        let sourceInfo = try await ChangeSpeed.sourceInfo(source)
+        #expect(sourceInfo.hasAudio == withAudio)
+        let originalDuration = sourceInfo.duration
         var options = ChangeSpeedOptions()
         options.multiplier = multiplier
         _ = try await ChangeSpeed.export(source, to: output, options: options) { _ in }

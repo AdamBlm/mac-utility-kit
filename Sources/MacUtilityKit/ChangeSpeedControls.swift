@@ -8,7 +8,7 @@ struct ChangeSpeedControls: View {
     @State private var custom = false
     @State private var customInput: String?
     @State private var loadedSource: URL?
-    @State private var originalDuration: Double?
+    @State private var sourceInfo: ChangeSpeed.SourceInfo?
     @State private var previewError: String?
     @State private var showsPlayback = false
     @State private var previewInput: URL?
@@ -86,10 +86,12 @@ struct ChangeSpeedControls: View {
                 }
             }
             if let source = activeInput, source == loadedSource {
-                if let originalDuration, options.isValid {
+                if let sourceInfo, options.isValid {
+                    let needsFFmpeg = sourceInfo.hasAudio && !options.preservesPitch && options.multiplier != 1
+                        && options.ffmpegExecutable == nil
                     VStack(alignment: .leading, spacing: 5) {
-                        LabeledContent("Original duration", value: durationLabel(originalDuration))
-                        LabeledContent("Adjusted duration", value: durationLabel(originalDuration / options.multiplier))
+                        LabeledContent("Original duration", value: durationLabel(sourceInfo.duration))
+                        LabeledContent("Adjusted duration", value: durationLabel(sourceInfo.duration / options.multiplier))
                     }
                     .font(.callout.monospacedDigit())
                     .frame(maxWidth: 310)
@@ -98,6 +100,11 @@ struct ChangeSpeedControls: View {
                         ChangeSpeedPreview(input: source, options: options)
                     } else {
                         Button("Preview Adjusted Speed", systemImage: "play.rectangle") { showsPlayback = true }
+                            .disabled(needsFFmpeg)
+                        if needsFFmpeg {
+                            Text("Choose FFmpeg to preview this clip with pitch preservation off.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
                     }
                 } else if let previewError {
                     Text(previewError).font(.callout).foregroundStyle(.secondary)
@@ -106,7 +113,7 @@ struct ChangeSpeedControls: View {
             Text("Exports the primary video and audio tracks as MP4.")
                 .font(.callout).foregroundStyle(.secondary)
         }
-        .task(id: activeInput) { await loadDuration(activeInput) }
+        .task(id: activeInput) { await loadSourceInfo(activeInput) }
         .onChange(of: activeInput) { showsPlayback = false }
         .onChange(of: options) { showsPlayback = false }
     }
@@ -116,15 +123,15 @@ struct ChangeSpeedControls: View {
         return Duration.seconds(rounded).formatted(.time(pattern: .hourMinuteSecond(padHourToLength: 1, fractionalSecondsLength: 2)))
     }
 
-    private func loadDuration(_ source: URL?) async {
+    private func loadSourceInfo(_ source: URL?) async {
         loadedSource = nil
-        originalDuration = nil
+        sourceInfo = nil
         previewError = nil
         guard let source else { return }
         do {
-            let duration = try await ChangeSpeed.sourceDuration(source)
+            let info = try await ChangeSpeed.sourceInfo(source)
             guard !Task.isCancelled else { return }
-            originalDuration = duration
+            sourceInfo = info
         } catch {
             guard !Task.isCancelled else { return }
             previewError = error.localizedDescription
