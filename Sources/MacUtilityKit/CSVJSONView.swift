@@ -15,6 +15,8 @@ struct CSVJSONView: View {
     @State private var isLoading = false
     @State private var fileName: String?
     @State private var fileIssue: String?
+    @State private var detectionRequest: UUID?
+    @State private var delimiterMessage: String?
     @State private var saveIssue: String?
     @State private var comparison: (revision: Int, result: Result<CSVJSON.Result, Error>)?
 
@@ -30,7 +32,13 @@ struct CSVJSONView: View {
                         ForEach(CSVJSON.Delimiter.allCases) { Text($0.rawValue).tag($0) }
                     }
                     .labelsHidden()
+                    if draft.direction != .jsonToCSV {
+                        Button("Detect Delimiter", action: { detectionRequest = UUID() })
+                            .disabled(draft.input.isEmpty || isLoading || detectionRequest != nil)
+                        if detectionRequest != nil { ProgressView().controlSize(.small) }
+                    }
                 }
+                if let delimiterMessage { Text(delimiterMessage).font(.callout).foregroundStyle(.secondary) }
                 Toggle(draft.direction == .jsonToCSV ? "Include output header row" : "First row contains headers",
                        isOn: $draft.includesHeader)
             }
@@ -73,6 +81,9 @@ struct CSVJSONView: View {
         .onChange(of: draft.delimiter) { invalidate() }
         .onChange(of: draft.includesHeader) { invalidate() }
         .task(id: revision) { await convert() }
+        .task(id: detectionRequest) {
+            if let detectionRequest { await detectDelimiter(detectionRequest) }
+        }
     }
 
     private func preview(_ result: CSVJSON.Result) -> some View {
@@ -131,6 +142,37 @@ struct CSVJSONView: View {
     private func invalidate() {
         revision += 1
         saveIssue = nil
+        detectionRequest = nil
+        delimiterMessage = nil
+    }
+
+    private func detectDelimiter(_ request: UUID) async {
+        let input = draft.input
+        let direction = draft.direction
+        let originalDelimiter = draft.delimiter
+        delimiterMessage = nil
+        defer { if detectionRequest == request { detectionRequest = nil } }
+        do {
+            let worker = Task.detached(priority: .userInitiated) { try CSVJSON.detectDelimiter(input) }
+            let result = try await withTaskCancellationHandler {
+                try await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
+            guard !Task.isCancelled, detectionRequest == request, draft.input == input,
+                  draft.direction == direction, draft.delimiter == originalDelimiter else { return }
+            switch result {
+            case .detected(let delimiter):
+                if draft.delimiter == delimiter { delimiterMessage = "\(delimiter.rawValue) is already selected." }
+                else { draft.delimiter = delimiter }
+            case .ambiguous(let delimiters):
+                delimiterMessage = "Several separators fit: \(delimiters.map(\.rawValue).joined(separator: ", ")). Choose one."
+            case .unavailable:
+                delimiterMessage = "Choose a delimiter manually or enter at least two rows with matching columns."
+            }
+        } catch {
+            if !Task.isCancelled, detectionRequest == request { delimiterMessage = error.localizedDescription }
+        }
     }
 
     private func convert() async {
@@ -161,6 +203,8 @@ struct CSVJSONView: View {
         guard let url = DeveloperToolFiles.choose() else { return }
         isLoading = true
         fileIssue = nil
+        detectionRequest = nil
+        delimiterMessage = nil
         Task {
             defer { isLoading = false }
             do {

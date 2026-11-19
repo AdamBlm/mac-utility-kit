@@ -43,9 +43,38 @@ public enum CSVJSON {
         public let rows: [[String]]
     }
 
+    public enum DelimiterDetection: Equatable, Sendable {
+        case detected(Delimiter)
+        case ambiguous([Delimiter])
+        case unavailable
+    }
+
     public struct Issue: LocalizedError {
         public let message: String
         public var errorDescription: String? { message }
+    }
+
+    public static func detectDelimiter(_ input: String) throws -> DelimiterDetection {
+        guard input.utf8.count <= maximumInputBytes else {
+            throw Issue(message: "Input must be 2 MiB or smaller.")
+        }
+        let bytes = Array(input.utf8)
+        var matches: [Delimiter] = []
+        for delimiter in Delimiter.allCases {
+            try Task.checkCancellation()
+            var parser = Reader(bytes: bytes, delimiter: delimiter.byte)
+            do {
+                let rows = try parser.parse()
+                if rows.count > 1, (rows.first?.count ?? 0) > 1 { matches.append(delimiter) }
+            } catch is Issue {
+                continue
+            }
+        }
+        switch matches.count {
+        case 0: return .unavailable
+        case 1: return .detected(matches[0])
+        default: return .ambiguous(matches)
+        }
     }
 
     public static func convert(
@@ -57,7 +86,7 @@ public enum CSVJSON {
 
         switch direction {
         case .csvToJSON, .csvToMarkdown:
-            var parser = Reader(input: input, delimiter: delimiter.byte)
+            var parser = Reader(bytes: Array(input.utf8), delimiter: delimiter.byte)
             let parsed = try parser.parse()
             let width = parsed.first?.count ?? 0
             let headers = includesHeader ? (parsed.first ?? []) : columnNames(width)
@@ -244,8 +273,8 @@ public enum CSVJSON {
         private var rows: [[String]] = []
         private var cellCount = 0
 
-        init(input: String, delimiter: UInt8) {
-            self.bytes = Array(input.utf8)
+        init(bytes: [UInt8], delimiter: UInt8) {
+            self.bytes = bytes
             self.delimiter = delimiter
             if bytes.starts(with: [0xEF, 0xBB, 0xBF]) { offset = 3 }
         }

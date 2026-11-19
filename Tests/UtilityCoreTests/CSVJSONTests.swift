@@ -3,6 +3,18 @@ import Testing
 import UtilityCore
 
 struct CSVJSONTests {
+    @Test func detectsOnlyConsistentUnambiguousDelimitersOutsideQuotedFields() throws {
+        let quoted = "\u{FEFF}name,comment\r\nAda,\"contains ; and |\r\nand \"\"quotes\"\"\"\r\nLin,normal"
+        #expect(try CSVJSON.detectDelimiter(quoted) == .detected(.comma))
+        #expect(try CSVJSON.detectDelimiter("name;price\nAda;1,50\nLin;2,00") == .detected(.semicolon))
+        #expect(try CSVJSON.detectDelimiter("name\tcity\nAda\tParis") == .detected(.tab))
+        #expect(try CSVJSON.detectDelimiter("name|city\nAda|Paris") == .detected(.pipe))
+        #expect(try CSVJSON.detectDelimiter("name,price;unit\nAda,1;each") == .ambiguous([.comma, .semicolon]))
+        #expect(try CSVJSON.detectDelimiter("only,a,header") == .unavailable)
+        #expect(try CSVJSON.detectDelimiter("name,city\nAda,Paris,France") == .unavailable)
+        #expect(try CSVJSON.detectDelimiter("name,city\nAda,\"Paris") == .unavailable)
+    }
+
     @Test func preservesLeadingBOMCharacterInDataAndHeaders() throws {
         let name = "\u{FEFF}name"
         let cases = [
