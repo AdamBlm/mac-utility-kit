@@ -244,6 +244,7 @@ private struct PDFDeletionSettings: View {
     let document: PDFDocument
     @Binding var range: String
     @State private var filter = Filter.all
+    @State private var anchor: Int?
 
     var body: some View {
         let count = document.pageCount
@@ -258,9 +259,15 @@ private struct PDFDeletionSettings: View {
         VStack(alignment: .leading, spacing: 10) {
             SettingRow("Remove pages") {
                 HStack(spacing: 8) {
-                    TextField("Pages to remove, e.g. 2, 4–6", text: $range)
-                        .labelsHidden()
-                    Button("Clear", systemImage: "xmark.circle") { range = "" }
+                    TextField("Pages to remove, e.g. 2, 4–6", text: Binding(get: { range }, set: {
+                        range = $0
+                        anchor = nil
+                    }))
+                    .labelsHidden()
+                    Button("Clear", systemImage: "xmark.circle") {
+                        range = ""
+                        anchor = nil
+                    }
                         .labelStyle(.iconOnly)
                         .accessibilityLabel("Clear pages marked for removal")
                         .disabled(range.isEmpty)
@@ -292,9 +299,9 @@ private struct PDFDeletionSettings: View {
                     LazyHStack(spacing: 8) {
                         ForEach(pages, id: \.self) { index in
                             Button {
-                                var changed = marked
-                                if changed.contains(index) { changed.remove(index) }
-                                else { changed.insert(index) }
+                                let start = NSEvent.modifierFlags.contains(.shift) ? anchor : nil
+                                let changed = PageSelection.updating(marked.sorted(), at: index, extendingFrom: start)
+                                anchor = index
                                 range = changed.isEmpty ? "" : PageSelection.expression(for: changed.sorted())
                             } label: {
                                 VStack(spacing: 6) {
@@ -307,6 +314,7 @@ private struct PDFDeletionSettings: View {
                                 }
                                 .padding(5)
                             }
+                            .help("Shift-click to mark this page and the pages between it and the previous selection.")
                             .accessibilityAddTraits(marked.contains(index) ? .isSelected : [])
                         }
                     }
@@ -314,6 +322,7 @@ private struct PDFDeletionSettings: View {
                 }
             }
         }
+        .onChange(of: ObjectIdentifier(document)) { anchor = nil }
     }
 
     private var markedPages: Set<Int> {

@@ -85,6 +85,20 @@ import UtilityCore
     }
 }
 
+@Test func deletePDFPagesExportsTheComplementOfAThumbnailRange() async throws {
+    try await withPDFEditingFixture { source, directory in
+        let marks = PageSelection.updating([], at: 3, extendingFrom: nil)
+        let extended = PageSelection.updating(marks, at: 1, extendingFrom: 3)
+        var options = PDFDeleteOptions()
+        options.range = PageSelection.expression(for: extended.sorted())
+        #expect(options.range == "2–4")
+        let output = directory.appendingPathComponent("Reduced.pdf")
+        try await PDFPageEditing.delete(source, to: output, options: options) { _ in }
+        #expect(try pdfPageNumbers(output) == [1, 5])
+        #expect(try pdfPageNumbers(source) == [1, 2, 3, 4, 5])
+    }
+}
+
 @Test func deletePDFPagesPreservesOrderRotationAndExistingFiles() async throws {
     try await withPDFEditingFixture { source, directory in
         let original = try Data(contentsOf: source)
