@@ -109,6 +109,39 @@ struct OfficePDFTests {
         #expect(pdf.page(at: 0)?.string?.contains("Line 39") == true)
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func paperOverridePreservesEachSectionOrientation() async throws {
+        let folder = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "Mixed.rtf")
+        let rtf = #"""
+        {\rtf1\ansi\deff0{\fonttbl{\f0 Helvetica;}}
+        \paperw11906\paperh16838\margl1440\margr1440\margt1440\margb1440
+        \sectd\pgwsxn11906\pghsxn16838\pard\f0\fs28 FIRST PORTRAIT\par
+        \sect\sectd\lndscpsxn\pgwsxn16838\pghsxn11906\pard\f0\fs28 SECOND LANDSCAPE\par}
+        """#
+        try Data(rtf.utf8).write(to: source)
+        var options = OfficePDFOptions()
+        options.libreOfficeExecutable = try Self.executable()
+        options.wordPaper = .letter
+
+        let preview = try await OfficePDF.preview(source, kind: .word, options: options)
+        #expect(preview.totalPages == 2)
+        let portrait = try OfficePDF.renderedPage(preview, page: 1).size
+        let landscape = try OfficePDF.renderedPage(preview, page: 2).size
+        #expect(abs(portrait.width - 612) < 1 && abs(portrait.height - 792) < 1)
+        #expect(abs(landscape.width - 792) < 1 && abs(landscape.height - 612) < 1)
+
+        options.pageRange = "2"
+        let destination = folder.appending(path: "Landscape.pdf")
+        _ = try await OfficePDF.export(source, to: destination, kind: .word, options: options) { _ in }
+        let document = try #require(PDFDocument(url: destination))
+        #expect(document.pageCount == 1)
+        let page = try #require(document.page(at: 0))
+        #expect(page.bounds(for: .cropBox).size == landscape)
+        #expect(page.string?.contains("SECOND LANDSCAPE") == true)
+    }
+
     @Test func reportsUnsupportedInputAndMissingEngine() {
         #expect(OfficePDF.optionIssue(URL(fileURLWithPath: "/tmp/test.xlsx"), kind: .word, options: .init())?.contains("unsupported") == true)
         #expect(OfficePDF.optionIssue(URL(fileURLWithPath: "/tmp/test.docx"), kind: .word, options: .init())?.contains("LibreOffice") == true)
