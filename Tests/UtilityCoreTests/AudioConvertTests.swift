@@ -20,9 +20,11 @@ struct AudioConvertTests {
         let buffer = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
         try file.read(into: buffer)
         try #require(Double(buffer.frameLength) / file.fileFormat.sampleRate > 0.4)
-        let samples = try #require(buffer.floatChannelData?.pointee)
-        #expect(Self.amplitude(samples, frequency: 440, sampleRate: file.fileFormat.sampleRate) > 0.12)
-        #expect(Self.amplitude(samples, frequency: 770, sampleRate: file.fileFormat.sampleRate) > 0.12)
+        try withExtendedLifetime(buffer) {
+            let samples = try #require(buffer.floatChannelData?.pointee)
+            #expect(Self.amplitude(samples, frequency: 440, sampleRate: file.fileFormat.sampleRate) > 0.12)
+            #expect(Self.amplitude(samples, frequency: 770, sampleRate: file.fileFormat.sampleRate) > 0.12)
+        }
         #expect(summary.contains("Mono"))
     }
 

@@ -54,7 +54,7 @@ public enum AudioTrim {
         let candidate = staging.appending(path: "Trimmed.\(options.format.rawValue)")
         if options.mode == .lossless {
             let pcm = read.fileFormat
-            let actual = pcm.streamDescription.pointee
+            let actual = withExtendedLifetime(pcm) { pcm.streamDescription.pointee }
             let common: AVAudioCommonFormat
             if actual.mFormatFlags & kAudioFormatFlagIsFloat != 0 {
                 common = actual.mBitsPerChannel > 32 ? .pcmFormatFloat64 : .pcmFormatFloat32
@@ -65,7 +65,7 @@ public enum AudioTrim {
             try await write(exact, to: candidate, settings: pcm.settings, selection: selection,
                             usesFades: false, progress: progress)
             let outputFormat = try open(candidate).fileFormat
-            let result = outputFormat.streamDescription.pointee
+            let result = withExtendedLifetime(outputFormat) { outputFormat.streamDescription.pointee }
             guard result.mFormatID == actual.mFormatID, result.mBitsPerChannel == actual.mBitsPerChannel,
                   result.mFormatFlags & kAudioFormatFlagIsFloat == actual.mFormatFlags & kAudioFormatFlagIsFloat else {
                 throw ToolError.invalid("Could not retain the original PCM sample format.")
@@ -102,7 +102,8 @@ public enum AudioTrim {
         guard rate.isFinite, rate > 0, frames > 0 else {
             throw ToolError.invalid("Could not read the sample rate or audio duration.")
         }
-        let format = file.fileFormat.streamDescription.pointee
+        let fileFormat = file.fileFormat
+        let format = withExtendedLifetime(fileFormat) { fileFormat.streamDescription.pointee }
         let lossless = format.mFormatID == kAudioFormatLinearPCM && format.mBitsPerChannel <= 64
             ? AudioTrimFormat.pcmContainer(for: input) : nil
         return AudioTrimSource(sampleRate: rate, frameCount: frames, losslessFormat: lossless)

@@ -97,9 +97,10 @@ public enum AudioConvert {
         }
         try Task.checkCancellation()
         let file = try AVAudioFile(forReading: candidate)
-        let rate = Int(file.fileFormat.sampleRate.rounded())
-        let channels = Int(file.fileFormat.channelCount)
-        let codec = file.fileFormat.streamDescription.pointee.mFormatID
+        let outputFormat = file.fileFormat
+        let rate = Int(outputFormat.sampleRate.rounded())
+        let channels = Int(outputFormat.channelCount)
+        let codec = withExtendedLifetime(outputFormat) { outputFormat.streamDescription.pointee.mFormatID }
         let expectedRate = options.sampleRate ?? originalRate
         let expectedChannels = options.channels.count ?? originalChannels
         guard file.length > 0,
