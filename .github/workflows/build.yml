@@ -9,9 +9,31 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Build test targets
+        run: swift build --build-tests
       - name: Run tests
         id: tests
-        run: swift test --no-parallel
+        timeout-minutes: 4
+        shell: bash
+        run: |
+          swift test --skip-build --no-parallel &
+          test_pid=$!
+          (
+            for ((elapsed = 0; elapsed < 90; elapsed++)); do
+              kill -0 "$test_pid" 2>/dev/null || exit 0
+              sleep 1
+            done
+            echo "The test process is still running. Capturing its stacks."
+            for pid in "$test_pid" $(pgrep -P "$test_pid" || true); do
+              report="$RUNNER_TEMP/muk-test-stack-$pid.txt"
+              if sample "$pid" 2 1 -file "$report"; then
+                head -n 180 "$report"
+              fi
+            done
+          ) &
+          watchdog_pid=$!
+          trap 'kill "$watchdog_pid" 2>/dev/null || true' EXIT
+          wait "$test_pid"
       - name: Print Swift test crash reports
         if: failure() && steps.tests.conclusion == 'failure'
         run: |
