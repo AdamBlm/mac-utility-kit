@@ -167,8 +167,7 @@ public enum Transcription {
             let lines = cleaned.map { cue in
                 let start = SubRip.timestamp(cue.startMilliseconds).replacingOccurrences(of: ",", with: ".")
                 let end = SubRip.timestamp(cue.endMilliseconds).replacingOccurrences(of: ",", with: ".")
-                let text = cue.text.replacingOccurrences(of: "&", with: "&amp;")
-                    .replacingOccurrences(of: "<", with: "&lt;").replacingOccurrences(of: ">", with: "&gt;")
+                let text = WebVTTText.escape(cue.text)
                 return "\(start) --> \(end)\n\(text)\n"
             }
             return "WEBVTT\n\n" + lines.joined(separator: "\n")

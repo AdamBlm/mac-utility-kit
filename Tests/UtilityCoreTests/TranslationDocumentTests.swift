@@ -91,13 +91,32 @@ struct TranslationDocumentTests {
             try file.applyingEdits(result.replacingOccurrences(of: "<b>Welcome</b></v>", with: "<b></b></v>Welcome"))
         }
         #expect(throws: ToolError.self) {
-            try file.rendering(["<b>Hello</b>", "everyone", "Welcome"])
-        }
-        #expect(throws: ToolError.self) {
             try TranslationDocument(header + "Unsupported <custom>markup</custom>", kind: .vtt)
         }
         #expect(throws: ToolError.self) {
             try TranslationDocument(header + "<lang fr>Bonjour</lang>", kind: .vtt)
+        }
+    }
+
+    @Test func webVTTDecodesStandardCharacterReferencesAndEscapesTranslatedText() throws {
+        let header = "WEBVTT\r\n\r\n00:01.000 --> 00:03.000\r\n"
+        let source = header + "<v Sam &amp; Jo><i>Tom &amp; Jane &lt;3 &copy; &#x1F44B; &amp;lt; R&D</i></v>\r\n&nbsp;\r\n"
+        let file = try TranslationDocument(source, kind: .vtt)
+        #expect(file.requests == ["Tom & Jane <3 © 👋 &lt; R&D"])
+        let result = try file.rendering(["Tom & Jane --> <2>"])
+        #expect(result == header + "<v Sam &amp; Jo><i>Tom &amp; Jane --&gt; &lt;2&gt;</i></v>\r\n&nbsp;\r\n")
+        #expect(try file.applyingEdits(result) == result)
+        #expect(throws: ToolError.self) {
+            try file.applyingEdits(result.replacingOccurrences(of: "&lt;2&gt;", with: "<b>2</b>"))
+        }
+        #expect(throws: ToolError.self) {
+            try TranslationDocument(header + "Invalid &missing;", kind: .vtt)
+        }
+        let whitespace = try TranslationDocument(header + "<b>Hello</b>&nbsp;", kind: .vtt)
+        #expect(whitespace.requests == ["Hello"])
+        #expect(try whitespace.rendering(["Bonjour"]) == header + "<b>Bonjour</b>&nbsp;")
+        #expect(throws: ToolError.self) {
+            try whitespace.applyingEdits(header + "<b>&nbsp;</b>Bonjour")
         }
     }
 
