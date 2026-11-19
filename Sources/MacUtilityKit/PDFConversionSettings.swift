@@ -105,7 +105,7 @@ struct PDFToImagesSettings: View {
     }
 }
 
-private struct PDFExportPagePicker: View {
+struct PDFExportPagePicker: View {
     let document: PDFDocument
     @Binding var range: String
     let startsWithAll: Bool

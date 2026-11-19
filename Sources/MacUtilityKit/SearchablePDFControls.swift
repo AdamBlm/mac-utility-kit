@@ -1,3 +1,4 @@
+import PDFKit
 import SwiftUI
 import UtilityCore
 
@@ -5,20 +6,15 @@ struct SearchablePDFControls: View {
     let inputs: [URL]
     @Binding var options: SearchablePDFOptions
     @State private var languages: [String] = []
-    @State private var selection: PageListing?
+    @State private var sourceDocument: LoadedPDF?
     @State private var page: Int?
     @State private var selectedSource: URL?
     @State private var rendered: Preview?
     @State private var previewTask: Task<Void, Never>?
 
-    private struct RangeRequest: Equatable {
+    private struct LoadedPDF {
         let input: URL
-        let range: String
-    }
-
-    private struct PageListing {
-        let request: RangeRequest
-        let result: Result<[Int], any Error>
+        let result: Result<PDFDocument, any Error>
     }
 
     private struct PreviewRequest: Equatable {
@@ -43,11 +39,15 @@ struct SearchablePDFControls: View {
     }
 
     var body: some View {
-        let request = previewSource.map { RangeRequest(input: $0, range: options.range) }
-        let current = selection?.request == request ? selection : nil
-        let preview = current.flatMap { listing -> PreviewRequest? in
-            guard let page, let pages = try? listing.result.get(), pages.contains(page) else { return nil }
-            return PreviewRequest(input: listing.request.input, page: page, options: options)
+        let input = previewSource
+        let current = sourceDocument?.input == input ? sourceDocument?.result : nil
+        let document = try? current?.get()
+        let selected = document.flatMap { try? PageSelection.indices(options.range, pageCount: $0.pageCount) }
+        let pages = selected?.map { $0 + 1 } ?? []
+        let preview = input.flatMap { input in
+            (page.flatMap { pages.contains($0) ? $0 : nil } ?? pages.first).map {
+                PreviewRequest(input: input, page: $0, options: options)
+            }
         }
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Language") {
@@ -58,10 +58,6 @@ struct SearchablePDFControls: View {
                     }
                 }
                 .labelsHidden()
-            }
-            SettingRow("Pages") {
-                TextField("All, or e.g. 1, 3–5", text: $options.range)
-                    .accessibilityLabel("PDF page range")
             }
             Toggle("Skip pages that already contain searchable text", isOn: $options.skipsSearchablePages)
             let sources = previewSources
@@ -74,30 +70,58 @@ struct SearchablePDFControls: View {
                     }
                     .labelsHidden()
                 }
+                Text("The page range applies to all PDFs in the batch.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
-            if let current {
-                switch current.result {
-                case .success(let pages):
-                    if !pages.isEmpty, let preview { previewControls(pages, request: preview) }
-                    else { Text("Select at least one page.").font(.callout).foregroundStyle(.secondary) }
-                case .failure(let error):
-                    Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+            if let document {
+                PDFExportPagePicker(document: document, range: $options.range, startsWithAll: true)
+                if let preview {
+                    previewControls(pages, request: preview)
+                } else if selected?.isEmpty == true {
+                    Text("Select at least one page.").font(.callout).foregroundStyle(.secondary)
                 }
-            } else if request != nil {
-                ProgressView("Reading preview pages…").controlSize(.small)
+            } else {
+                SettingRow("Pages") {
+                    TextField("All, or e.g. 1, 3–5", text: $options.range)
+                        .accessibilityLabel("PDF page range")
+                }
+                if case .failure(let error) = current {
+                    Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                } else if input != nil {
+                    ProgressView("Reading preview pages…").controlSize(.small)
+                }
             }
         }
         .task { loadLanguages() }
-        .task(id: request) { await listPages(request) }
+        .task(id: input) {
+            guard let input else { sourceDocument = nil; return }
+            page = nil
+            do {
+                let document = try await Self.loadSource(input)
+                guard !Task.isCancelled else { return }
+                sourceDocument = LoadedPDF(input: input, result: .success(document))
+            } catch {
+                guard !Task.isCancelled else { return }
+                sourceDocument = LoadedPDF(input: input, result: .failure(error))
+            }
+        }
         .onChange(of: preview) { clearPreview() }
         .onDisappear { clearPreview() }
+    }
+
+    @concurrent
+    private static func loadSource(_ input: URL) async throws -> sending PDFDocument {
+        try Task.checkCancellation()
+        let document = try SearchablePDF.open(input)
+        try Task.checkCancellation()
+        return document
     }
 
     private func previewControls(_ pages: [Int], request: PreviewRequest) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             SettingRow("Preview page") {
-                Picker("Preview page", selection: $page) {
-                    ForEach(pages, id: \.self) { number in Text("Page \(number)").tag(Optional(number)) }
+                Picker("Preview page", selection: Binding(get: { request.page }, set: { page = $0 })) {
+                    ForEach(pages, id: \.self) { number in Text("Page \(number)").tag(number) }
                 }
                 .labelsHidden()
                 Button("Preview Text", systemImage: "text.viewfinder") { runPreview(request) }
@@ -125,26 +149,6 @@ struct SearchablePDFControls: View {
                 case .failure(let error):
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
                 }
-            }
-        }
-    }
-
-    private func listPages(_ request: RangeRequest?) async {
-        guard let request else { selection = nil; page = nil; return }
-        do {
-            var selected = SearchablePDFOptions()
-            selected.range = request.range
-            let pages = try await SearchablePDF.pageNumbers(request.input, options: selected)
-            if !Task.isCancelled {
-                if selection?.request.input != request.input || !pages.contains(page ?? 0) {
-                    page = pages.first
-                }
-                selection = PageListing(request: request, result: .success(pages))
-            }
-        } catch {
-            if !Task.isCancelled {
-                selection = PageListing(request: request, result: .failure(error))
-                page = nil
             }
         }
     }

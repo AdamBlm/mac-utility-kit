@@ -135,7 +135,7 @@ public enum SearchablePDF {
         return SearchablePDFReport(pages: results)
     }
 
-    private static func open(_ input: URL) throws -> PDFDocument {
+    package static func open(_ input: URL) throws -> PDFDocument {
         guard input.isFileURL, let pdf = PDFDocument(url: input) else {
             throw ToolError.invalid("Could not open a local PDF with pages.")
         }
