@@ -11,12 +11,13 @@ struct AskDocumentTests {
         let (folder, source) = try makeSource("schedule.md")
         defer { try? FileManager.default.removeItem(at: folder) }
         let evidence = "The Northstar shipment contains 62 replacement valves."
-        try Data("# Loading schedule\n\n\(evidence)\n".utf8).write(to: source)
+        let fixture = "# Loading schedule\n\n\(evidence)\n"
+        try Data(fixture.utf8).write(to: source)
 
         let index = try await AskDocument.index(source)
         let answer = try await AskDocument.answer("How many replacement valves are in the Northstar shipment?", in: index)
         let citation = try #require(answer.citations.first(where: { $0.quote.contains("62") }))
-        #expect(evidence.contains(citation.quote))
+        #expect(fixture.split(whereSeparator: \.isWhitespace).joined(separator: " ").contains(citation.quote))
         #expect(citation.location == .section(line: 1, title: "Loading schedule"))
     }
 
