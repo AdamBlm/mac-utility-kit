@@ -64,17 +64,56 @@ struct MuteVideoTests {
         }
     }
 
+    @Test func checksRetainedTracksAndExportsOnlyCompatibleFilesInAMixedBatch() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let compatibleFolder = directory.appending(path: "compatible", directoryHint: .isDirectory)
+        let incompatibleFolder = directory.appending(path: "incompatible", directoryHint: .isDirectory)
+        for folder in [compatibleFolder, incompatibleFolder] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        }
+        let compatible = try await Self.fixture(in: compatibleFolder)
+        let proRes = try await Self.fixture(in: incompatibleFolder, videoCodec: .proRes422)
+        var options = ToolOptions()
+        options.mute.container = .mp4
+        let report = try await ToolRunner.run(.muteVideo, inputs: [proRes, compatible], destination: directory,
+                                              imageSize: 0, options: options) { _ in }
+        #expect(report.outputs.count == 1)
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("cannot be copied into MP4") == true)
+        let output = try #require(report.outputs.first)
+        #expect(try await MuteVideo.inspect(output).allSatisfy { !$0.isAudio })
+        #expect(try await Self.compressedVideo(output) == Self.compressedVideo(compatible))
+    }
+
+    @Test func checksContainerCompatibilityBeforeCreatingAnOutput() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await Self.fixture(in: directory, videoCodec: .proRes422)
+        let before = try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted()
+        var options = MuteVideoOptions()
+        try await MuteVideo.checkCompatibility(source, options: options)
+        options.container = .mp4
+        do {
+            try await MuteVideo.checkCompatibility(source, options: options)
+            Issue.record("Expected the ProRes stream to be incompatible with MP4 passthrough.")
+        } catch {
+            #expect(error.localizedDescription.contains("cannot be copied into MP4"))
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted() == before)
+    }
+
     private static func directory() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         return directory
     }
 
-    private static func fixture(in directory: URL) async throws -> URL {
+    private static func fixture(in directory: URL, videoCodec: AVVideoCodecType = .h264) async throws -> URL {
         let picture = directory.appending(path: "picture.mov")
         let writer = try AVAssetWriter(outputURL: picture, fileType: .mov)
         let sink = AVAssetWriterInput(mediaType: .video, outputSettings: [
-            AVVideoCodecKey: AVVideoCodecType.h264, AVVideoWidthKey: 64, AVVideoHeightKey: 48
+            AVVideoCodecKey: videoCodec, AVVideoWidthKey: 64, AVVideoHeightKey: 48
         ])
         sink.transform = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 48, ty: 0)
         let adaptor = AVAssetWriterInputPixelBufferAdaptor(assetWriterInput: sink, sourcePixelBufferAttributes: nil)

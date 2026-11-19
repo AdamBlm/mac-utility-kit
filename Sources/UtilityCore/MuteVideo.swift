@@ -74,16 +74,66 @@ public enum MuteVideo {
         return streams
     }
 
+    public static func checkCompatibility(_ input: URL, options: MuteVideoOptions) async throws {
+        let format = try format(for: input, options: options)
+        _ = try await prepare(input, format: format, options: options)
+    }
+
     public static func export(
         _ input: URL, to output: URL, options: MuteVideoOptions,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
-        let asset = try localAsset(input)
         let format = try format(for: input, options: options)
         guard output.isFileURL, input.standardizedFileURL != output.standardizedFileURL,
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local output file.")
         }
+        let prepared = try await prepare(input, format: format, options: options)
+        defer { withExtendedLifetime(prepared.asset) {} }
+        let session = prepared.session
+        session.metadata = try await prepared.asset.load(.metadata)
+        try Task.checkCancellation()
+        let manager = FileManager.default
+        let staging = output.deletingLastPathComponent()
+            .appendingPathComponent(".mute-" + UUID().uuidString, isDirectory: true)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: staging) }
+        let candidate = staging.appendingPathComponent("Muted." + format.rawValue)
+        let states = session.states(updateInterval: 0.2)
+        let monitor = Task {
+            for await state in states {
+                guard !Task.isCancelled else { return }
+                if case .exporting(let fraction) = state {
+                    await progress(min(0.99, fraction.fractionCompleted))
+                }
+            }
+        }
+        defer { monitor.cancel() }
+        try await session.exportMedia(to: candidate, as: format.fileType)
+        try Task.checkCancellation()
+
+        let result = try localAsset(candidate)
+        let actual = try await signatures(for: result.load(.tracks))
+        let expected = try await signatures(for: prepared.retained)
+        guard actual == expected, try await result.load(.isPlayable) else {
+            throw ToolError.invalid("The output could not preserve every retained stream in this container.")
+        }
+        try Task.checkCancellation()
+        try manager.moveItem(at: candidate, to: output)
+        await progress(1)
+        return "\(input.lastPathComponent) · \(prepared.removedCount) audio track\(prepared.removedCount == 1 ? "" : "s") removed · Video copied"
+    }
+
+    private struct Prepared {
+        let asset: AVURLAsset
+        let session: AVAssetExportSession
+        let retained: [AVAssetTrack]
+        let removedCount: Int
+    }
+
+    private static func prepare(_ input: URL, format: Format, options: MuteVideoOptions) async throws -> Prepared {
+        try Task.checkCancellation()
+        let asset = try localAsset(input)
         let sourceTracks = try await asset.load(.tracks)
         let audioIDs = Set(sourceTracks.filter { $0.mediaType == .audio }.map(\.trackID))
         guard sourceTracks.contains(where: { $0.mediaType == .video }) else {
@@ -135,37 +185,8 @@ public enum MuteVideo {
               let session = AVAssetExportSession(asset: composition, presetName: preset) else {
             throw ToolError.invalid("These streams cannot be copied into \(format.rawValue.uppercased()). Choose another compatible container.")
         }
-        session.metadata = try await asset.load(.metadata)
         try Task.checkCancellation()
-        let manager = FileManager.default
-        let staging = output.deletingLastPathComponent()
-            .appendingPathComponent(".mute-" + UUID().uuidString, isDirectory: true)
-        try manager.createDirectory(at: staging, withIntermediateDirectories: false)
-        defer { try? manager.removeItem(at: staging) }
-        let candidate = staging.appendingPathComponent("Muted." + format.rawValue)
-        let states = session.states(updateInterval: 0.2)
-        let monitor = Task {
-            for await state in states {
-                guard !Task.isCancelled else { return }
-                if case .exporting(let fraction) = state {
-                    await progress(min(0.99, fraction.fractionCompleted))
-                }
-            }
-        }
-        defer { monitor.cancel() }
-        try await session.exportMedia(to: candidate, as: format.fileType)
-        try Task.checkCancellation()
-
-        let result = try localAsset(candidate)
-        let actual = try await signatures(for: result.load(.tracks))
-        let expected = try await signatures(for: retained)
-        guard actual == expected, try await result.load(.isPlayable) else {
-            throw ToolError.invalid("The output could not preserve every retained stream in this container.")
-        }
-        try Task.checkCancellation()
-        try manager.moveItem(at: candidate, to: output)
-        await progress(1)
-        return "\(input.lastPathComponent) · \(selected.count) audio track\(selected.count == 1 ? "" : "s") removed · Video copied"
+        return Prepared(asset: asset, session: session, retained: retained, removedCount: selected.count)
     }
 
     private struct StreamSignature: Hashable {

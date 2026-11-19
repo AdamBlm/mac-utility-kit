@@ -2,19 +2,52 @@ import AVFoundation
 import SwiftUI
 import UtilityCore
 
+struct MuteVideoReview {
+    struct Request: Equatable {
+        let inputs: [URL]
+        let options: MuteVideoOptions
+    }
+
+    enum Outcome {
+        case compatible
+        case unavailable(String)
+    }
+
+    let request: Request
+    var outcomes: [URL: Outcome] = [:]
+
+    var permitsExport: Bool {
+        request.inputs.allSatisfy { outcomes[$0] != nil }
+            && outcomes.values.contains { if case .compatible = $0 { true } else { false } }
+    }
+
+    var hasUnavailableFiles: Bool {
+        outcomes.values.contains { if case .unavailable = $0 { true } else { false } }
+    }
+}
+
 struct MuteVideoControls: View {
     let inputs: [URL]
+    @Binding var review: MuteVideoReview?
     @Binding var options: MuteVideoOptions
     @State private var streams: [URL: [MuteVideoStream]] = [:]
     @State private var issues: [URL: String] = [:]
     @State private var preview: AudioPreview?
     @State private var player: AVAudioPlayer?
     @State private var previewIssue: String?
+    @State private var reviewRevision = 0
 
     private struct AudioPreview: Equatable {
         let input: URL
         let audioIndex: Int
     }
+
+    private struct CheckKey<Value: Equatable>: Equatable {
+        let value: Value
+        let revision: Int
+    }
+
+    private var reviewRequest: MuteVideoReview.Request { .init(inputs: inputs, options: options) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -35,13 +68,22 @@ struct MuteVideoControls: View {
                 .labelsHidden()
             }
             if let previewIssue { Text(previewIssue).font(.callout).foregroundStyle(.secondary) }
-            ForEach(Array(inputs.enumerated()), id: \.offset) { _, input in
+            if !inputs.isEmpty {
+                Button("Recheck Streams", systemImage: "arrow.clockwise", action: refreshReview)
+                    .help("Refresh stream information and clear specific audio tracks selected for removal.")
+            }
+            if let review, review.request == reviewRequest, review.permitsExport, review.hasUnavailableFiles {
+                Text("Files with issues will be checked again and skipped if they still cannot be exported.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(Array(inputs.enumerated()), id: \.offset) { index, input in
                 Divider()
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(input.lastPathComponent)
+                    Text(inputs.count > 1 ? "\(index + 1). \(input.lastPathComponent)" : input.lastPathComponent)
                         .font(.callout.weight(.semibold))
                         .lineLimit(1)
                         .truncationMode(.middle)
+                        .help(input.path)
                     if let issue = issues[input] {
                         Text(issue).font(.callout).foregroundStyle(.secondary)
                     } else if let tracks = streams[input] {
@@ -60,18 +102,23 @@ struct MuteVideoControls: View {
             if let preview, !inputs.contains(preview.input) { stopPreview() }
         }
         .onDisappear { stopPreview() }
-        .task(id: inputs) {
+        .task(id: CheckKey(value: reviewRequest, revision: reviewRevision)) { [request = reviewRequest, revision = reviewRevision] in
+            await checkCompatibility(request, revision: revision)
+        }
+        .task(id: CheckKey(value: inputs, revision: reviewRevision)) { [revision = reviewRevision] in
+            guard !Task.isCancelled, reviewRevision == revision else { return }
             streams = [:]
             issues = [:]
             for input in inputs {
                 do {
                     let result = try await MuteVideo.inspect(input)
                     try Task.checkCancellation()
+                    guard reviewRevision == revision else { return }
                     streams[input] = result
                 } catch is CancellationError {
                     return
                 } catch {
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled, reviewRevision == revision else { return }
                     issues[input] = error.localizedDescription
                 }
             }
@@ -88,11 +135,16 @@ struct MuteVideoControls: View {
             Text("Select audio tracks to remove.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-        }
-        if case .failure(let error) = Result(catching: { try MuteVideo.outputExtension(input, options: options) }) {
-            Text(error.localizedDescription)
-                .font(.callout)
-                .foregroundStyle(.secondary)
+        } else {
+            let outcome = review?.request == reviewRequest ? review?.outcomes[input] : nil
+            switch outcome {
+            case .compatible:
+                EmptyView()
+            case .unavailable(let message):
+                Text(message).font(.callout).foregroundStyle(.secondary)
+            case nil:
+                ProgressView("Checking container compatibility…").controlSize(.small)
+            }
         }
         ForEach(tracks) { track in
             HStack(spacing: 10) {
@@ -128,6 +180,36 @@ struct MuteVideoControls: View {
                 }
             }
         }
+    }
+
+    private func checkCompatibility(_ request: MuteVideoReview.Request, revision: Int) async {
+        guard !Task.isCancelled, reviewRevision == revision else { return }
+        review = MuteVideoReview(request: request)
+        do { try await Task.sleep(for: .milliseconds(160)) }
+        catch { return }
+        for input in request.inputs {
+            let outcome: MuteVideoReview.Outcome
+            do {
+                try await MuteVideo.checkCompatibility(input, options: request.options)
+                outcome = .compatible
+            } catch is CancellationError {
+                return
+            } catch {
+                outcome = .unavailable(error.localizedDescription)
+            }
+            guard !Task.isCancelled, review?.request == request, reviewRevision == revision else { return }
+            review?.outcomes[input] = outcome
+        }
+    }
+
+    private func refreshReview() {
+        stopPreview()
+        previewIssue = nil
+        review = nil
+        streams = [:]
+        issues = [:]
+        options.removedTrackIDs = [:]
+        reviewRevision += 1
     }
 
     private func play(_ request: AudioPreview) async {
