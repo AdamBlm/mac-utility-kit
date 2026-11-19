@@ -27,12 +27,14 @@ struct BatchRenameView: View {
     @State private var confirm = false
 
     @State private var preview: Preview?
+    @State private var previewRevision = 0
     @State private var proposed: BatchRenamePlan?
     private var busy: Bool { draft.isRenaming }
 
     private struct PreviewInput: Equatable, Sendable {
         let selected: [URL]
         let options: BatchRenameOptions
+        let revision: Int
     }
 
     private struct Preview {
@@ -41,7 +43,8 @@ struct BatchRenameView: View {
     }
 
     var body: some View {
-        let input = PreviewInput(selected: draft.files.filter(\.isIncluded).map(\.url), options: draft.options)
+        let input = PreviewInput(selected: draft.files.filter(\.isIncluded).map(\.url), options: draft.options,
+                                 revision: previewRevision)
         let plan = preview?.input == input ? preview?.result : nil
         InteractiveToolLayout(tool: .batchRename) { palette in
             rulesSection(palette).disabled(busy)
@@ -135,9 +138,13 @@ struct BatchRenameView: View {
         case .date:
             SettingRow("Date source") {
                 Picker("Date source", selection: rule.dateSource) {
-                    ForEach(BatchRenameRule.DateSource.allCases, id: \.self) { Text($0.rawValue) }
+                    ForEach(BatchRenameRule.DateSource.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                 }
                 .labelsHidden()
+            }
+            if rule.dateSource.wrappedValue == .captured {
+                Text("Uses the camera’s recorded date and time. Including a time zone in the name requires an EXIF offset.")
+                    .font(.caption).foregroundStyle(.secondary)
             }
             SettingRow("Date format") { TextField("Date format", text: rule.dateFormat).textFieldStyle(.roundedBorder) }
             placementSettings(rule)
@@ -276,6 +283,9 @@ struct BatchRenameView: View {
                 draft.completed = BatchRenameDraft.CompletedRun(receipt: receipt, changes: plan.changes)
                 updateQueue(plan.changes.map { ($0.source, $0.destination) })
                 message = "Files renamed."
+            } catch let error as BatchRenameError {
+                if case .changedCaptureSource = error { previewRevision += 1 }
+                message = error.localizedDescription
             } catch { message = error.localizedDescription }
         }
     }

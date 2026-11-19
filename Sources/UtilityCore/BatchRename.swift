@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import ImageIO
 
 public struct BatchRenameRule: Identifiable, Equatable, Sendable {
     public enum Kind: String, CaseIterable, Sendable {
@@ -11,7 +12,7 @@ public struct BatchRenameRule: Identifiable, Equatable, Sendable {
     }
 
     public enum DateSource: String, CaseIterable, Sendable {
-        case created = "Created", modified = "Modified", current = "Today"
+        case created = "Created", modified = "Modified", current = "Today", captured = "Photo capture date"
     }
 
     public enum Placement: String, CaseIterable, Sendable {
@@ -78,9 +79,12 @@ public enum BatchRenameError: LocalizedError {
     case invalidName(String)
     case conflict(String)
     case missingDate(String)
+    case missingCaptureDate(String)
+    case missingCaptureOffset(String)
     case invalidCounter
     case missingFile(String)
     case changedFile(String)
+    case changedCaptureSource(String)
     case interrupted(String, [String])
 
     public var errorDescription: String? {
@@ -88,9 +92,12 @@ public enum BatchRenameError: LocalizedError {
         case .invalidName(let name): "Invalid filename: “\(name)”"
         case .conflict(let name): "The filename “\(name)” is already in use."
         case .missingDate(let name): "The selected file date is unavailable for “\(name)”."
+        case .missingCaptureDate(let name): "“\(name)” has no readable original EXIF capture date."
+        case .missingCaptureOffset(let name): "“\(name)” has no original EXIF time-zone offset. Remove the time-zone field from the date format."
         case .invalidCounter: "The numbering range is too large."
         case .missingFile(let name): "“\(name)” is missing or is a folder."
         case .changedFile(let name): "“\(name)” was replaced after the rename was planned."
+        case .changedCaptureSource(let name): "“\(name)” changed after its capture date was read. Review a new rename preview."
         case .interrupted(let cause, let recovery):
             recovery.isEmpty
                 ? "Rename stopped. Original filenames were restored. \(cause)"
@@ -102,8 +109,12 @@ public enum BatchRenameError: LocalizedError {
 public struct BatchRenamePlan: Sendable {
     public let changes: [BatchRenameChange]
     fileprivate let moves: [BatchRename.Move]
+    fileprivate let captureSources: [(file: URL, stamp: DuplicateFileStamp)]
 
     public func apply() throws -> BatchRenameReceipt {
+        for (file, stamp) in captureSources where (try? DuplicateFileIO.inspect(file)) != stamp {
+            throw BatchRenameError.changedCaptureSource(file.lastPathComponent)
+        }
         try BatchRename.execute(moves)
         return BatchRenameReceipt(moves: moves)
     }
@@ -140,8 +151,10 @@ public enum BatchRename {
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.calendar = Calendar(identifier: .gregorian)
+        let localTimeZone = TimeZone.current
         var changes: [BatchRenameChange] = []
         var moves: [Move] = []
+        var captureSources: [(file: URL, stamp: DuplicateFileStamp)] = []
         let orderedFiles = options.rules.contains { $0.kind == .number } ? options.numberingOrder.order(files) : files
         for (index, input) in orderedFiles.enumerated() {
             guard input.isFileURL else { throw BatchRenameError.missingFile(input.lastPathComponent) }
@@ -149,6 +162,7 @@ public enum BatchRename {
             let source = parent.appendingPathComponent(input.lastPathComponent)
             let identity = try FileIdentity(source)
             let original = source.lastPathComponent
+            var captured: (date: Date, timeZone: TimeZone?)?
             let ext = options.includesExtension ? "" : source.pathExtension
             var name = ext.isEmpty ? original : source.deletingPathExtension().lastPathComponent
             for (rule, regex) in rules {
@@ -173,11 +187,30 @@ public enum BatchRename {
                     name = decorate(name, with: sign + zeros + digits, using: rule)
                 case .date:
                     let date: Date?
-                    if rule.dateSource == .current {
+                    formatter.timeZone = localTimeZone
+                    switch rule.dateSource {
+                    case .current:
                         date = now
-                    } else {
+                    case .created, .modified:
                         let values = try source.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
                         date = rule.dateSource == .created ? values.creationDate : values.contentModificationDate
+                    case .captured:
+                        if captured == nil {
+                            guard let stamp = try? DuplicateFileIO.inspect(source), let capture = captureDate(source) else {
+                                throw BatchRenameError.missingCaptureDate(original)
+                            }
+                            guard (try? DuplicateFileIO.inspect(source)) == stamp else {
+                                throw BatchRenameError.changedCaptureSource(original)
+                            }
+                            captured = capture
+                            captureSources.append((source, stamp))
+                        }
+                        guard let capture = captured else { throw BatchRenameError.missingCaptureDate(original) }
+                        if capture.timeZone == nil, usesTimeZone(rule.dateFormat) {
+                            throw BatchRenameError.missingCaptureOffset(original)
+                        }
+                        date = capture.date
+                        formatter.timeZone = capture.timeZone ?? .gmt
                     }
                     guard let date else { throw BatchRenameError.missingDate(original) }
                     formatter.dateFormat = rule.dateFormat
@@ -196,7 +229,48 @@ public enum BatchRename {
             }
         }
         try validate(moves)
-        return BatchRenamePlan(changes: changes, moves: moves)
+        return BatchRenamePlan(changes: changes, moves: moves, captureSources: captureSources)
+    }
+
+    private static func captureDate(_ file: URL) -> (date: Date, timeZone: TimeZone?)? {
+        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil),
+              let properties = CGImageSourceCopyPropertiesAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), nil) as? [String: Any],
+              let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any],
+              let stamp = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String else { return nil }
+
+        let offset = exif[kCGImagePropertyExifOffsetTimeOriginal as String]
+        let timeZone: TimeZone?
+        if let offset {
+            guard let text = offset as? String,
+                  let match = text.wholeMatch(of: /([+-])([0-9]{2}):([0-5][0-9])/),
+                  let hours = Int(match.2), let minutes = Int(match.3),
+                  let zone = TimeZone(secondsFromGMT: (match.1 == "-" ? -1 : 1) * (hours * 3_600 + minutes * 60)) else {
+                return nil
+            }
+            timeZone = zone
+        } else {
+            timeZone = nil
+        }
+
+        let parser = DateFormatter()
+        parser.locale = Locale(identifier: "en_US_POSIX")
+        parser.calendar = Calendar(identifier: .gregorian)
+        // An offset-less EXIF date is a wall-clock value. A fixed zone preserves its fields
+        // even at local DST transitions, and callers reject patterns that would print that zone.
+        parser.timeZone = timeZone ?? .gmt
+        parser.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        parser.isLenient = false
+        guard let date = parser.date(from: stamp), parser.string(from: date) == stamp else { return nil }
+        return (date, timeZone)
+    }
+
+    private static func usesTimeZone(_ pattern: String) -> Bool {
+        var quoted = false
+        for character in pattern {
+            if character == "'" { quoted.toggle() }
+            else if !quoted, "zZOvVXx".contains(character) { return true }
+        }
+        return false
     }
 
     private static func decorate(_ name: String, with value: String, using rule: BatchRenameRule) -> String {

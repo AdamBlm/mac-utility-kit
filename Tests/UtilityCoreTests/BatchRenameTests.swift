@@ -1,8 +1,93 @@
+import CoreGraphics
 import Foundation
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 import UtilityCore
 
 @Suite struct BatchRenameTests {
+    @Test func usesOriginalCameraDateAndRecordedOffsetInsteadOfFileDates() throws {
+        try fixture { directory in
+            let photo = directory.appending(path: "photo.jpg")
+            try writePhoto(photo, captureDate: "2013:12:31 23:30:00", offset: "-07:00")
+            let newer = Date(timeIntervalSince1970: 1_700_000_000)
+            try FileManager.default.setAttributes([.modificationDate: newer], ofItemAtPath: photo.path)
+            var date = BatchRenameRule(kind: .date)
+            date.dateSource = .captured
+            date.dateFormat = "yyyyMMdd-HHmm-Z"
+            var options = BatchRenameOptions()
+            options.rules = [date]
+            let capture = try BatchRename.plan(files: [photo], options: options)
+            #expect(capture.changes.map { $0.destination.lastPathComponent } == ["photo-20131231-2330--0700.jpg"])
+
+            date.dateSource = .modified
+            options.rules = [date]
+            let modified = try BatchRename.plan(files: [photo], options: options)
+            #expect(capture.changes[0].destination != modified.changes[0].destination)
+
+            let noOffset = directory.appending(path: "clock.jpg")
+            try writePhoto(noOffset, captureDate: "2021:03:14 02:30:00")
+            date.dateSource = .captured
+            date.dateFormat = "yyyyMMdd-HHmm"
+            options.rules = [date]
+            let localTime = try BatchRename.plan(files: [noOffset], options: options)
+            #expect(localTime.changes.map { $0.destination.lastPathComponent } == ["clock-20210314-0230.jpg"])
+            date.dateFormat = "yyyyMMdd-'Z'"
+            options.rules = [date]
+            let literal = try BatchRename.plan(files: [noOffset], options: options)
+            #expect(literal.changes[0].destination.lastPathComponent == "clock-20210314-Z.jpg")
+            date.dateFormat = "yyyyMMdd-Z"
+            options.rules = [date]
+            do {
+                _ = try BatchRename.plan(files: [noOffset], options: options)
+                Issue.record("Expected a missing offset error for a time-zone pattern.")
+            } catch BatchRenameError.missingCaptureOffset(let name) {
+                #expect(name == "clock.jpg")
+            }
+
+            let missing = try file("notes.txt", in: directory)
+            do {
+                _ = try BatchRename.plan(files: [photo, missing], options: options)
+                Issue.record("Expected an EXIF-specific error for the unsupported file.")
+            } catch BatchRenameError.missingCaptureDate(let name) {
+                #expect(name == "notes.txt")
+            }
+            #expect(FileManager.default.fileExists(atPath: photo.path))
+        }
+    }
+
+    @Test func refusesToApplyAStalePhotoDatePreviewAfterAnInPlaceEdit() throws {
+        try fixture { directory in
+            let source = directory.appending(path: "old.jpg")
+            let replacement = directory.appending(path: "replacement.jpg")
+            try writePhoto(source, captureDate: "2014:12:31 23:30:00")
+            try writePhoto(replacement, captureDate: "2015:12:31 23:30:00")
+            var date = BatchRenameRule(kind: .date)
+            date.dateSource = .captured
+            var options = BatchRenameOptions()
+            options.rules = [date]
+            let preview = try BatchRename.plan(files: [source], options: options)
+
+            let file = try FileHandle(forWritingTo: source)
+            try file.truncate(atOffset: 0)
+            try file.write(contentsOf: Data(contentsOf: replacement))
+            try file.close()
+            do {
+                _ = try preview.apply()
+                Issue.record("The old preview must not be applied after an in-place EXIF edit.")
+            } catch BatchRenameError.changedCaptureSource(let name) {
+                #expect(name == "old.jpg")
+            }
+            #expect(!FileManager.default.fileExists(atPath: preview.changes[0].destination.path))
+
+            let updated = try BatchRename.plan(files: [source], options: options)
+            #expect(updated.changes[0].destination.lastPathComponent == "old-2015-12-31.jpg")
+            let receipt = try updated.apply()
+            try receipt.undo()
+            #expect(FileManager.default.fileExists(atPath: source.path))
+        }
+    }
+
     @Test func assignsNumbersInQueueOrNaturalNameOrderAndAppliesThePreview() throws {
         try fixture { directory in
             let ten = try file("File 10.txt", in: directory)
@@ -119,5 +204,18 @@ import UtilityCore
         let url = directory.appendingPathComponent(name)
         try Data(name.utf8).write(to: url)
         return url
+    }
+
+    private func writePhoto(_ url: URL, captureDate: String, offset: String? = nil) throws {
+        let context = try #require(CGContext(
+            data: nil, width: 16, height: 16, bitsPerComponent: 8, bytesPerRow: 0,
+            space: CGColorSpaceCreateDeviceRGB(), bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue
+        ))
+        let image = try #require(context.makeImage())
+        let output = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.jpeg.identifier as CFString, 1, nil))
+        var exif = [kCGImagePropertyExifDateTimeOriginal as String: captureDate]
+        if let offset { exif[kCGImagePropertyExifOffsetTimeOriginal as String] = offset }
+        CGImageDestinationAddImage(output, image, [kCGImagePropertyExifDictionary as String: exif] as CFDictionary)
+        try #require(CGImageDestinationFinalize(output))
     }
 }
