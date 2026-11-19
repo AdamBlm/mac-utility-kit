@@ -18,6 +18,15 @@ public enum ChangeSpeed {
     public struct SourceInfo: Sendable {
         public let duration: Double
         public let hasAudio: Bool
+
+        package func exportIssue(options: ChangeSpeedOptions) -> String? {
+            if !options.isValid { return "Choose a speed between 0.25× and 4×." }
+            if hasAudio, !options.preservesPitch, options.multiplier != 1,
+               options.ffmpegExecutable.map(ExternalTool.isExecutable) != true {
+                return "Choose an FFmpeg executable to change both audio speed and pitch."
+            }
+            return nil
+        }
     }
 
     public static func sourceDuration(_ input: URL) async throws -> Double {
@@ -84,6 +93,9 @@ public enum ChangeSpeed {
             throw ToolError.invalid("The selected video has no frames to preview.")
         }
         let audio = try await primaryTrack(.audio, in: asset)
+        if let issue = SourceInfo(duration: fullLength.seconds, hasAudio: audio != nil).exportIssue(options: options) {
+            throw ToolError.invalid(issue)
+        }
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appending(path: ".speed-\(UUID().uuidString)")
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)

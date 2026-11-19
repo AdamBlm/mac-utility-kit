@@ -20,6 +20,7 @@ struct ToolWorkspace: View {
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
+    @State private var changeSpeedReview: ChangeSpeedReview?
     @State private var videoMergeReview: VideoMergeReview?
     @State private var muteReview: MuteVideoReview?
     @State private var compressionReview: CompressionReview?
@@ -157,6 +158,9 @@ struct ToolWorkspace: View {
         case .trimVideo:
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
                 || trimReview?.permitsExport != true
+        case .changeSpeed:
+            !draft.options.speed.isValid || changeSpeedReview?.inputs != draft.inputs
+                || changeSpeedReview?.permitsExport(options: draft.options.speed) != true
         case .muteVideo:
             muteReview?.request != .init(inputs: draft.inputs, options: draft.options.mute)
                 || muteReview?.permitsExport != true
@@ -281,7 +285,7 @@ struct ToolWorkspace: View {
                                 }
                             }
                         case .changeSpeed:
-                            ChangeSpeedControls(inputs: draft.inputs, options: $draft.options.speed)
+                            ChangeSpeedControls(inputs: draft.inputs, options: $draft.options.speed, review: $changeSpeedReview)
                         case .extractFrames:
                             FrameExtractionSettings(input: draft.inputs.first, options: $draft.options.frames)
                         case .trimVideo:

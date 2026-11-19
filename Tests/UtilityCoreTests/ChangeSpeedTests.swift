@@ -4,6 +4,30 @@ import UtilityCore
 
 @Suite(.serialized)
 struct ChangeSpeedTests {
+    @Test func preflightsPitchChangingBatchWithAudioAndSilentClips() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let audioFolder = directory.appending(path: "audio")
+        let silentFolder = directory.appending(path: "silent")
+        for folder in [audioFolder, silentFolder] {
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        }
+        let audio = try await Self.makeVideo(in: audioFolder, audio: true)
+        let silent = try await Self.makeVideo(in: silentFolder, audio: false)
+        var options = ToolOptions()
+        options.speed.multiplier = 2
+        options.speed.preservesPitch = false
+        #expect(try await ChangeSpeed.sourceInfo(audio).exportIssue(options: options.speed)?.contains("FFmpeg") == true)
+        #expect(try await ChangeSpeed.sourceInfo(silent).exportIssue(options: options.speed) == nil)
+        let report = try await ToolRunner.run(.changeSpeed, inputs: [audio, silent], destination: directory,
+                                              imageSize: 0, options: options) { _ in }
+        #expect(report.outputs.count == 1)
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("FFmpeg") == true)
+        let output = try #require(report.outputs.first)
+        #expect(try await AVURLAsset(url: output).loadTracks(withMediaType: .audio).isEmpty)
+    }
+
     @Test(arguments: [0.5, 2.0], [false, true])
     func adjustsVideoAndAudioDurations(multiplier: Double, withAudio: Bool) async throws {
         let directory = try Self.makeDirectory()

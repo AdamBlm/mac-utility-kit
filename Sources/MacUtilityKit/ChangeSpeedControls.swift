@@ -2,16 +2,41 @@ import AVKit
 import SwiftUI
 import UtilityCore
 
+struct ChangeSpeedReview {
+    let inputs: [URL]
+    var sources: [URL: Result<ChangeSpeed.SourceInfo, Error>] = [:]
+
+    func permitsExport(options: ChangeSpeedOptions) -> Bool {
+        inputs.allSatisfy { sources[$0] != nil } && sources.values.contains {
+            guard let info = try? $0.get() else { return false }
+            return info.exportIssue(options: options) == nil
+        }
+    }
+
+    func issue(for file: URL, options: ChangeSpeedOptions) -> String? {
+        switch sources[file] {
+        case .success(let info): info.exportIssue(options: options)
+        case .failure(let error): error.localizedDescription
+        case nil: nil
+        }
+    }
+}
+
 struct ChangeSpeedControls: View {
     let inputs: [URL]
     @Binding var options: ChangeSpeedOptions
+    @Binding var review: ChangeSpeedReview?
     @State private var custom = false
     @State private var customInput: String?
-    @State private var loadedSource: URL?
-    @State private var sourceInfo: ChangeSpeed.SourceInfo?
-    @State private var previewError: String?
     @State private var showsPlayback = false
     @State private var previewInput: URL?
+    @State private var revision = 0
+
+    private struct Inspection: Equatable {
+        let inputs: [URL]
+        let priority: URL?
+        let revision: Int
+    }
 
     private static let presets = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0]
 
@@ -50,6 +75,7 @@ struct ChangeSpeedControls: View {
     }
 
     var body: some View {
+        let inspection = Inspection(inputs: inputs, priority: activeInput, revision: revision)
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Speed") {
                 Picker("Speed", selection: selectedPreset) {
@@ -85,10 +111,9 @@ struct ChangeSpeedControls: View {
                     .labelsHidden()
                 }
             }
-            if let source = activeInput, source == loadedSource {
-                if let sourceInfo, options.isValid {
-                    let needsFFmpeg = sourceInfo.hasAudio && !options.preservesPitch && options.multiplier != 1
-                        && options.ffmpegExecutable == nil
+            if let source = activeInput, review?.inputs == inputs, let result = review?.sources[source] {
+                if let sourceInfo = try? result.get(), options.isValid {
+                    let issue = sourceInfo.exportIssue(options: options)
                     VStack(alignment: .leading, spacing: 5) {
                         LabeledContent("Original duration", value: durationLabel(sourceInfo.duration))
                         LabeledContent("Adjusted duration", value: durationLabel(sourceInfo.duration / options.multiplier))
@@ -100,20 +125,39 @@ struct ChangeSpeedControls: View {
                         ChangeSpeedPreview(input: source, options: options)
                     } else {
                         Button("Preview Adjusted Speed", systemImage: "play.rectangle") { showsPlayback = true }
-                            .disabled(needsFFmpeg)
-                        if needsFFmpeg {
-                            Text("Choose FFmpeg to preview this clip with pitch preservation off.")
+                            .disabled(issue != nil)
+                        if let issue, inputs.count == 1 {
+                            Text(issue)
                                 .font(.callout).foregroundStyle(.secondary)
                         }
                     }
-                } else if let previewError {
-                    Text(previewError).font(.callout).foregroundStyle(.secondary)
+                } else if inputs.count == 1, case .failure(let error) = result {
+                    Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            if !inputs.isEmpty {
+                Button("Recheck Clips", systemImage: "arrow.clockwise") {
+                    showsPlayback = false
+                    review = nil
+                    revision += 1
+                }
+                if review?.inputs != inputs || !inputs.allSatisfy({ review?.sources[$0] != nil }) {
+                    ProgressView("Checking clips…").controlSize(.small)
+                }
+                if options.isValid, let review, review.inputs == inputs, inputs.count > 1 {
+                    ForEach(Array(inputs.enumerated()), id: \.offset) { index, file in
+                        if let issue = review.issue(for: file, options: options) {
+                            Text("\(index + 1). \(file.lastPathComponent) · \(issue)")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
                 }
             }
             Text("Exports the primary video and audio tracks as MP4.")
                 .font(.callout).foregroundStyle(.secondary)
         }
-        .task(id: activeInput) { await loadSourceInfo(activeInput) }
+        .task(id: inspection) { await loadSourceInfo(inspection) }
+        .onDisappear { review = nil }
         .onChange(of: activeInput) { showsPlayback = false }
         .onChange(of: options) { showsPlayback = false }
     }
@@ -123,20 +167,17 @@ struct ChangeSpeedControls: View {
         return Duration.seconds(rounded).formatted(.time(pattern: .hourMinuteSecond(padHourToLength: 1, fractionalSecondsLength: 2)))
     }
 
-    private func loadSourceInfo(_ source: URL?) async {
-        loadedSource = nil
-        sourceInfo = nil
-        previewError = nil
-        guard let source else { return }
-        do {
-            let info = try await ChangeSpeed.sourceInfo(source)
-            guard !Task.isCancelled else { return }
-            sourceInfo = info
-        } catch {
-            guard !Task.isCancelled else { return }
-            previewError = error.localizedDescription
+    private func loadSourceInfo(_ request: Inspection) async {
+        guard !Task.isCancelled, revision == request.revision else { return }
+        if review?.inputs != request.inputs { review = ChangeSpeedReview(inputs: request.inputs) }
+        let ordered = (request.priority.map { [$0] } ?? []) + request.inputs.filter { $0 != request.priority }
+        for source in ordered where review?.sources[source] == nil {
+            let result: Result<ChangeSpeed.SourceInfo, Error>
+            do { result = .success(try await ChangeSpeed.sourceInfo(source)) }
+            catch { result = .failure(error) }
+            guard !Task.isCancelled, revision == request.revision, review?.inputs == request.inputs else { return }
+            review?.sources[source] = result
         }
-        loadedSource = source
     }
 }
 
