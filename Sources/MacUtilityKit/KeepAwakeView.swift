@@ -48,7 +48,12 @@ struct KeepAwakeView: View {
                         Text("Runs until you stop the session or quit the app.")
                             .foregroundStyle(.secondary)
                     }
-                    Button("Stop", systemImage: "stop.fill") { controller.stop() }
+                    HStack {
+                        Button("Stop", systemImage: "stop.fill") { controller.stop() }
+                        if controller.deadline != nil {
+                            Button("Add 15 Minutes", systemImage: "clock.badge.plus") { controller.extend(minutes: 15) }
+                        }
+                    }
                 } else {
                     SettingRow("Duration") {
                         Picker("Duration", selection: $duration) {

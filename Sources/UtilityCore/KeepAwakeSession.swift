@@ -42,3 +42,16 @@ public final class KeepAwakeSession {
         assertions.append(assertion)
     }
 }
+
+package enum KeepAwakeSchedule {
+    package static let supportedMinutes = 1...10_080
+
+    package static func extendedDeadline(
+        _ deadline: ContinuousClock.Instant, byMinutes minutes: Int, now: ContinuousClock.Instant
+    ) -> ContinuousClock.Instant? {
+        guard supportedMinutes.contains(minutes), deadline > now else { return nil }
+        let extended = deadline.advanced(by: .seconds(minutes * 60))
+        let maximum = now.advanced(by: .seconds(supportedMinutes.upperBound * 60))
+        return extended <= maximum ? extended : nil
+    }
+}

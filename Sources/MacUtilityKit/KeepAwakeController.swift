@@ -5,7 +5,7 @@ import UtilityCore
 @MainActor
 @Observable
 final class KeepAwakeController {
-    static let supportedMinutes = 1...10_080
+    static let supportedMinutes = KeepAwakeSchedule.supportedMinutes
     static let invalidDurationMessage = "Enter a whole number from 1 to 10,080 minutes."
 
     private(set) var isActive = false
@@ -27,17 +27,33 @@ final class KeepAwakeController {
             isActive = true
             keepsDisplayAwake = keepDisplayAwake
             if let minutes {
-                let end = ContinuousClock.now.advanced(by: .seconds(minutes * 60))
-                deadline = end
-                expiry = Task { [weak self] in
-                    do { try await ContinuousClock().sleep(until: end) }
-                    catch { return }
-                    guard !Task.isCancelled else { return }
-                    self?.stop()
-                }
+                scheduleExpiry(ContinuousClock.now.advanced(by: .seconds(minutes * 60)))
             }
         } catch {
             self.error = error.localizedDescription
+        }
+    }
+
+    func extend(minutes: Int) {
+        guard session != nil, let deadline else { return }
+        let now = ContinuousClock.now
+        guard deadline > now else { stop(); return }
+        guard let extended = KeepAwakeSchedule.extendedDeadline(deadline, byMinutes: minutes, now: now) else {
+            error = "A session can have up to seven days remaining."
+            return
+        }
+        error = nil
+        scheduleExpiry(extended)
+    }
+
+    private func scheduleExpiry(_ end: ContinuousClock.Instant) {
+        expiry?.cancel()
+        deadline = end
+        expiry = Task { [weak self] in
+            do { try await ContinuousClock().sleep(until: end) }
+            catch { return }
+            guard !Task.isCancelled, let self, self.deadline == end else { return }
+            self.stop()
         }
     }
 
@@ -47,6 +63,7 @@ final class KeepAwakeController {
         session?.stop()
         session = nil
         deadline = nil
+        error = nil
         isActive = false
         keepsDisplayAwake = false
     }
