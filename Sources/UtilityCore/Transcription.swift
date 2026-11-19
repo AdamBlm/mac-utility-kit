@@ -28,6 +28,7 @@ public enum Transcription {
         public let cues: [SubtitleCue]
         public let language: String?
         public let forcedEnglish: Bool
+        package let sourceStamp: PDFSourceStamp
     }
 
     public static func modelCapability(at model: URL) throws -> ModelCapability {
@@ -76,7 +77,8 @@ public enum Transcription {
         }
         let forcedEnglish = capability == .englishOnly && language == "auto"
         let effectiveLanguage = forcedEnglish ? "en" : language
-        let selection = try await TranscriptionAudio.selection(input, options: options)
+        let sourceStamp = try PDFSourceStamp.read(input)
+        let selection = try await TranscriptionAudio.selection(sourceStamp.resolved, options: options)
         let manager = FileManager.default
         let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: directory, withIntermediateDirectories: false)
@@ -84,6 +86,7 @@ public enum Transcription {
         let wav = directory.appendingPathComponent("source.wav")
         let output = directory.appendingPathComponent("transcript")
         try await TranscriptionAudio.normalize(selection, to: wav)
+        try requireSource(input, matches: sourceStamp)
         await progress(0.25)
         try await ExternalTool.run(executable, name: "whisper-cli", arguments: [
             "-m", model.path, "-f", wav.path, "-l", effectiveLanguage, "-oj", "-of", output.path, "-np"
@@ -93,8 +96,37 @@ public enum Transcription {
         let result = try parseWhisperResult(data, sourceOffset: selection.range.start.seconds,
                                             duration: selection.range.duration.seconds, language: effectiveLanguage,
                                             forcedEnglish: forcedEnglish)
+        try requireSource(input, matches: sourceStamp)
         await progress(1)
-        return result
+        return Result(cues: result.cues, language: result.language, forcedEnglish: forcedEnglish, sourceStamp: sourceStamp)
+    }
+
+    package static func previewAudio(_ input: URL, cue: SubtitleCue, sourceStamp: PDFSourceStamp) async throws -> Data {
+        try requireSource(input, matches: sourceStamp)
+        let start = cue.startMilliseconds
+        let end = cue.endMilliseconds
+        guard start >= 0, end > start, end - start <= 120_000 else {
+            throw ToolError.invalid("Choose an audio preview range no longer than two minutes.")
+        }
+        var options = TranscriptionOptions()
+        options.start = Double(start) / 1_000
+        options.end = Double(end) / 1_000
+        let selection = try await TranscriptionAudio.selection(sourceStamp.resolved, options: options, permitsCueRounding: true)
+        let manager = FileManager.default
+        let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try manager.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: directory) }
+        let wav = directory.appendingPathComponent("preview.wav")
+        try await TranscriptionAudio.normalize(selection, to: wav)
+        try Task.checkCancellation()
+        try requireSource(input, matches: sourceStamp)
+        return try Data(contentsOf: wav)
+    }
+
+    private static func requireSource(_ input: URL, matches stamp: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == stamp else {
+            throw ToolError.invalid("The source file changed. Transcribe it again.")
+        }
     }
 
     public static func render(_ cues: [SubtitleCue], format: TranscriptFormat) -> String {
@@ -126,7 +158,7 @@ public enum Transcription {
 
     private static func parseWhisperResult(
         _ data: Data, sourceOffset: Double, duration: Double, language: String, forcedEnglish: Bool = false
-    ) throws -> Result {
+    ) throws -> (cues: [SubtitleCue], language: String?) {
         let document: WhisperOutput
         do { document = try JSONDecoder().decode(WhisperOutput.self, from: data) }
         catch { throw ToolError.invalid("The selected whisper-cli did not produce valid timestamped JSON.") }
@@ -155,8 +187,7 @@ public enum Transcription {
                 cues.append(SubtitleCue(startMilliseconds: origin + from, endMilliseconds: origin + end, text: text))
             }
         }
-        return Result(cues: cues, language: document.result?.language ?? (forcedEnglish ? "en" : nil),
-                      forcedEnglish: forcedEnglish)
+        return (cues, document.result?.language ?? (forcedEnglish ? "en" : nil))
     }
 }
 

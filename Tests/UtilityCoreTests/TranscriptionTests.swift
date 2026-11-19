@@ -56,6 +56,7 @@ import Testing
         let transcript = try await Transcription.runWithLanguage(source, options: options) { _ in }
         #expect(transcript.language == "en")
         #expect(!transcript.forcedEnglish)
+        #expect(try PDFSourceStamp.read(source) == transcript.sourceStamp)
         #expect(transcript.cues == [SubtitleCue(startMilliseconds: 300, endMilliseconds: 500, text: "Fixture speech")])
         let normalized = try AVAudioFile(forReading: folder.appendingPathComponent("observed.wav"))
         #expect(normalized.fileFormat.sampleRate == 16_000)
@@ -106,6 +107,47 @@ import Testing
         #expect(result.language == "en")
         #expect(result.forcedEnglish)
         #expect(try String(contentsOf: folder.appendingPathComponent("observed-language"), encoding: .utf8) == "en")
+    }
+
+    @Test func auditionsTheSourceRelativeCueRangeWithoutWhisper() async throws {
+        let folder = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("source.wav")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let audio = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 16_000))
+        audio.frameLength = 15_996
+        let samples = try #require(audio.floatChannelData?.pointee)
+        for index in 0..<Int(audio.frameLength) {
+            samples[index] = (6_400..<12_800).contains(index) ? 0.3 * sin(Float(index) / 10) : 0
+        }
+        try writeWave(audio, to: source)
+        let stamp = try PDFSourceStamp.read(source)
+
+        let cue = SubtitleCue(startMilliseconds: 450, endMilliseconds: 650, text: "edited text")
+        let preview = try await Transcription.previewAudio(source, cue: cue, sourceStamp: stamp)
+        let previewFile = folder.appendingPathComponent("preview.wav")
+        try preview.write(to: previewFile)
+        let readable = try AVAudioFile(forReading: previewFile)
+        #expect(abs(Double(readable.length) / readable.fileFormat.sampleRate - 0.2) < 0.01)
+        let copy = try #require(AVAudioPCMBuffer(pcmFormat: readable.processingFormat, frameCapacity: 16_000))
+        try readable.read(into: copy)
+        let values = try #require(copy.floatChannelData?.pointee)
+        let energy = (0..<Int(copy.frameLength)).reduce(Float.zero) { $0 + abs(values[$1]) } / Float(copy.frameLength)
+        #expect(energy > 0.15)
+
+        let endCue = SubtitleCue(startMilliseconds: 900, endMilliseconds: 1_000, text: "end")
+        #expect(try await !Transcription.previewAudio(source, cue: endCue, sourceStamp: stamp).isEmpty)
+
+        await #expect(throws: ToolError.self) {
+            try await Transcription.previewAudio(
+                source, cue: SubtitleCue(startMilliseconds: 650, endMilliseconds: 450, text: "invalid"), sourceStamp: stamp
+            )
+        }
+        let replacement = try Data(contentsOf: source)
+        try replacement.write(to: source, options: .atomic)
+        await #expect(throws: ToolError.self) {
+            try await Transcription.previewAudio(source, cue: cue, sourceStamp: stamp)
+        }
     }
 
     @Test func reportsVideoWithoutAudioBeforeRunningWhisper() async throws {

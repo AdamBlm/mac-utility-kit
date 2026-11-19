@@ -8,7 +8,9 @@ enum TranscriptionAudio {
         let range: CMTimeRange
     }
 
-    static func selection(_ input: URL, options: TranscriptionOptions) async throws -> Selection {
+    static func selection(
+        _ input: URL, options: TranscriptionOptions, permitsCueRounding: Bool = false
+    ) async throws -> Selection {
         guard input.isFileURL, try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
             throw ToolError.invalid("Choose a readable local audio or video file.")
         }
@@ -26,7 +28,14 @@ enum TranscriptionAudio {
         guard let track = selected else { throw ToolError.invalid("This media file does not contain an enabled audio track.") }
         let trackRange = try await track.load(.timeRange)
         let duration = try await asset.load(.duration).seconds
-        let range = try VideoTrimRange.validate(start: options.start, end: options.end, duration: duration)
+        let end: Double?
+        if permitsCueRounding, let requested = options.end, requested <= duration + 0.001 {
+            // Whisper's source offset and cue duration are independently rounded to milliseconds.
+            end = min(requested, duration)
+        } else {
+            end = options.end
+        }
+        let range = try VideoTrimRange.validate(start: options.start, end: end, duration: duration)
         let requested = CMTimeRange(start: CMTime(seconds: range.start, preferredTimescale: 1_000_000),
                                     end: CMTime(seconds: range.end, preferredTimescale: 1_000_000))
         let effective = requested.intersection(trackRange)

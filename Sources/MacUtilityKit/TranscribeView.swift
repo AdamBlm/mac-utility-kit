@@ -8,6 +8,7 @@ struct TranscribeDraft {
     var options = TranscriptionOptions()
     var cues: [SubtitleCue] = []
     var resultInput: URL?
+    var resultSourceStamp: PDFSourceStamp?
     var resultLanguage: String?
     var forcedEnglish = false
     var format = TranscriptFormat.txt
@@ -26,6 +27,9 @@ struct TranscribeView: View {
     @State private var modelRevision = 0
     @State private var startText: String?
     @State private var endText: String?
+    @State private var listening: ListenRequest?
+    @State private var player: AVAudioPlayer?
+    @State private var playbackIssue: String?
 
     private struct InputSummary {
         let url: URL
@@ -36,6 +40,12 @@ struct TranscribeView: View {
     private struct ModelRequest: Equatable {
         let url: URL?
         let revision: Int
+    }
+
+    private struct ListenRequest: Equatable {
+        let id = UUID()
+        let source: URL
+        let cueIndex: Int
     }
 
     private var timeFormat: FloatingPointFormatStyle<Double> {
@@ -132,6 +142,11 @@ struct TranscribeView: View {
             }
         }
         .task(id: draft.input) { await inspect(draft.input) }
+        .task(id: listening) {
+            if let listening { await play(listening) }
+        }
+        .onChange(of: draft.input) { stopPlayback() }
+        .onDisappear { stopPlayback() }
         .task(id: ModelRequest(url: draft.options.model, revision: modelRevision)) {
             guard !Task.isCancelled else { return }
             let model = draft.options.model
@@ -189,11 +204,25 @@ struct TranscribeView: View {
 
     @ViewBuilder
     private func transcriptControls(source: URL) -> some View {
+        if let playbackIssue {
+            Label(playbackIssue, systemImage: "exclamationmark.circle").font(.callout)
+        }
         ForEach(draft.cues.indices, id: \.self) { index in
             let cue = draft.cues[index]
-            Text("\(SubRip.timestamp(cue.startMilliseconds))–\(SubRip.timestamp(cue.endMilliseconds))")
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+            HStack(spacing: 6) {
+                let isListening = listening?.cueIndex == index
+                Button(isListening ? "Stop Segment \(index + 1)" : "Play Segment \(index + 1)",
+                       systemImage: isListening ? "stop.circle" : "play.circle") {
+                    stopPlayback()
+                    if !isListening { listening = ListenRequest(source: source, cueIndex: index) }
+                }
+                .labelStyle(.iconOnly)
+                .disabled(draft.resultSourceStamp == nil)
+                if isListening && player == nil { ProgressView().controlSize(.small) }
+                Text("\(SubRip.timestamp(cue.startMilliseconds))–\(SubRip.timestamp(cue.endMilliseconds))")
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(.secondary)
+            }
             TextField("Segment \(index + 1)", text: Binding(get: {
                 draft.cues[index].text
             }, set: {
@@ -232,11 +261,44 @@ struct TranscribeView: View {
         }
     }
 
+    private func play(_ request: ListenRequest) async {
+        guard listening == request else { return }
+        guard draft.resultInput == request.source, let sourceStamp = draft.resultSourceStamp,
+              draft.cues.indices.contains(request.cueIndex) else {
+            stopPlayback()
+            return
+        }
+        let cue = draft.cues[request.cueIndex]
+        do {
+            let audio = try await Transcription.previewAudio(request.source, cue: cue, sourceStamp: sourceStamp)
+            try Task.checkCancellation()
+            guard listening == request else { return }
+            let playback = try AVAudioPlayer(data: audio)
+            guard playback.play() else { throw ToolError.invalid("Could not play this transcript segment.") }
+            player = playback
+            while playback.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
+            if listening == request { stopPlayback() }
+        } catch {
+            guard !Task.isCancelled, listening == request else { return }
+            stopPlayback()
+            playbackIssue = error.localizedDescription
+        }
+    }
+
+    private func stopPlayback() {
+        player?.stop()
+        player = nil
+        listening = nil
+        playbackIssue = nil
+    }
+
     private func fieldTime(_ value: Double) -> String { value < 0 ? "" : value.formatted(timeFormat) }
 
     private func replaceInput(_ input: URL) {
+        stopPlayback()
         draft.input = input
         draft.resultInput = nil
+        draft.resultSourceStamp = nil
         draft.resultLanguage = nil
         draft.forcedEnglish = false
         draft.cues = []
@@ -262,6 +324,7 @@ struct TranscribeView: View {
 
     private func run() {
         guard draft.task == nil, let input = draft.input else { return }
+        stopPlayback()
         let options = draft.options
         draft.progress = 0.02
         draft.error = nil
@@ -285,6 +348,7 @@ struct TranscribeView: View {
                 draft.resultLanguage = result.language
                 draft.forcedEnglish = result.forcedEnglish
                 draft.resultInput = input
+                draft.resultSourceStamp = result.sourceStamp
             } catch is CancellationError {
                 return
             } catch {

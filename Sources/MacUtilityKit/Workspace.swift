@@ -218,6 +218,7 @@ struct Workspace: View {
             draft.transcribe.input = input
             draft.transcribe.cues = []
             draft.transcribe.resultInput = nil
+            draft.transcribe.resultSourceStamp = nil
             draft.transcribe.resultLanguage = nil
             draft.transcribe.forcedEnglish = false
             draft.transcribe.options.start = 0
