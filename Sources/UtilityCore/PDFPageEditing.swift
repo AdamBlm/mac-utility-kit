@@ -179,6 +179,17 @@ public enum PDFPageEditing {
         }
     }
 
+    package static func splitRepeatedPages(in groups: [PDFSplitGroup]) -> Set<Int> {
+        var seen: Set<Int> = []
+        var repeated: Set<Int> = []
+        for group in groups {
+            for page in group.pageNumbers where !seen.insert(page).inserted {
+                repeated.insert(page)
+            }
+        }
+        return repeated
+    }
+
     public static func split(
         _ input: URL, into directory: URL, options: PDFSplitOptions,
         progress: @Sendable (Double) async -> Void

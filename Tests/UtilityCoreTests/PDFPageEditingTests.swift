@@ -21,8 +21,12 @@ import UtilityCore
         #expect(try PDFPageEditing.splitGroups(pageCount: 5, options: options).map(\.pageNumbers) ==
                 [[1, 2], [3, 4], [5]])
         options.mode = .custom
-        options.customRanges = "Overview: 3,1\n  \nAppendix: 1,4–5"
+        options.customRanges = "Overview: 3,1,3\n  \nAppendix: 1,4–5"
         options.filenamePattern = "{group}-{number}"
+        let groups = try PDFPageEditing.splitGroups(pageCount: 5, options: options)
+        let repeated = PDFPageEditing.splitRepeatedPages(in: groups)
+        #expect(repeated == [1])
+        #expect(groups.map { $0.pageNumbers.filter(repeated.contains) } == [[1], [1]])
         let results = try await PDFPageEditing.split(source, into: directory, options: options) { _ in }
 
         #expect(results.map(\.lastPathComponent) == ["Overview-1.pdf", "Appendix-2.pdf"])

@@ -176,16 +176,28 @@ private struct PDFSplitSettings: View {
     private var groupPreview: some View {
         switch preview {
         case .success(let groups):
-            let repeated = repeatedPages(in: groups.map(\.group))
+            let repeated = PDFPageEditing.splitRepeatedPages(in: groups.map(\.group))
             DisclosureGroup("\(groups.count) files to export") {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
                         ForEach(groups, id: \.group.number) { item in
+                            let pages = item.group.pageNumbers
+                            let overlap = pages.filter(repeated.contains)
                             VStack(alignment: .leading, spacing: 2) {
-                                Text(item.filename).lineLimit(1).help(item.filename)
-                                Text("Pages " + pageDescription(item.group.pageNumbers))
+                                HStack {
+                                    Text(item.filename).lineLimit(1).help(item.filename)
+                                    Spacer()
+                                    Text(pages.count == 1 ? "1 page" : "\(pages.count) pages")
+                                        .foregroundStyle(.secondary)
+                                }
+                                Text("Pages " + pageDescription(pages))
                                     .foregroundStyle(.secondary)
                                     .textSelection(.enabled)
+                                if !overlap.isEmpty {
+                                    Text("Also in other files: " + pageDescription(overlap))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                        .textSelection(.enabled)
+                                }
                             }
                             .font(.callout)
                         }
@@ -197,7 +209,7 @@ private struct PDFSplitSettings: View {
             if !repeated.isEmpty {
                 DisclosureGroup("Pages repeated across files · \(repeated.count)") {
                     ScrollView {
-                        Text(pageDescription(repeated))
+                        Text(pageDescription(repeated.sorted()))
                             .font(.caption).foregroundStyle(.secondary)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -220,17 +232,6 @@ private struct PDFSplitSettings: View {
 
     private func pageDescription(_ pages: [Int]) -> String {
         PageSelection.expression(for: pages.map { $0 - 1 })
-    }
-
-    private func repeatedPages(in groups: [PDFSplitGroup]) -> [Int] {
-        var seen: Set<Int> = []
-        var repeated: Set<Int> = []
-        for group in groups {
-            for page in group.pageNumbers where !seen.insert(page).inserted {
-                repeated.insert(page)
-            }
-        }
-        return repeated.sorted()
     }
 }
 
