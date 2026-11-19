@@ -40,6 +40,51 @@ import UtilityCore
 }
 
 @Suite struct ByteEncodingTests {
+    @Test(arguments: ByteEncoding.allCases, [false, true])
+    func fileConversionMatchesInMemoryAcrossChunks(format: ByteEncoding, padded: Bool) async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "input")
+        let encoded = folder.appending(path: "encoded")
+        let decoded = folder.appending(path: "decoded")
+        let data = Data((0..<130_001).map { UInt8(truncatingIfNeeded: $0 * 113) })
+        try data.write(to: source)
+        try Data("previous output".utf8).write(to: encoded)
+        try await format.convertFile(source, to: encoded, decoding: false, padded: padded, wrapAt: 76)
+        #expect(try Data(contentsOf: encoded) == Data(format.encode(data, padded: padded, wrapAt: 76).utf8))
+        try await format.convertFile(encoded, to: decoded, decoding: true, padded: padded, wrapAt: 0)
+        #expect(try Data(contentsOf: decoded) == data)
+    }
+
+    @Test func invalidStreamAndCancellationPreserveExistingDestination() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "invalid")
+        let output = folder.appending(path: "existing")
+        let original = Data("keep me".utf8)
+        try original.write(to: output)
+        try Data((String(repeating: "YWJj", count: 16_384) + "ZA==x").utf8).write(to: source)
+        await #expect(throws: ByteEncodingError.self) {
+            try await ByteEncoding.base64.convertFile(source, to: output, decoding: true, padded: true, wrapAt: 0)
+        }
+        let task = Task {
+            withUnsafeCurrentTask { $0?.cancel() }
+            try await ByteEncoding.base64.convertFile(source, to: output, decoding: false, padded: true, wrapAt: 0)
+        }
+        await #expect(throws: CancellationError.self) { try await task.value }
+        #expect(try Data(contentsOf: output) == original)
+        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: folder.path)) == ["existing", "invalid"])
+        let alias = folder.appending(path: "input-alias")
+        try FileManager.default.linkItem(at: source, to: alias)
+        await #expect(throws: ToolError.self) {
+            try await ByteEncoding.hex.convertFile(source, to: alias, decoding: false, padded: true, wrapAt: 0)
+        }
+        #expect(try Data(contentsOf: alias) == Data(contentsOf: source))
+    }
+
+
     @Test func formatsAllEncodings() throws {
         let bytes = Data([0xfb, 0xff])
         #expect(ByteEncoding.base64.encode(bytes) == "+/8=")

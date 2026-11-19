@@ -17,6 +17,8 @@ struct Base64ToolView: View {
     @State private var error: String?
     @State private var exportError: String?
     @State private var outputInput: Input?
+    @State private var exportTask: Task<Void, Never>?
+    @State private var exportedFile: URL?
 
     private struct Input: Equatable, Sendable {
         let text: String
@@ -30,6 +32,13 @@ struct Base64ToolView: View {
             lhs.file == rhs.file && lhs.decoding == rhs.decoding && lhs.format == rhs.format &&
                 lhs.padded == rhs.padded && lhs.lineWidth == rhs.lineWidth &&
                 lhs.text.utf8.elementsEqual(rhs.text.utf8)
+        }
+
+        var usesFileExport: Bool {
+            guard let file else { return false }
+            let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+            guard values?.isRegularFile == true, let size = values?.fileSize else { return true }
+            return size > 1_048_576
         }
 
         func convert() async throws -> Output {
@@ -128,7 +137,13 @@ struct Base64ToolView: View {
                 }
             }
             WorkspaceSection("Output", palette: palette) {
-                if outputInput != input && (input.file != nil || !input.text.isEmpty) {
+                if input.usesFileExport, let file = input.file {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Text("This file is converted directly to disk.").foregroundStyle(.secondary)
+                        Button("Export…", systemImage: "square.and.arrow.up") { export(input, file: file) }
+                            .disabled(exportTask != nil)
+                    }
+                } else if outputInput != input && (input.file != nil || !input.text.isEmpty) {
                     ProgressView("Converting…").controlSize(.small)
                 } else if let error, outputInput == input {
                     Text(error).foregroundStyle(.red)
@@ -154,21 +169,37 @@ struct Base64ToolView: View {
                             Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(text) }
                         }
                         Button("Export…", systemImage: "square.and.arrow.up") {
-                            do { try DeveloperToolFiles.save(result.data, as: result.filename) }
-                            catch { exportError = error.localizedDescription }
+                            if let file = input.file {
+                                export(input, file: file, filename: result.filename)
+                            } else {
+                                do { try DeveloperToolFiles.save(result.data, as: result.filename) }
+                                catch { exportError = error.localizedDescription }
+                            }
                         }
+                        .disabled(exportTask != nil)
                     }
                 } else {
                     Text("Enter text or open a file to convert.").foregroundStyle(.secondary)
+                }
+                if exportTask != nil {
+                    HStack {
+                        ProgressView("Converting…").controlSize(.small)
+                        Button("Cancel", action: cancelExport)
+                    }
+                }
+                if let exportedFile {
+                    Button("Reveal in Finder") { NSWorkspace.shared.activateFileViewerSelecting([exportedFile]) }
                 }
                 if let exportError { Text(exportError).foregroundStyle(.red).font(.callout) }
             }
         }
         .task(id: input) {
+            cancelExport()
+            exportedFile = nil
             result = nil
             error = nil
             exportError = nil
-            guard input.file != nil || !input.text.isEmpty else {
+            guard !input.usesFileExport, input.file != nil || !input.text.isEmpty else {
                 outputInput = input
                 return
             }
@@ -185,6 +216,30 @@ struct Base64ToolView: View {
                     outputInput = input
                 }
             }
+        }
+        .onDisappear(perform: cancelExport)
+    }
+
+    private func cancelExport() {
+        exportTask?.cancel()
+        exportTask = nil
+    }
+
+    private func export(_ input: Input, file: URL, filename: String? = nil) {
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = filename ?? (input.decoding ? "decoded.bin" : "encoded.txt")
+        guard panel.runModal() == .OK, let destination = panel.url else { return }
+        exportError = nil
+        exportedFile = nil
+        exportTask = Task {
+            do {
+                try await input.format.convertFile(file, to: destination, decoding: input.decoding,
+                                                   padded: input.padded, wrapAt: input.lineWidth)
+                if !Task.isCancelled { exportedFile = destination }
+            } catch {
+                if !Task.isCancelled { exportError = error.localizedDescription }
+            }
+            if !Task.isCancelled { exportTask = nil }
         }
     }
 }
