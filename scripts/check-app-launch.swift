@@ -30,13 +30,14 @@ private func waitForWorkspace(of app: NSRunningApplication, until deadline: Date
     if let bounds = windows.compactMap({ workspaceBounds($0, for: app.processIdentifier) }).first {
         print("Mac Utility Kit opened a workspace window (\(bounds.width) × \(bounds.height)).")
         _ = app.terminate()
-        waitForTermination(of: app, until: .now + 5)
+        waitForTermination(of: app, until: .now + 5, status: 0)
         return
     }
     guard !app.isTerminated, Date.now < deadline else {
-        if !app.isTerminated { _ = app.terminate() }
         print("Mac Utility Kit did not open a workspace window.")
-        exit(1)
+        if !app.isTerminated { _ = app.terminate() }
+        waitForTermination(of: app, until: .now + 5, status: 1)
+        return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
         waitForWorkspace(of: app, until: deadline)
@@ -53,14 +54,21 @@ private func workspaceBounds(_ window: [String: Any], for pid: pid_t) -> CGSize?
 }
 
 @MainActor
-private func waitForTermination(of app: NSRunningApplication, until deadline: Date) {
-    if app.isTerminated { exit(0) }
-    guard Date.now < deadline else {
+private func waitForTermination(
+    of app: NSRunningApplication, until deadline: Date, status: Int32, forced: Bool = false
+) {
+    if app.isTerminated { exit(status) }
+    if Date.now >= deadline {
+        if forced {
+            print("Mac Utility Kit did not exit after forced termination.")
+            exit(1)
+        }
+        print("Mac Utility Kit did not quit after the launch check. Forcing termination.")
         _ = app.forceTerminate()
-        print("Mac Utility Kit did not quit after the launch check.")
-        exit(1)
+        waitForTermination(of: app, until: .now + 5, status: 1, forced: true)
+        return
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {
-        waitForTermination(of: app, until: deadline)
+        waitForTermination(of: app, until: deadline, status: status, forced: forced)
     }
 }
