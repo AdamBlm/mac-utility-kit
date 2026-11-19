@@ -65,23 +65,25 @@ public enum PDFCompression {
 
     public static func sample(_ input: URL, options: PDFCompressionOptions) async throws -> Sample {
         try validate(options)
-        let document = try open(input)
+        let sourceStamp = try PDFSourceStamp.read(input)
+        let document = try open(sourceStamp.resolved)
         try PDFCompressionEngines.validateInput(document, options: options)
-        let originalBytes = try bytes(input)
+        try verifySource(input, stamp: sourceStamp)
+        let originalBytes = sourceStamp.bytes
         let pages = Array(Set([0, document.pageCount / 2, document.pageCount - 1])).sorted()
         let manager = FileManager.default
         let staging = try stage(in: manager.temporaryDirectory)
         defer { try? manager.removeItem(at: staging) }
         let excerpt: URL
         if pages.count == document.pageCount {
-            excerpt = input
+            excerpt = sourceStamp.resolved
         } else {
             excerpt = staging.appending(path: "Sample.pdf")
             if let qpdf = options.qpdfExecutable {
                 let range = pages.map { String($0 + 1) }.joined(separator: ",")
                 try await ExternalTool.run(qpdf, name: "qpdf", arguments: [
                     "--stream-data=preserve", "--object-streams=preserve",
-                    "--empty", "--pages", input.path, range, "--", excerpt.path
+                    "--empty", "--pages", sourceStamp.resolved.path, range, "--", excerpt.path
                 ], directory: staging)
             } else {
                 let selected = PDFDocument()
@@ -96,11 +98,14 @@ public enum PDFCompression {
             }
         }
         let candidate = staging.appending(path: "Compressed sample.pdf")
+        try verifySource(input, stamp: sourceStamp)
         try await PDFCompressionEngines.run(excerpt, to: candidate, options: options)
-        let measured = try bytes(excerpt)
+        try verifySource(input, stamp: sourceStamp)
+        let measured = excerpt == sourceStamp.resolved ? originalBytes : try bytes(excerpt)
         let compressed = try bytes(candidate)
         let verified = try open(candidate)
         try verify(verified, against: open(excerpt), engine: options.engine)
+        try verifySource(input, stamp: sourceStamp)
         let estimate = pages.count == document.pageCount
             ? compressed : Int64(min(Double(Int64.max - 1024), (Double(originalBytes) * Double(compressed) / Double(measured)).rounded()))
         return Sample(originalBytes: measured, candidateBytes: compressed, samplePages: pages.count,
@@ -118,17 +123,20 @@ public enum PDFCompression {
               !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local PDF output file.")
         }
-        let original = try open(input)
+        let sourceStamp = try PDFSourceStamp.read(input)
+        let original = try open(sourceStamp.resolved)
         try PDFCompressionEngines.validateInput(original, options: options)
-        let originalBytes = try bytes(input)
+        let originalBytes = sourceStamp.bytes
         let staging = try stage(in: output.deletingLastPathComponent())
         defer { try? manager.removeItem(at: staging) }
         let candidate = staging.appending(path: "Compressed.pdf")
         try Task.checkCancellation()
         await progress(0.1)
-        try await PDFCompressionEngines.run(input, to: candidate, options: options)
+        try verifySource(input, stamp: sourceStamp)
+        try await PDFCompressionEngines.run(sourceStamp.resolved, to: candidate, options: options)
         try Task.checkCancellation()
         await progress(0.8)
+        try verifySource(input, stamp: sourceStamp)
         let compressed = try open(candidate)
         try verify(compressed, against: original, engine: options.engine)
         let candidateBytes = try bytes(candidate)
@@ -136,14 +144,21 @@ public enum PDFCompression {
         let result: URL
         if keptOriginal {
             result = staging.appending(path: "Original.pdf")
-            try manager.copyItem(at: input, to: result)
+            try sourceStamp.copyVerified(to: result)
         } else {
             result = candidate
         }
         try Task.checkCancellation()
+        try verifySource(input, stamp: sourceStamp)
         try manager.moveItem(at: result, to: output)
         await progress(1)
         return summary(input.lastPathComponent, original: originalBytes, candidate: candidateBytes, keptOriginal: keptOriginal)
+    }
+
+    private static func verifySource(_ input: URL, stamp: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == stamp else {
+            throw ToolError.invalid("The source PDF changed during compression. Try again.")
+        }
     }
 
     private struct Link: Equatable {

@@ -5,6 +5,8 @@ import UtilityCore
 struct PDFCropControls: View {
     let input: URL?
     @Binding var options: PDFCropOptions
+    @Binding var ready: Bool
+    @State private var validationIssue: String?
     @State private var document: PDFDocument?
     @State private var previewPage = 1
     @State private var dragBounds: CGRect?
@@ -26,6 +28,12 @@ struct PDFCropControls: View {
                 }
             }
             Button("Reset offsets") { options.offsets = PDFCropOffsets() }
+            if input != nil {
+                Button("Refresh PDF Preview", systemImage: "arrow.clockwise", action: reload)
+            }
+            if let validationIssue {
+                Text(validationIssue).font(.callout).foregroundStyle(.secondary)
+            }
             if let document, document.pageCount > 0 {
                 Stepper("Preview page \(previewPage) of \(document.pageCount)", value: $previewPage, in: 1...document.pageCount)
                 if let page = document.page(at: previewPage - 1), let reference = page.pageRef {
@@ -36,9 +44,46 @@ struct PDFCropControls: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task(id: input) {
-            document = input.flatMap { PDFDocument(url: $0) }
-            previewPage = 1
+        .task(id: input) { reload() }
+        .onChange(of: options) { _, _ in updateReadiness() }
+    }
+
+    private func updateReadiness() {
+        guard let document, options.sourceStamp != nil else {
+            ready = false
+            return
+        }
+        do {
+            try PDFCrop.validate(document: document, options: options)
+            validationIssue = nil
+            ready = true
+        } catch {
+            validationIssue = error.localizedDescription
+            ready = false
+        }
+    }
+
+    private func reload() {
+        ready = false
+        options.sourceStamp = nil
+        document = nil
+        validationIssue = nil
+        previewPage = 1
+        dragBounds = nil
+        guard let input else { return }
+        do {
+            let stamp = try PDFSourceStamp.read(input)
+            guard let loaded = PDFDocument(url: stamp.resolved), loaded.pageCount > 0 else {
+                throw ToolError.invalid("Could not open this PDF.")
+            }
+            guard (try? PDFSourceStamp.read(input)) == stamp else {
+                throw ToolError.invalid("This PDF changed while opening. Refresh the PDF preview.")
+            }
+            document = loaded
+            options.sourceStamp = stamp
+            updateReadiness()
+        } catch {
+            validationIssue = error.localizedDescription
         }
     }
 

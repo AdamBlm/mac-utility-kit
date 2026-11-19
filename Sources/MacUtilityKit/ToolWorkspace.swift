@@ -261,7 +261,8 @@ struct ToolWorkspace: View {
                         case .convertDocuments:
                             DocumentConvertControls(inputs: draft.inputs, options: $draft.options.documents)
                         case .cropPDF:
-                            PDFCropControls(input: draft.inputs.first, options: $draft.options.pdfCrop)
+                            PDFCropControls(input: draft.inputs.first, options: $draft.options.pdfCrop,
+                                            ready: $pdfEditorReady)
                                 .id(draft.pdfSourceRevision)
                         case .compressPDF:
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)

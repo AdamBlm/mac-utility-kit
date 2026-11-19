@@ -19,8 +19,13 @@ struct PDFCompressionTests {
         let sample = try await PDFCompression.sample(expanded, options: options)
         #expect(sample.samplePages == 3 && sample.totalPages == 6)
         #expect(sample.preview != nil && sample.estimatedBytes > 0)
+        let alias = directory.appending(path: "Alias.pdf")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: expanded)
+        let aliasedSample = try await PDFCompression.sample(alias, options: options)
+        #expect(aliasedSample.originalBytes == sample.originalBytes)
+        #expect(aliasedSample.estimatedBytes == sample.estimatedBytes)
         let output = directory.appending(path: "Compressed.pdf")
-        let summary = try await PDFCompression.export(expanded, to: output, options: options) { _ in }
+        let summary = try await PDFCompression.export(alias, to: output, options: options) { _ in }
         #expect(summary.contains("smaller"))
         let document = try #require(PDFDocument(url: output))
         #expect(document.pageCount == 6)
@@ -44,8 +49,13 @@ struct PDFCompressionTests {
         let sample = try await PDFCompression.sample(source, options: options)
         #expect(sample.samplePages == 1 && sample.estimatedBytes == sample.candidateBytes)
         #expect(sample.candidateBytes >= sample.originalBytes)
+        let alias = directory.appending(path: "Alias.pdf")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: source)
+        let aliasedSample = try await PDFCompression.sample(alias, options: options)
+        #expect(aliasedSample.originalBytes == Int64(original.count))
+        #expect(aliasedSample.estimatedBytes == aliasedSample.candidateBytes)
         let retained = directory.appending(path: "Kept.pdf")
-        let summary = try await PDFCompression.export(source, to: retained, options: options) { _ in }
+        let summary = try await PDFCompression.export(alias, to: retained, options: options) { _ in }
         #expect(summary.contains("Original kept"))
         #expect(try Data(contentsOf: retained) == original)
 
@@ -76,6 +86,65 @@ struct PDFCompressionTests {
         let resultImages = try Self.imageWidths(output)
         #expect(sourceImages.contains(1080))
         #expect(resultImages.contains { $0 < 300 })
+    }
+
+    @Test(arguments: [0.1, 0.8])
+    func rejectsInputReplacedBeforeCompressionOrFallback(progressMarker: Double) async throws {
+        let folder = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = try Self.linkedPDF(in: folder, count: 1, links: false)
+        let engine = folder.appending(path: "copy-engine")
+        try Data("""
+            #!/bin/sh
+            for arg in "$@"; do
+              previous="$last"
+              last="$arg"
+            done
+            exec /bin/cp "$previous" "$last"
+            """.utf8).write(to: engine)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.path)
+        let output = folder.appending(path: "Output.pdf")
+        var options = PDFCompressionOptions()
+        options.qpdfExecutable = engine
+        let replacement = Data("This is a different file".utf8)
+        await #expect(throws: ToolError.self) {
+            try await PDFCompression.export(input, to: output, options: options) { fraction in
+                if fraction == progressMarker {
+                    do { try replacement.write(to: input, options: .atomic) }
+                    catch { Issue.record("Could not replace the input fixture: \(error)") }
+                }
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+        #expect(try Data(contentsOf: input) == replacement)
+        #expect(!(try FileManager.default.contentsOfDirectory(atPath: folder.path))
+            .contains { $0.hasPrefix(".pdf-compress-") })
+    }
+
+    @Test func rejectsSampleWhenItsInputChangesDuringTheEngineRun() async throws {
+        let folder = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = try Self.linkedPDF(in: folder, count: 1, links: false)
+        let engine = folder.appending(path: "mutation-engine")
+        try Data("""
+            #!/bin/sh
+            for arg in "$@"; do
+              previous="$last"
+              last="$arg"
+            done
+            /bin/cp "$previous" "$last" || exit 1
+            printf 'replacement' > "$previous"
+            """.utf8).write(to: engine)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.path)
+        var options = PDFCompressionOptions()
+        options.qpdfExecutable = engine
+        do {
+            _ = try await PDFCompression.sample(input, options: options)
+            Issue.record("Expected the sample to reject a changed source.")
+        } catch {
+            #expect(error.localizedDescription.contains("source PDF changed"))
+        }
+        #expect(try String(contentsOf: input, encoding: .utf8) == "replacement")
     }
 
     @Test func refusesInvalidConfigurationWithoutAFile() async throws {

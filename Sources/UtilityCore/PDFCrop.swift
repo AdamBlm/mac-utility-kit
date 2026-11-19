@@ -22,6 +22,7 @@ public struct PDFCropOffsets: Equatable, Sendable {
 public struct PDFCropOptions: Equatable, Sendable {
     public var pages = ""
     public var offsets = PDFCropOffsets()
+    public var sourceStamp: PDFSourceStamp?
 
     public init() {}
 }
@@ -38,20 +39,38 @@ public enum PDFCrop {
         return bottomLeft.applying(transform.inverted()).standardized
     }
 
-    public static func export(
-        _ input: URL, to output: URL, options: PDFCropOptions,
-        progress: @escaping @Sendable (Double) async -> Void
-    ) async throws -> String {
-        guard input.isFileURL, output.isFileURL, input.standardizedFileURL != output.standardizedFileURL,
-              !FileManager.default.fileExists(atPath: output.path),
-              let document = PDFDocument(url: input), document.pageCount > 0 else {
-            throw ToolError.invalid("Choose a readable PDF and a new local output filename.")
-        }
+    public static func validate(document: PDFDocument, options: PDFCropOptions) throws {
+        _ = try cropPlan(document, options: options)
+    }
+
+    private static func cropPlan(_ document: PDFDocument, options: PDFCropOptions) throws -> [(index: Int, box: CGRect)] {
         guard !document.isEncrypted, document.allowsDocumentChanges else {
             throw ToolError.invalid("Choose an unencrypted PDF that allows document changes.")
         }
         let selected = try PageSelection.indices(options.pages, pageCount: document.pageCount)
         guard !selected.isEmpty else { throw ToolError.invalid("Choose at least one page to crop.") }
+        return try selected.map { index in
+            guard let reference = document.page(at: index)?.pageRef else {
+                throw ToolError.invalid("Could not read the selected page.")
+            }
+            return (index, try box(for: reference, offsets: options.offsets))
+        }
+    }
+
+    public static func export(
+        _ input: URL, to output: URL, options: PDFCropOptions,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> String {
+        guard input.isFileURL, output.isFileURL, input.standardizedFileURL != output.standardizedFileURL,
+              !FileManager.default.fileExists(atPath: output.path) else {
+            throw ToolError.invalid("Choose a readable PDF and a new local output filename.")
+        }
+        let stamp = try options.sourceStamp ?? PDFSourceStamp.read(input)
+        try verifySource(input, stamp: stamp)
+        guard let document = PDFDocument(url: stamp.resolved), document.pageCount > 0 else {
+            throw ToolError.invalid("Choose a readable PDF and a new local output filename.")
+        }
+        let planned = try cropPlan(document, options: options)
 
         var expected: [CGRect] = []
         var rotations: [Int] = []
@@ -68,17 +87,14 @@ public enum PDFCrop {
         }
 
         // Derive every box from the source before changing PDFKit page state.
-        let planned = try selected.map { index -> CGRect in
-            guard let reference = document.page(at: index)?.pageRef else { throw ToolError.invalid("Could not read the selected page.") }
-            return try box(for: reference, offsets: options.offsets)
-        }
-        for (position, index) in selected.enumerated() {
+        for (position, item) in planned.enumerated() {
             try Task.checkCancellation()
-            document.page(at: index)?.setBounds(planned[position], for: .cropBox)
-            expected[index] = planned[position]
-            await progress(Double(position + 1) / Double(selected.count + 1))
+            document.page(at: item.index)?.setBounds(item.box, for: .cropBox)
+            expected[item.index] = item.box
+            await progress(Double(position + 1) / Double(planned.count + 1))
         }
 
+        try verifySource(input, stamp: stamp)
         let manager = FileManager.default
         let directory = output.deletingLastPathComponent().appendingPathComponent(".MacUtilityKit-" + UUID().uuidString)
         try manager.createDirectory(at: directory, withIntermediateDirectories: false)
@@ -96,9 +112,16 @@ public enum PDFCrop {
             }
         }
         try Task.checkCancellation()
+        try verifySource(input, stamp: stamp)
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
-        return "\(input.lastPathComponent) · Cropped \(selected.count) of \(expected.count) pages"
+        return "\(input.lastPathComponent) · Cropped \(planned.count) of \(expected.count) pages"
+    }
+
+    private static func verifySource(_ input: URL, stamp: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == stamp else {
+            throw ToolError.invalid("This PDF changed after preview. Refresh the PDF preview before cropping.")
+        }
     }
 
     private static func sameBounds(_ first: CGRect, _ second: CGRect) -> Bool {

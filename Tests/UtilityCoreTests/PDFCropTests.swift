@@ -44,6 +44,46 @@ struct PDFCropTests {
         #expect(secondPage.getBoxRect(.cropBox) == CGRect(x: 15, y: 55, width: 140, height: 200))
     }
 
+    @Test(arguments: [false, true])
+    func rejectsSourceReplacementBeforePublication(replaceDuringExport: Bool) async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+
+        let input = folder.appending(path: "source.pdf")
+        let replacement = folder.appending(path: "replacement.pdf")
+        let output = folder.appending(path: "cropped.pdf")
+        for (file, width) in [(input, 200.0), (replacement, 210.0)] {
+            var bounds = CGRect(x: 0, y: 0, width: width, height: 300)
+            let context = try #require(CGContext(file as CFURL, mediaBox: &bounds, nil))
+            context.beginPDFPage(nil)
+            context.fill(CGRect(x: 20, y: 20, width: 50, height: 50))
+            context.endPDFPage()
+            context.closePDF()
+        }
+
+        var options = PDFCropOptions()
+        options.sourceStamp = try PDFSourceStamp.read(input)
+        options.offsets.left = 10
+        if !replaceDuringExport {
+            _ = try FileManager.default.replaceItemAt(input, withItemAt: replacement)
+        }
+
+        await #expect(throws: ToolError.self) {
+            _ = try await PDFCrop.export(input, to: output, options: options) { progress in
+                if replaceDuringExport, progress == 0.5 {
+                    do {
+                        _ = try FileManager.default.replaceItemAt(input, withItemAt: replacement)
+                    } catch {
+                        Issue.record("Could not replace the source PDF: \(error)")
+                    }
+                }
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+        #expect(try PDFSourceStamp.read(input) != options.sourceStamp)
+    }
+
     @Test func rejectsOffsetsThatConsumeThePage() {
         var offsets = PDFCropOffsets()
         offsets.left = 101
