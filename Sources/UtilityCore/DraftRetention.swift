@@ -163,9 +163,13 @@ package final class DraftRetention {
     private func load() {
         guard records == nil else { return }
         let cutoff = now().addingTimeInterval(-maximumAge)
-        let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-        let encoded = (1...4_194_304).contains(size) ? try? Data(contentsOf: file) : nil
+        let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize
+        let encoded = size.flatMap { (0...4_194_304).contains($0) ? try? Data(contentsOf: file) : nil }
         let disk = encoded.flatMap { try? JSONDecoder().decode(StoredRecords.self, from: $0) }
+        if encoded != nil, disk == nil {
+            try? clear()
+            return
+        }
         records = (disk?.records ?? [:]).filter { _, record in
             record.updated > cutoff && record.text.utf8.count <= 262_144
         }
