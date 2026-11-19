@@ -22,6 +22,7 @@ struct ToolWorkspace: View {
     @State private var trimReview: TrimVideoReview?
     @State private var compressionReview: CompressionReview?
     @State private var passthroughReview: VideoPassthroughReview?
+    @State private var passthroughRefreshID = UUID()
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
@@ -30,6 +31,7 @@ struct ToolWorkspace: View {
     private struct VideoPassthroughRequest: Equatable {
         let inputs: [URL]
         let options: VideoConversionOptions
+        let refreshID: UUID
     }
 
     private struct VideoPassthroughReview {
@@ -41,7 +43,7 @@ struct ToolWorkspace: View {
         let options = draft.options.conversion
         guard tool == .convertVideo, options.mode == .passthrough, !draft.inputs.isEmpty,
               !options.requiresFFmpeg || options.ffmpegExecutable != nil else { return nil }
-        return .init(inputs: draft.inputs, options: options)
+        return .init(inputs: draft.inputs, options: options, refreshID: passthroughRefreshID)
     }
 
     var body: some View {
@@ -247,6 +249,10 @@ struct ToolWorkspace: View {
                             conversionControls()
                             if let request = passthroughRequest {
                                 if let review = passthroughReview, review.request == request {
+                                    Button("Recheck Passthrough", systemImage: "arrow.clockwise") {
+                                        passthroughRefreshID = UUID()
+                                    }
+                                    .disabled(session.isRunning)
                                     if !review.failures.isEmpty {
                                         Text("Compatible files can still be exported. Files listed below are checked again and skipped if they are still incompatible.")
                                             .font(.callout).foregroundStyle(.secondary)
