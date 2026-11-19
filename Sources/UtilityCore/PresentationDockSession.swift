@@ -177,7 +177,11 @@ private final class PresentationSettingsLock {
         handle = descriptor
     }
 
-    deinit { close(handle) }
+    deinit {
+        // Release the lease even if a concurrent spawn briefly inherited the descriptor.
+        flock(handle, LOCK_UN)
+        close(handle)
+    }
 }
 
 @MainActor
