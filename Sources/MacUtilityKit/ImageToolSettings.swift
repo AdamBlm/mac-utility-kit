@@ -13,7 +13,14 @@ extension ToolWorkspace {
             .labelsHidden()
             .pickerStyle(.segmented)
         }
-        if [.jpg, .heic, .webp].contains(options.format) {
+        if options.format == .webp {
+            Toggle("Lossless encoding", isOn: $draft.options.imageConversion.losslessWebP)
+            if options.losslessWebP {
+                Text("Lossless WebP supports up to 8 bits per channel.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+        if options.format == .jpg || options.format == .heic || (options.format == .webp && !options.losslessWebP) {
             imageQualitySetting($draft.options.imageConversion.quality)
         }
         Toggle("Preserve metadata where supported", isOn: $draft.options.imageConversion.preserveMetadata)
