@@ -161,10 +161,19 @@ public enum PDFCompression {
         }
     }
 
-    private struct Link: Equatable {
+    private struct Link {
         let url: String?
         let page: Int?
         let action: String?
+        let bounds: CGRect
+
+        func matches(_ other: Self) -> Bool {
+            url == other.url && page == other.page && action == other.action
+                && abs(bounds.minX - other.bounds.minX) < 0.02
+                && abs(bounds.minY - other.bounds.minY) < 0.02
+                && abs(bounds.maxX - other.bounds.maxX) < 0.02
+                && abs(bounds.maxY - other.bounds.maxY) < 0.02
+        }
     }
 
     private static func verify(_ result: PDFDocument, against original: PDFDocument, engine: PDFCompressionOptions.Engine) throws {
@@ -176,7 +185,8 @@ public enum PDFCompression {
             guard let source = original.page(at: index), let output = result.page(at: index),
                   comparableSize(source, output),
                   normalized(source.string) == normalized(output.string),
-                  links(in: source, document: original) == links(in: output, document: result) else {
+                  links(in: source, document: original).elementsEqual(links(in: output, document: result),
+                                                                     by: { $0.matches($1) }) else {
                 let advice = engine == .ghostscript ? " Try qpdf lossless compression." : ""
                 throw ToolError.invalid("Compression changed the layout, selectable text, or links on page \(index + 1).\(advice)")
             }
@@ -199,7 +209,7 @@ public enum PDFCompression {
             let url = link.url ?? (link.action as? PDFActionURL)?.url
             let destination = link.destination ?? (link.action as? PDFActionGoTo)?.destination
             return Link(url: url?.absoluteString, page: destination?.page.map { document.index(for: $0) },
-                        action: link.action.map { String(describing: type(of: $0)) })
+                        action: link.action.map { String(describing: type(of: $0)) }, bounds: link.bounds)
         }
     }
 

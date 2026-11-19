@@ -121,6 +121,38 @@ struct PDFCompressionTests {
             .contains { $0.hasPrefix(".pdf-compress-") })
     }
 
+    @Test func rejectsCandidateWithMovedLinkHotspot() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try Self.linkedPDF(in: directory, count: 1)
+        let document = try #require(PDFDocument(url: source))
+        let link = try #require(document.page(at: 0)?.annotations.first)
+        link.bounds = link.bounds.offsetBy(dx: 12, dy: 0)
+        let altered = directory.appending(path: "Altered.pdf")
+        try #require(document.write(to: altered))
+        let reread = try #require(PDFDocument(url: altered))
+        #expect(reread.page(at: 0)?.annotations.first?.bounds == link.bounds)
+
+        let engine = directory.appending(path: "move-link-engine")
+        try Data("""
+            #!/bin/sh
+            for arg in "$@"; do target="$arg"; done
+            exec /bin/cp "${0%/*}/Altered.pdf" "$target"
+            """.utf8).write(to: engine)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.path)
+        var options = PDFCompressionOptions()
+        options.qpdfExecutable = engine
+        options.keepsOriginalIfLarger = false
+        let output = directory.appending(path: "Output.pdf")
+        do {
+            _ = try await PDFCompression.export(source, to: output, options: options) { _ in }
+            Issue.record("Compression published a moved link hotspot.")
+        } catch {
+            #expect(error.localizedDescription.contains("links on page 1"))
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
+
     @Test func rejectsSampleWhenItsInputChangesDuringTheEngineRun() async throws {
         let folder = try Self.directory()
         defer { try? FileManager.default.removeItem(at: folder) }
