@@ -23,6 +23,39 @@ public struct TextToSpeechRequest: Equatable, Sendable {
 public struct TextToSpeechAudio: Sendable {
     public let wave: Data
     public let duration: Double
+
+    public func encoded(as format: SpeechAudioFormat) async throws -> Data {
+        try Task.checkCancellation()
+        guard format == .m4a else { return wave }
+        let manager = FileManager.default
+        let folder = manager.temporaryDirectory.appending(path: ".speech-export-\(UUID().uuidString)")
+        try manager.createDirectory(at: folder, withIntermediateDirectories: false,
+                                    attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: folder) }
+        let input = folder.appending(path: "Speech.wav")
+        let output = folder.appending(path: "Speech.m4a")
+        try wave.write(to: input)
+        var options = AudioConvertOptions()
+        options.format = .m4a
+        options.bitrate = 64
+        options.preservesMetadata = false
+        _ = try await AudioConvert.export(input, to: output, options: options) { _ in }
+        let file = try AVAudioFile(forReading: output)
+        let seconds = Double(file.length) / file.fileFormat.sampleRate
+        guard seconds.isFinite, seconds > 0, abs(seconds - duration) < 0.15 else {
+            throw ToolError.invalid("The exported speech did not match the generated duration.")
+        }
+        try Task.checkCancellation()
+        return try Data(contentsOf: output)
+    }
+}
+
+public enum SpeechAudioFormat: String, CaseIterable, Identifiable, Sendable {
+    case wav = "WAV"
+    case m4a = "M4A"
+
+    public var id: Self { self }
+    public var fileExtension: String { rawValue.lowercased() }
 }
 
 @MainActor

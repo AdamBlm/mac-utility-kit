@@ -1,7 +1,7 @@
 import AVFoundation
 import CoreText
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 @Suite(.serialized)
 struct TextToSpeechTests {
@@ -76,6 +76,31 @@ struct TextToSpeechTests {
         #expect(selected.wave.starts(with: [82, 73, 70, 70]))
         let player = try AVAudioPlayer(data: selected.wave)
         #expect(abs(player.duration - selected.duration) < 0.01)
+    }
+
+    @Test func exportsSpeechWaveAsNativeAACWithoutChangingTheWAV() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "source.wav")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 22_050, channels: 1))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 22_050))
+        buffer.frameLength = 22_050
+        let samples = try #require(buffer.floatChannelData?.pointee)
+        for index in 0..<Int(buffer.frameLength) { samples[index] = 0.3 * sin(Float(index) / 10) }
+        let pcm = try AVAudioFile(forWriting: source, settings: format.settings)
+        try pcm.write(from: buffer)
+        pcm.close()
+        let audio = TextToSpeechAudio(wave: try Data(contentsOf: source), duration: 1)
+        #expect(try await audio.encoded(as: .wav) == audio.wave)
+        let encoded = try await audio.encoded(as: .m4a)
+        let output = folder.appending(path: "export.m4a")
+        try encoded.write(to: output)
+        let track = try AVAudioFile(forReading: output)
+        let readFormat = track.fileFormat
+        #expect(readFormat.streamDescription.pointee.mFormatID == kAudioFormatMPEG4AAC)
+        #expect(readFormat.channelCount == 1)
+        #expect(abs(Double(track.length) / readFormat.sampleRate - 1) < 0.15)
+        #expect(encoded.count < audio.wave.count)
     }
 
     private static func folder() throws -> URL {

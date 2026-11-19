@@ -15,6 +15,7 @@ struct TextToSpeechDraft {
     var voiceID: String?
     var rate: Float = 1
     var section = Section.all
+    var exportFormat = SpeechAudioFormat.wav
 }
 
 struct TextToSpeechView: View {
@@ -26,6 +27,7 @@ struct TextToSpeechView: View {
     @State private var playing = false
     @State private var position = 0.0
     @State private var renderTask: Task<Void, Never>?
+    @State private var exportTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
     @State private var issue: String?
 
@@ -132,6 +134,12 @@ struct TextToSpeechView: View {
                     Button("Generate Audio", systemImage: "waveform") { render(request) }
                         .disabled(!hasText || exceedsLimit)
                 }
+                if exportTask != nil {
+                    HStack {
+                        ProgressView("Exporting audio…").controlSize(.small)
+                        Button("Cancel Export") { exportTask?.cancel() }
+                    }
+                }
                 if let issue { Text(issue).font(.callout).foregroundStyle(.red) }
             }
         }
@@ -142,6 +150,7 @@ struct TextToSpeechView: View {
             cancelRender()
             importTask?.cancel()
             importTask = nil
+            exportTask?.cancel()
         }
     }
 
@@ -159,7 +168,15 @@ struct TextToSpeechView: View {
                 Text("\(time(position)) / \(time(audio.duration))")
                     .font(.callout.monospacedDigit()).foregroundStyle(.secondary)
                 Spacer()
-                Button("Export WAV…", systemImage: "square.and.arrow.up") { save(audio) }
+                Picker("Export format", selection: $draft.exportFormat) {
+                    ForEach(SpeechAudioFormat.allCases) { format in
+                        Text(format.rawValue).tag(format)
+                    }
+                }
+                .labelsHidden()
+                .disabled(exportTask != nil)
+                Button("Export…", systemImage: "square.and.arrow.up") { save(audio) }
+                    .disabled(exportTask != nil)
             }
         }
     }
@@ -254,15 +271,30 @@ struct TextToSpeechView: View {
     }
 
     private func save(_ audio: TextToSpeechAudio) {
+        guard exportTask == nil else { return }
+        let format = draft.exportFormat
         let panel = NSSavePanel()
-        panel.allowedContentTypes = [.wav]
-        panel.nameFieldStringValue = "Speech.wav"
+        panel.allowedContentTypes = [format == .wav ? .wav : .mpeg4Audio]
+        panel.nameFieldStringValue = "Speech." + format.fileExtension
         guard panel.runModal() == .OK, let url = panel.url else { return }
-        do {
-            try audio.wave.write(to: url, options: .atomic)
-            issue = nil
-        } catch {
-            issue = error.localizedDescription
+        issue = nil
+        let center = ExportActivityCenter.shared
+        let job = center.start(.textToSpeech) { exportTask?.cancel() }
+        exportTask = Task {
+            defer {
+                center.finish(job)
+                exportTask = nil
+            }
+            do {
+                let data = try await audio.encoded(as: format)
+                try Task.checkCancellation()
+                try data.write(to: url, options: .atomic)
+                center.postCompletion(.textToSpeech, outputs: 1)
+            } catch is CancellationError {
+                return
+            } catch {
+                if !Task.isCancelled { issue = error.localizedDescription }
+            }
         }
     }
 }
