@@ -9,17 +9,31 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
+      - name: Install media engines for integration tests
+        shell: bash
+        run: |
+          brew install ffmpeg-full imagemagick
+          ffmpeg_directory="$(brew --prefix ffmpeg-full)/bin"
+          magick="$(brew --prefix imagemagick)/bin/magick"
+          "$ffmpeg_directory/ffmpeg" -version
+          "$ffmpeg_directory/ffprobe" -version
+          "$magick" -version
+          {
+            printf 'MAC_UTILITY_FFMPEG_TEST=%s\n' "$ffmpeg_directory/ffmpeg"
+            printf 'MAC_UTILITY_FFPROBE_TEST=%s\n' "$ffmpeg_directory/ffprobe"
+            printf 'MAC_UTILITY_MAGICK_TEST=%s\n' "$magick"
+          } >> "$GITHUB_ENV"
       - name: Build test targets
         run: swift build --build-tests
       - name: Run tests
         id: tests
-        timeout-minutes: 4
+        timeout-minutes: 6
         shell: bash
         run: |
           swift test --skip-build --no-parallel > >(tee "$RUNNER_TEMP/muk-test-run.log") 2>&1 &
           test_pid=$!
           (
-            for ((elapsed = 0; elapsed < 90; elapsed++)); do
+            for ((elapsed = 0; elapsed < 150; elapsed++)); do
               kill -0 "$test_pid" 2>/dev/null || exit 0
               sleep 1
             done
