@@ -18,8 +18,8 @@ struct ImageComparisonView: View {
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             HStack(spacing: 14) {
-                comparisonPane("Original", url: pair.source)
-                comparisonPane("Compressed", url: pair.output)
+                comparisonPane("Original", url: pair.source, bytes: pair.sourceBytes)
+                comparisonPane("Compressed", url: pair.output, bytes: pair.outputBytes)
             }
             if let summary {
                 Text(summary).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
@@ -40,9 +40,16 @@ struct ImageComparisonView: View {
         .frame(minWidth: 640, minHeight: 420)
     }
 
-    private func comparisonPane(_ title: String, url: URL) -> some View {
+    private func comparisonPane(_ title: String, url: URL, bytes: Int?) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title).font(.callout.weight(.semibold))
+            HStack {
+                Text(title).font(.callout.weight(.semibold))
+                Spacer(minLength: 4)
+                if let bytes {
+                    Text(Int64(bytes), format: .byteCount(style: .file))
+                        .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+                }
+            }
             ImageComparisonPane(url: url, magnification: magnification, center: CGPoint(x: x, y: y))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)

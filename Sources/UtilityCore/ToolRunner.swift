@@ -24,6 +24,8 @@ public struct MediaInspectionResult: Sendable {
 public struct ImageComparisonResult: Sendable {
     public let source: URL
     public let output: URL
+    public let sourceBytes: Int?
+    public let outputBytes: Int?
 }
 
 public struct ImageMetadataResult: Sendable {
@@ -276,7 +278,11 @@ public enum ToolRunner {
                         summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
                     case .compressImages:
                         summaries.append(try await ImageCompression.compress(input, to: output, options: options.imageCompression))
-                        comparisons.append(ImageComparisonResult(source: input, output: result.appendingPathComponent(output.lastPathComponent)))
+                        comparisons.append(ImageComparisonResult(
+                            source: input, output: result.appendingPathComponent(output.lastPathComponent),
+                            sourceBytes: try? input.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                            outputBytes: try? output.resourceValues(forKeys: [.fileSizeKey]).fileSize
+                        ))
                     case .removeMetadata:
                         let removal = try await ImageMetadata.remove(input, to: output, options: options.imageMetadata)
                         metadataResults.append(ImageMetadataResult(filename: input.lastPathComponent, removal: removal))

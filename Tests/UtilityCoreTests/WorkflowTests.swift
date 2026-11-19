@@ -672,6 +672,8 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(comparison.source == source)
     #expect(compressed.outputs == [comparison.output])
     #expect(FileManager.default.fileExists(atPath: comparison.output.path))
+    #expect(comparison.sourceBytes == original.count)
+    #expect(comparison.outputBytes == (try Data(contentsOf: comparison.output)).count)
     #expect(try Data(contentsOf: source) == original)
 }
 
