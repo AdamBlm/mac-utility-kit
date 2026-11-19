@@ -49,21 +49,26 @@ struct PDFFormsTests {
         #expect(PDFDocument(url: url)?.page(at: 0)?.annotations.isEmpty == true)
     }
 
-    @Test(arguments: [0, 90, 180, 270])
-    func detectsPrintedBoxesWithoutAddingFields(rotation: Int) throws {
+    @Test(arguments: [0, 90, 180, 270], [false, true])
+    func detectsPrintedBoxesWithoutAddingFields(rotation: Int, cropped: Bool) throws {
         let (url, directory) = try fixture(withBoxes: true)
         defer { try? FileManager.default.removeItem(at: directory) }
         let input: URL
-        if rotation != 0 {
+        let crop = CGRect(x: 19, y: 56, width: 190, height: 110)
+        if rotation != 0 || cropped {
             let source = try #require(PDFDocument(url: url))
             let page = try #require(source.page(at: 0))
             page.rotation = rotation
-            input = directory.appending(path: "Rotated.pdf")
+            if cropped { page.setBounds(crop, for: .cropBox) }
+            input = directory.appending(path: "Modified.pdf")
             try #require(source.write(to: input))
         } else {
             input = url
         }
-        #expect(PDFDocument(url: input)?.page(at: 0)?.rotation == rotation)
+        let reopened = try #require(PDFDocument(url: input))
+        let page = try #require(reopened.page(at: 0))
+        #expect(page.rotation == rotation)
+        if cropped { #expect(page.bounds(for: .cropBox) == crop) }
         let subject = try PDFForms(source: input)
         let candidates = try subject.candidates(on: 0)
         let checkbox = try #require(candidates.first { $0.kind == .checkbox && abs($0.bounds.midX - 42) < 5 && abs($0.bounds.midY - 117) < 5 })
