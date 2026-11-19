@@ -31,6 +31,8 @@ struct QRToolsView: View {
     @State private var previewInput: PreviewInput?
     @State private var preview: CGImage?
     @State private var detections: [QRDetection] = []
+    @State private var selectedDetections: Set<QRDetection.ID> = []
+    @State private var copyMessage: String?
     @State private var scannedName: String?
     @State private var generationMessage: String?
     @State private var scanMessage: String?
@@ -98,6 +100,13 @@ struct QRToolsView: View {
         }
         .onDisappear {
             scanTask?.cancel()
+            scanTask = nil
+            scanning = false
+            scannedName = nil
+            detections = []
+            selectedDetections = []
+            copyMessage = nil
+            scanMessage = nil
             password = ""
         }
     }
@@ -206,10 +215,31 @@ struct QRToolsView: View {
             } else if let scanMessage {
                 Text(scanMessage).font(.callout).foregroundStyle(.secondary)
             }
-            ForEach(detections) { detection in
+            HStack {
+                if detections.count > 1 {
+                    Button("Copy Selected", systemImage: "doc.on.doc") { copyDetections(selectedDetections) }
+                        .disabled(selectedDetections.isEmpty)
+                }
+                if let copyMessage {
+                    Text(copyMessage).font(.callout).foregroundStyle(.secondary)
+                }
+            }
+            ForEach(Array(detections.enumerated()), id: \.element.id) { index, detection in
                 Divider()
                 let concealed = QRTools.isWiFiPayload(detection.payload)
                 HStack(alignment: .top) {
+                    if detections.count > 1 {
+                        Toggle("Select barcode \(index + 1)", isOn: Binding(
+                            get: { selectedDetections.contains(detection.id) },
+                            set: { selected in
+                                if selected { selectedDetections.insert(detection.id) }
+                                else { selectedDetections.remove(detection.id) }
+                                copyMessage = nil
+                            }
+                        ))
+                        .labelsHidden()
+                        .toggleStyle(.checkbox)
+                    }
                     VStack(alignment: .leading, spacing: 4) {
                         Text(detection.type).font(.caption).foregroundStyle(.secondary)
                         if concealed {
@@ -220,9 +250,7 @@ struct QRToolsView: View {
                     }
                     Spacer()
                     Button("Copy", systemImage: "doc.on.doc") {
-                        let item = NSPasteboardItem()
-                        item.setString(detection.payload, forType: .string)
-                        writeClipboardItem(item, concealed: concealed)
+                        copyDetections([detection.id])
                     }
                     if let text = try? QRPayload.url(detection.payload).encoded(), let url = URL(string: text) {
                         Button("Open URL", systemImage: "arrow.up.right.square") {
@@ -250,6 +278,8 @@ struct QRToolsView: View {
         scanTask?.cancel()
         scannedName = url.lastPathComponent
         detections = []
+        selectedDetections = []
+        copyMessage = nil
         scanMessage = nil
         scanning = true
         scanTask = Task {
@@ -273,6 +303,13 @@ struct QRToolsView: View {
                 if !Task.isCancelled { scanMessage = error.localizedDescription }
             }
         }
+    }
+
+    private func copyDetections(_ ids: Set<QRDetection.ID>) {
+        guard let selection = QRTools.selectedText(from: detections, ids: ids) else { return }
+        let item = NSPasteboardItem()
+        item.setString(selection.text, forType: .string)
+        copyMessage = writeClipboardItem(item, concealed: selection.concealed) ? "Copied." : "Could not copy the selection."
     }
 
     @discardableResult

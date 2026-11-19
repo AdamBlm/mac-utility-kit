@@ -1,9 +1,23 @@
 import CoreGraphics
 import Foundation
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 @Suite struct QRToolsTests {
+    @Test func copiesOnlyChosenBarcodePayloadsInDisplayOrderAndConcealsMixedSecrets() throws {
+        let first = QRDetection(type: "QR Code", payload: "café\n東京")
+        let secret = QRDetection(type: "QR Code", payload: "WIFI:S:Example;T:WPA;P:fixture-only;;")
+        let last = QRDetection(type: "Code 128", payload: "123")
+        let items = [first, secret, last]
+        let publicSelection = try #require(QRTools.selectedText(from: items, ids: [last.id, first.id]))
+        #expect(publicSelection.text == "café\n東京\n123")
+        #expect(!publicSelection.concealed)
+        let privateSelection = try #require(QRTools.selectedText(from: items, ids: [last.id, secret.id]))
+        #expect(privateSelection.text == secret.payload + "\n123")
+        #expect(privateSelection.concealed)
+        #expect(QRTools.selectedText(from: items, ids: [UUID()]) == nil)
+    }
+
     @Test func coloredPNGScansUnicode() throws {
         let text = "Hello café 東京"
         var options = QRCodeOptions()

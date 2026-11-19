@@ -119,6 +119,15 @@ public enum QRToolError: LocalizedError {
 }
 
 public enum QRTools {
+    package static func selectedText(
+        from detections: [QRDetection], ids: Set<QRDetection.ID>
+    ) -> (text: String, concealed: Bool)? {
+        let selected = detections.filter { ids.contains($0.id) }
+        guard !selected.isEmpty else { return nil }
+        return (selected.map(\.payload).joined(separator: "\n"),
+                selected.contains { isWiFiPayload($0.payload) })
+    }
+
     package static func isWiFiPayload(_ payload: String) -> Bool {
         // ZXing strips a leading byte order mark before parsing Wi-Fi payloads.
         let text = payload.first == "\u{FEFF}" ? payload.dropFirst() : payload[...]
