@@ -33,6 +33,8 @@ struct AskDocumentView: View {
         let quote: String?
     }
 
+    private var documentTypes: [UTType] { [.pdf, .plainText, .rtf, UTType(filenameExtension: "md") ?? .plainText] }
+
     private var isPDF: Bool { draft.source.map(AskDocument.isPDF) ?? false }
 
     var body: some View {
@@ -71,6 +73,7 @@ struct AskDocumentView: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Button("Open Document…", systemImage: "folder", action: open)
+                ClipboardFileButton(allowedTypes: documentTypes, onPasteFile: setSource)
                 if let source = draft.source {
                     Text(source.lastPathComponent).lineLimit(1).help(source.path)
                 }
@@ -186,8 +189,7 @@ struct AskDocumentView: View {
     }
 
     private func open() {
-        let types: [UTType] = [.pdf, .plainText, .rtf, UTType(filenameExtension: "md") ?? .plainText]
-        guard let source = DeveloperToolFiles.choose(allowedTypes: types) else { return }
+        guard let source = DeveloperToolFiles.choose(allowedTypes: documentTypes) else { return }
         setSource(source)
     }
 

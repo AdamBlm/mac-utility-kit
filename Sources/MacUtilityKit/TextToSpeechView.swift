@@ -73,10 +73,12 @@ struct TextToSpeechView: View {
                     .accessibilityLabel("Text to speak")
                 HStack {
                     Button("Open Document…", systemImage: "folder") { openDocument() }
-                    Button("Paste", systemImage: "doc.on.clipboard") {
+                    ClipboardFileButton(allowedTypes: documentTypes, onPasteFile: importDocument)
+                    Button("Paste Text", systemImage: "doc.on.clipboard") {
                         if let pasted = NSPasteboard.general.string(forType: .string) {
                             text.wrappedValue = pasted
                             draft.sourceName = nil
+                            issue = nil
                         }
                     }
                     Spacer()
@@ -162,9 +164,14 @@ struct TextToSpeechView: View {
         }
     }
 
+    private var documentTypes: [UTType] { [.plainText, UTType(filenameExtension: "md") ?? .plainText, .rtf, .pdf] }
+
     private func openDocument() {
-        let markdown = UTType(filenameExtension: "md") ?? .plainText
-        guard let url = DeveloperToolFiles.choose(allowedTypes: [.plainText, markdown, .rtf, .pdf]) else { return }
+        guard let url = DeveloperToolFiles.choose(allowedTypes: documentTypes) else { return }
+        importDocument(url)
+    }
+
+    private func importDocument(_ url: URL) {
         importTask?.cancel()
         issue = nil
         importTask = Task {

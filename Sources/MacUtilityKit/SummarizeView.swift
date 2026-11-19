@@ -43,10 +43,11 @@ struct SummarizeView: View {
             WorkspaceSection("Source", palette: palette) {
                 HStack {
                     Button("Open…", systemImage: "folder", action: open)
+                    ClipboardFileButton(allowedTypes: Tool.summarize.inputTypes, onPasteFile: { setSource($0) })
                     if let file = draft.file {
                         Text(file.lastPathComponent).lineLimit(1).font(.callout)
                         Button("Use Pasted Text", systemImage: "text.alignleft") {
-                            draft.file = nil
+                            setSource(nil)
                         }
                     }
                 }
@@ -114,11 +115,6 @@ struct SummarizeView: View {
                 }
             }
         }
-        .onChange(of: draft.file) {
-            password = ""
-            draft.pages = ""
-            clearResult()
-        }
         .onChange(of: draft.pages) { clearResult() }
         .onChange(of: password) { clearResult() }
         .onChange(of: draft.length) { clearResult() }
@@ -139,7 +135,13 @@ struct SummarizeView: View {
 
     private func open() {
         guard let file = DeveloperToolFiles.choose(allowedTypes: Tool.summarize.inputTypes) else { return }
+        setSource(file)
+    }
+
+    private func setSource(_ file: URL?) {
         draft.file = file
+        draft.pages = ""
+        password = ""
         clearResult()
     }
 
