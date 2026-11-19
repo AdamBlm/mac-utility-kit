@@ -43,4 +43,15 @@ struct CleanLinksTests {
         #expect(throws: ToolError.self) { try CleanLinks.clean("https://www.google.com/url?q=https://a.test&url=https://b.test") }
         #expect(throws: ToolError.self) { try CleanLinks.clean("https://www.google.com/url?q=javascript%3Aalert%281%29") }
     }
+
+    @Test func validatesExplicitPortsForHostsAndRedirects() throws {
+        #expect(try CleanLinks.clean("https://bücher.example:65535/?utm_source=x").cleaned == "https://bücher.example:65535/")
+        #expect(try CleanLinks.clean("https://[::1]:8080/?utm_source=x").cleaned == "https://[::1]:8080/")
+        #expect(try CleanLinks.clean("https://[::1]/?utm_source=x").cleaned == "https://[::1]/")
+        #expect(throws: ToolError.self) { try CleanLinks.clean("https://example.test:65536/") }
+        #expect(throws: ToolError.self) { try CleanLinks.clean("https://bücher.example:999999999999999999999/") }
+        #expect(throws: ToolError.self) {
+            try CleanLinks.clean("https://www.google.com/url?q=https%3A%2F%2Fexample.test%3A65536%2F")
+        }
+    }
 }

@@ -52,10 +52,18 @@ public enum CleanLinks {
               let components = URLComponents(string: address),
               let scheme = components.scheme?.lowercased(), scheme == "http" || scheme == "https",
               let host = components.host, !host.isEmpty, components.user == nil, components.password == nil,
-              components.url != nil else {
+              components.url != nil, hasValidPort(address, schemeLength: scheme.utf8.count) else {
             throw ToolError.invalid("Enter a valid HTTP or HTTPS link.")
         }
         return components
+    }
+
+    private static func hasValidPort(_ address: String, schemeLength: Int) -> Bool {
+        // URLComponents can omit a port whose value overflows Int. Check the original authority.
+        let authority = address.unicodeScalars.dropFirst(schemeLength + 3).prefix { !"/?#".unicodeScalars.contains($0) }
+        guard let colon = authority.lastIndex(of: ":"), authority.last != "]" else { return true }
+        let port = authority.suffix(from: authority.index(after: colon))
+        return port.isEmpty || UInt16(String(port)) != nil
     }
 
     private static func hasValidASCIISyntax(_ address: String) -> Bool {
