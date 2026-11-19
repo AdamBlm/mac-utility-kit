@@ -142,6 +142,30 @@ struct OfficePDFTests {
         #expect(page.string?.contains("SECOND LANDSCAPE") == true)
     }
 
+    @Test func rejectsNonFilesAndOversizedDocumentsBeforeConversion() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let directory = folder.appending(path: "Directory.docx", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let oversized = folder.appending(path: "Oversized.docx")
+        try Data().write(to: oversized)
+        let handle = try FileHandle(forWritingTo: oversized)
+        try handle.truncate(atOffset: 256 * 1024 * 1024 + 1)
+        try handle.close()
+
+        var options = OfficePDFOptions()
+        options.libreOfficeExecutable = URL(fileURLWithPath: "/usr/bin/true")
+        for input in [directory, oversized] {
+            let expected = "Choose a readable document up to 256 MB."
+            #expect(OfficePDF.optionIssue(input, kind: .word, options: options) == expected)
+            let error = await #expect(throws: ToolError.self) {
+                try await OfficePDF.preview(input, kind: .word, options: options)
+            }
+            #expect(error?.localizedDescription == expected)
+        }
+    }
+
     @Test func reportsUnsupportedInputAndMissingEngine() {
         #expect(OfficePDF.optionIssue(URL(fileURLWithPath: "/tmp/test.xlsx"), kind: .word, options: .init())?.contains("unsupported") == true)
         #expect(OfficePDF.optionIssue(URL(fileURLWithPath: "/tmp/test.docx"), kind: .word, options: .init())?.contains("LibreOffice") == true)

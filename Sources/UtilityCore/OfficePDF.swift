@@ -61,6 +61,10 @@ public enum OfficePDF {
               FileManager.default.isExecutableFile(atPath: LibreOfficeHeadless.binary(for: selection).path) else {
             return "Choose LibreOffice or its soffice executable."
         }
+        guard let values = try? input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              values.isRegularFile == true, let bytes = values.fileSize, bytes <= 256 * 1024 * 1024 else {
+            return "Choose a readable document up to 256 MB."
+        }
         return nil
     }
 
@@ -178,10 +182,8 @@ public enum OfficePDF {
         _ input: URL, kind: OfficePDFKind, options: OfficePDFOptions, in staging: URL
     ) async throws -> PreparedInput {
         if let issue = optionIssue(input, kind: kind, options: options) { throw ToolError.invalid(issue) }
-        let values = try input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard values.isRegularFile == true, let bytes = values.fileSize, bytes <= 256 * 1024 * 1024,
-              let executable = options.libreOfficeExecutable else {
-            throw ToolError.invalid("Choose a readable document up to 256 MB and a LibreOffice executable.")
+        guard let executable = options.libreOfficeExecutable else {
+            throw ToolError.invalid("Choose LibreOffice or its soffice executable.")
         }
         var prepared = input
         var inputFilter: String?
