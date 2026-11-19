@@ -48,7 +48,9 @@ public final class PDFForms {
         guard !document.isEncrypted, document.allowsFormFieldEntry else {
             throw ToolError.invalid("Remove password protection before editing or exporting this form.")
         }
-        if let catalog = CGPDFDocument(source as CFURL)?.catalog {
+        if let coreDocument = CGPDFDocument(source as CFURL), let catalog = coreDocument.catalog {
+            // Core Graphics dictionaries and objects borrow their document's storage.
+            defer { withExtendedLifetime(coreDocument) {} }
             var acroForm: CGPDFDictionaryRef?
             var xfa: CGPDFObjectRef?
             if CGPDFDictionaryGetDictionary(catalog, "AcroForm", &acroForm), let acroForm,
