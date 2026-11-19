@@ -82,6 +82,7 @@ jobs:
             "$helper" --test-bundle-path "$bundle" --no-parallel "$bundle" --testing-library swift-testing
       - run: ./scripts/build-app.sh
       - run: codesign --verify --deep --strict 'build/Mac Utility Kit.app'
+      - run: python3 scripts/check-bundled-licenses.py 'build/Mac Utility Kit.app'
       - name: Verify the packaged tool catalog
         run: |
           python3 - <<'PYTHON'
