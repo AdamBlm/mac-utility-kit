@@ -4,6 +4,27 @@ import Testing
 @testable import UtilityCore
 
 struct DiskSpeedTests {
+    @Test func destinationInspectionIsReadOnlyAndUsesInclusiveSpaceChecks() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let actual = try await DiskSpeed.inspect(folder)
+        #expect(!actual.isReadOnly && actual.canWriteFolder)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).isEmpty)
+
+        let exact = DiskSpeedDestination(availableBytes: 1_048_576, isReadOnly: false, canWriteFolder: true)
+        #expect(exact.issue(forSizeMiB: 1) == nil)
+        #expect(exact.issue(forSizeMiB: 2)?.contains("free space") == true)
+        let readOnly = DiskSpeedDestination(availableBytes: 10_000_000, isReadOnly: true, canWriteFolder: true)
+        #expect(readOnly.issue(forSizeMiB: 1)?.contains("read-only") == true)
+        let denied = DiskSpeedDestination(availableBytes: nil, isReadOnly: false, canWriteFolder: false)
+        #expect(denied.issue(forSizeMiB: 1)?.contains("not writable") == true)
+        let unknown = DiskSpeedDestination(availableBytes: nil, isReadOnly: false, canWriteFolder: true)
+        #expect(unknown.issue(forSizeMiB: 1) == nil)
+        await #expect(throws: ToolError.self) {
+            try await DiskSpeed.inspect(folder.appending(path: "missing"))
+        }
+    }
+
     @Test func displaysIndividualPassesInMeasurementOrderAlongsideMedian() {
         let passes = [
             DiskSpeedResult.Pass(writeMegabytesPerSecond: 33.5, readMegabytesPerSecond: 104.5),

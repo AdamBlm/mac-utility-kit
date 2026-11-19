@@ -45,7 +45,33 @@ public struct DiskSpeedResult: Sendable {
     }
 }
 
+public struct DiskSpeedDestination: Sendable {
+    public let availableBytes: UInt64?
+    public let isReadOnly: Bool
+    public let canWriteFolder: Bool
+
+    public func issue(forSizeMiB size: Int) -> String? {
+        guard (1...4_096).contains(size) else { return "Choose a test size between 1 and 4,096 MiB." }
+        if isReadOnly { return "The volume is read-only." }
+        if !canWriteFolder { return "The test folder is not writable." }
+        if let availableBytes, availableBytes < UInt64(size) * 1_048_576 {
+            return "There is not enough free space for the selected test size."
+        }
+        return nil
+    }
+}
+
 public enum DiskSpeed {
+    @concurrent
+    public static func inspect(_ folder: URL) async throws -> DiskSpeedDestination {
+        try Task.checkCancellation()
+        let (_, directory) = try openFolder(folder)
+        defer { close(directory) }
+        let result = try destination(directory)
+        try Task.checkCancellation()
+        return result
+    }
+
     public static func run(
         in folder: URL, options: DiskSpeedOptions,
         progress: @escaping @Sendable (DiskSpeedProgress) async -> Void = { _ in }
@@ -58,25 +84,19 @@ public enum DiskSpeed {
         refill: @Sendable (UnsafeMutableRawPointer, Int) -> Void,
         progress: @escaping @Sendable (DiskSpeedProgress) async -> Void
     ) async throws -> DiskSpeedResult {
-        guard folder.isFileURL, (1...4_096).contains(options.sizeMiB) else {
-            throw ToolError.invalid("Choose a local folder and a test size between 1 and 4,096 MiB.")
+        guard (1...4_096).contains(options.sizeMiB) else {
+            throw ToolError.invalid("Choose a test size between 1 and 4,096 MiB.")
         }
-        let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
         let bytes = Int64(options.sizeMiB) * 1_048_576
         let passes = options.repeats ? 3 : 1
         try Task.checkCancellation()
 
-        let directory = Darwin.open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
-        guard directory >= 0 else { throw ioError("Could not open the test folder") }
+        let (path, directory) = try openFolder(folder)
         defer { close(directory) }
         var identity = stat()
         guard fstat(directory, &identity) == 0 else { throw ioError("Could not identify the test volume") }
-        var volume = statfs()
-        guard fstatfs(directory, &volume) == 0 else { throw ioError("Could not read available space") }
-        guard volume.f_flags & UInt32(MNT_RDONLY) == 0 else { throw ToolError.invalid("The volume is read-only.") }
-        let space = volume.f_bavail.multipliedReportingOverflow(by: UInt64(volume.f_bsize))
-        guard space.overflow || space.partialValue >= UInt64(bytes) else {
-            throw ToolError.invalid("There is not enough free space for the selected test size.")
+        if let issue = try destination(directory).issue(forSizeMiB: options.sizeMiB) {
+            throw ToolError.invalid(issue)
         }
 
         let name = ".MacUtilityKit-DiskTest-\(UUID().uuidString)"
@@ -151,6 +171,30 @@ public enum DiskSpeed {
         }
         try Task.checkCancellation()
         return DiskSpeedResult(sizeMiB: options.sizeMiB, passes: measured, bypassedFileCache: uncached, fullFlush: fullFlush)
+    }
+
+    private static func openFolder(_ folder: URL) throws -> (path: String, descriptor: Int32) {
+        guard folder.isFileURL else { throw ToolError.invalid("Choose a local test folder.") }
+        let path = folder.resolvingSymlinksInPath().standardizedFileURL.path
+        let descriptor = Darwin.open(path, O_RDONLY | O_DIRECTORY | O_CLOEXEC | O_NOFOLLOW)
+        guard descriptor >= 0 else { throw ioError("Could not open the test folder") }
+        return (path, descriptor)
+    }
+
+    private static func destination(_ directory: Int32) throws -> DiskSpeedDestination {
+        var info = statfs()
+        guard fstatfs(directory, &info) == 0 else { throw ioError("Could not read available space") }
+        // Darwin reports unsupported fields as all ones.
+        let bytes: UInt64?
+        if info.f_bsize == 0 || info.f_bsize == .max || info.f_bavail == .max {
+            bytes = nil
+        } else {
+            let product = info.f_bavail.multipliedReportingOverflow(by: UInt64(info.f_bsize))
+            bytes = product.overflow ? .max : product.partialValue
+        }
+        return DiskSpeedDestination(availableBytes: bytes,
+                                    isReadOnly: info.f_flags & UInt32(MNT_RDONLY) != 0,
+                                    canWriteFolder: faccessat(directory, ".", W_OK | X_OK, 0) == 0)
     }
 
     private static func transfer(

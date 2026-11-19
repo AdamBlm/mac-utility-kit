@@ -11,6 +11,23 @@ struct DiskSpeedView: View {
     @State private var work: Task<Void, Never>?
     @State private var issue: String?
     @State private var copied = false
+    @State private var refreshID = UUID()
+    @State private var inspection: (request: DestinationRequest, result: Result<DiskSpeedDestination, any Error>)?
+
+    private struct DestinationRequest: Equatable {
+        let folder: URL
+        let refreshID: UUID
+    }
+
+    private var inspectionRequest: DestinationRequest { .init(folder: folder, refreshID: refreshID) }
+
+    private var destinationIssue: String? {
+        guard let inspection, inspection.request == inspectionRequest else { return nil }
+        switch inspection.result {
+        case .success(let info): return info.issue(forSizeMiB: options.sizeMiB)
+        case .failure(let error): return error.localizedDescription
+        }
+    }
 
     private var home: URL { FileManager.default.homeDirectoryForCurrentUser }
     private var destinations: [URL] {
@@ -32,6 +49,19 @@ struct DiskSpeedView: View {
                     Button("Refresh volumes", systemImage: "arrow.clockwise", action: refreshVolumes)
                         .labelStyle(.iconOnly)
                 }
+                if let inspection, inspection.request == inspectionRequest {
+                    if case .success(let info) = inspection.result {
+                        let free = info.availableBytes.map {
+                            ByteCountFormatter.string(fromByteCount: Int64(clamping: $0), countStyle: .file)
+                        } ?? "Unavailable"
+                        LabeledContent("Available space", value: free).font(.callout)
+                    }
+                    if let destinationIssue {
+                        Text(destinationIssue).font(.callout).foregroundStyle(.secondary)
+                    }
+                } else {
+                    ProgressView("Checking location…").controlSize(.small)
+                }
                 SettingRow("Test size") {
                     Picker("Test size", selection: $options.sizeMiB) {
                         ForEach([64, 256, 512, 1_024, 2_048, 4_096], id: \.self) {
@@ -51,7 +81,8 @@ struct DiskSpeedView: View {
             .disabled(work != nil)
             HStack {
                 Button("Run Test", systemImage: "gauge.with.dots.needle.33percent", action: run)
-                    .buttonStyle(.borderedProminent).disabled(work != nil)
+                    .buttonStyle(.borderedProminent)
+                    .disabled(work != nil || inspection?.request != inspectionRequest || destinationIssue != nil)
                 if work != nil {
                     Button("Cancel") { work?.cancel() }
                 }
@@ -68,6 +99,15 @@ struct DiskSpeedView: View {
             if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
         }
         .task { refreshVolumes() }
+        .task(id: inspectionRequest) { [inspectionRequest] in
+            do {
+                let info = try await DiskSpeed.inspect(inspectionRequest.folder)
+                try Task.checkCancellation()
+                inspection = (inspectionRequest, .success(info))
+            } catch {
+                if !Task.isCancelled { inspection = (inspectionRequest, .failure(error)) }
+            }
+        }
         .onChange(of: folder) { clear() }
         .onChange(of: options) { clear() }
         .onDisappear { work?.cancel() }
@@ -119,12 +159,13 @@ struct DiskSpeedView: View {
     }
 
     private func refreshVolumes() {
+        refreshID = UUID()
         volumes = FileManager.default.mountedVolumeURLs(includingResourceValuesForKeys: [.volumeLocalizedNameKey],
                                                         options: [.skipHiddenVolumes]) ?? []
     }
 
     private func run() {
-        guard work == nil else { return }
+        guard work == nil, inspection?.request == inspectionRequest, destinationIssue == nil else { return }
         clear()
         let target = folder
         let settings = options
