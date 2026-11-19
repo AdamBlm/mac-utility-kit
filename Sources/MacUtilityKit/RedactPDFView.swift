@@ -112,7 +112,7 @@ struct RedactPDFView: View {
                 Button("Previous Page", systemImage: "chevron.left") { preview.navigate(preview.pageNumber - 1) }
                     .labelStyle(.iconOnly)
                     .disabled(preview.pageNumber <= 1)
-                Picker("Page", selection: Binding(get: { preview.pageNumber }, set: preview.navigate)) {
+                Picker("Page", selection: Binding(get: { preview.pageNumber }, set: { preview.navigate($0) })) {
                     ForEach(1...loaded.source.pageCount, id: \.self) { number in Text("Page \(number)").tag(number) }
                 }
                 .labelsHidden()
