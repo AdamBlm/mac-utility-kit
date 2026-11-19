@@ -23,6 +23,7 @@ public struct StorageScanItem: Identifiable, Sendable {
     public internal(set) var apparentBytes: Int64 = 0
     public internal(set) var estimatedReclaimableBytes: Int64 = 0
     public internal(set) var isPartial = false
+    public var modified: Date? { stamp?.modified }
     public var name: String { url.lastPathComponent.isEmpty ? url.path : url.lastPathComponent }
     public var isHardLink: Bool { kind == .file && (stamp?.links ?? 0) > 1 }
     public var canTrash: Bool { parent != nil && stamp != nil && !isPartial && (kind == .file || kind == .folder) }
@@ -57,6 +58,15 @@ public enum StorageExplorer {
         }
     }
 
+    public enum BrowserOrder: String, CaseIterable, Identifiable, Sendable {
+        case largest = "Largest First"
+        case name = "Name"
+        case newest = "Newest First"
+        case oldest = "Oldest First"
+
+        public var id: Self { self }
+    }
+
     public static func minimumBytes(megabytes text: String) -> Int64? {
         let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard value.utf8.allSatisfy({ (48...57).contains($0) }),
@@ -66,7 +76,8 @@ public enum StorageExplorer {
     }
 
     public static func browserItems(
-        in report: StorageScanReport, directory: Int, minimumBytes: Int64?, measurement: Measurement
+        in report: StorageScanReport, directory: Int, minimumBytes: Int64?, measurement: Measurement,
+        order: BrowserOrder = .largest
     ) throws -> [Int] {
         guard report.items.indices.contains(directory) else { return [] }
         let candidates: [Int]
@@ -83,9 +94,22 @@ public enum StorageExplorer {
             try Task.checkCancellation()
             let a = report.items[first]
             let b = report.items[second]
-            let aBytes = measurement.bytes(a)
-            let bBytes = measurement.bytes(b)
-            if aBytes != bBytes { return aBytes > bBytes }
+            switch order {
+            case .largest:
+                let aBytes = measurement.bytes(a)
+                let bBytes = measurement.bytes(b)
+                if aBytes != bBytes { return aBytes > bBytes }
+            case .newest, .oldest:
+                switch (a.modified, b.modified) {
+                case let (first?, second?) where first != second:
+                    return order == .newest ? first > second : first < second
+                case (_?, nil): return true
+                case (nil, _?): return false
+                default: break
+                }
+            case .name:
+                break
+            }
             let nameOrder = a.name.localizedStandardCompare(b.name)
             return nameOrder == .orderedSame ? a.url.path < b.url.path : nameOrder == .orderedAscending
         }

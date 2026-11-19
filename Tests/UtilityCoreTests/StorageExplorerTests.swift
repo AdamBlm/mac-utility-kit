@@ -150,6 +150,29 @@ struct StorageExplorerTests {
         }
     }
 
+    @Test func ordersScannedFilesBySizeNameOrModificationDate() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let manager = FileManager.default
+        for (name, bytes, date) in [("File 10", 90, 200.0), ("File 2", 15, 300.0), ("File 1", 30, 300.0)] {
+            let url = root.appending(path: name)
+            try Data(repeating: 1, count: bytes).write(to: url)
+            try manager.setAttributes([.modificationDate: Date(timeIntervalSince1970: date)], ofItemAtPath: url.path)
+        }
+        let report = try await StorageExplorer.scan(root)
+        func files(_ order: StorageExplorer.BrowserOrder) throws -> [String] {
+            try StorageExplorer.browserItems(in: report, directory: report.root.id,
+                minimumBytes: 20, measurement: .apparent, order: order).map { report.items[$0].name }
+        }
+        #expect(try files(.largest) == ["File 10", "File 1"])
+        #expect(try files(.name) == ["File 1", "File 10"])
+        #expect(try files(.newest) == ["File 1", "File 10"])
+        #expect(try files(.oldest) == ["File 10", "File 1"])
+        let all = try StorageExplorer.browserItems(in: report, directory: report.root.id,
+            minimumBytes: nil, measurement: .apparent, order: .newest)
+        #expect(all.map { report.items[$0].name } == ["File 1", "File 2", "File 10"])
+    }
+
     private func makeRoot() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

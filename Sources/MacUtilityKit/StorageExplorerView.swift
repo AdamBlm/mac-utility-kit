@@ -22,6 +22,7 @@ struct StorageExplorerView: View {
     @State private var threshold = SizeFilter.all
     @State private var customMinimum = "250"
     @State private var measurement = StorageExplorer.Measurement.allocated
+    @State private var order = StorageExplorer.BrowserOrder.largest
     @State private var confirmsTrash = false
 
     @MainActor @Observable
@@ -53,6 +54,7 @@ struct StorageExplorerView: View {
         let threshold: SizeFilter
         let minimum: Int64?
         let measurement: StorageExplorer.Measurement
+        let order: StorageExplorer.BrowserOrder
 
         var isValid: Bool { threshold != .custom || minimum != nil }
     }
@@ -67,7 +69,7 @@ struct StorageExplorerView: View {
     private var query: BrowserQuery {
         let minimum = threshold == .custom ? StorageExplorer.minimumBytes(megabytes: customMinimum) : threshold.minimum
         return BrowserQuery(reportID: draft.reportID, directory: draft.directory, threshold: threshold,
-                            minimum: minimum, measurement: measurement)
+                            minimum: minimum, measurement: measurement, order: order)
     }
 
     var body: some View {
@@ -164,6 +166,12 @@ struct StorageExplorerView: View {
                     ForEach(SizeFilter.allCases) { Text($0.rawValue).tag($0) }
                 }
             }
+            SettingRow("Sort by") {
+                Picker("Sort by", selection: $order) {
+                    ForEach(StorageExplorer.BrowserOrder.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+            }
             if threshold == .custom {
                 SettingRow("Minimum size") {
                     TextField("250", text: $customMinimum)
@@ -238,6 +246,12 @@ struct StorageExplorerView: View {
                     .foregroundStyle(.secondary).help("This item was only partially measured.")
             }
             Spacer()
+            if order == .newest || order == .oldest {
+                Text(item.modified?.formatted(date: .abbreviated, time: .shortened) ?? "Unavailable")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .accessibilityLabel(item.modified.map { "Modified \($0.formatted(date: .abbreviated, time: .shortened))" }
+                                        ?? "Modification date unavailable")
+            }
             if item.isHardLink {
                 Image(systemName: "link").foregroundStyle(.secondary)
                     .help("A shared hard link. Only one path is counted and this path is excluded from the reclaim estimate.")
@@ -341,7 +355,7 @@ struct StorageExplorerView: View {
 
     private nonisolated static func browserItems(in report: StorageScanReport, query: BrowserQuery) async -> [Int]? {
         try? StorageExplorer.browserItems(in: report, directory: query.directory, minimumBytes: query.minimum,
-                                          measurement: query.measurement)
+                                          measurement: query.measurement, order: query.order)
     }
 
     private func fraction(_ bytes: Int64, of total: Int64) -> Double {
