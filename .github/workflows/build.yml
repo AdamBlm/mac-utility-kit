@@ -16,7 +16,7 @@ jobs:
         timeout-minutes: 4
         shell: bash
         run: |
-          swift test --skip-build --no-parallel &
+          swift test --skip-build --no-parallel > >(tee "$RUNNER_TEMP/muk-test-run.log") 2>&1 &
           test_pid=$!
           (
             for ((elapsed = 0; elapsed < 90; elapsed++)); do
@@ -65,6 +65,18 @@ jobs:
           if not reports:
               print("No Swift test crash reports were collected.")
           PYTHON
+      - name: Reproduce a test crash under LLDB
+        if: failure() && steps.tests.conclusion == 'failure'
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          grep -q 'unexpected signal code' "$RUNNER_TEMP/muk-test-run.log" || exit 0
+          swift_bin="$(xcrun --find swift)"
+          helper="${swift_bin%/*}/../libexec/swift/pm/swiftpm-testing-helper"
+          bundle="$(find .build -type f -path '*/MacUtilityKitPackageTests.xctest/Contents/MacOS/MacUtilityKitPackageTests' -print -quit)"
+          test -x "$helper" && test -f "$bundle"
+          xcrun lldb --batch -o 'settings set target.disable-aslr false' -o run -k 'thread backtrace all' -- \
+            "$helper" --test-bundle-path "$bundle" --no-parallel
       - run: ./scripts/build-app.sh
       - run: codesign --verify --deep --strict 'build/Mac Utility Kit.app'
       - name: Verify the packaged tool catalog
