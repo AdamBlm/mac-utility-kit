@@ -204,6 +204,9 @@ private struct AudioExtractionControls: View {
             if options.format.requiresFFmpeg, options.ffmpegExecutable == nil {
                 executablePicker("FFmpeg", selection: $options.ffmpegExecutable)
             }
+            if let issue = options.validationIssue {
+                Text(issue).font(.callout).foregroundStyle(.secondary)
+            }
             if let previewInput {
                 if inputs.count > 1 {
                     SettingRow("Preview source") {

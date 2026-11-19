@@ -166,7 +166,7 @@ struct ToolWorkspace: View {
         case .cleanUpAudio:
             draft.options.audioCleanup.executable == nil
         case .extractAudio:
-            draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
+            draft.options.extraction.validationIssue != nil
         case .mergePDFs:
             draft.mergePages?.isEmpty != false || (try? PDFMergePlan.outputFilename(draft.outputName)) == nil
         case .convertDocuments:

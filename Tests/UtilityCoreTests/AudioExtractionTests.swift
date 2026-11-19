@@ -72,6 +72,19 @@ private func audioTestFolder() throws -> URL {
     #expect(abs(try await AVURLAsset(url: output).load(.duration).seconds - duration) < 0.05)
 }
 
+@Test func extractionRejectsInvalidExternalEncoderBeforeReadingSource() async throws {
+    let folder = FileManager.default.temporaryDirectory
+    var options = AudioExtractionOptions()
+    options.format = .flac
+    options.ffmpegExecutable = folder
+    let error = await #expect(throws: ToolError.self) {
+        try await AudioExtraction.extract(folder, to: folder, options: options) { _ in }
+    }
+    #expect(error?.localizedDescription == "Choose an FFmpeg executable to export FLAC.")
+    options.format = .m4a
+    #expect(options.validationIssue == nil)
+}
+
 @Test func unavailableAudioTrackLeavesNoOutput() async throws {
     let folder = try audioTestFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

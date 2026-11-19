@@ -34,6 +34,16 @@ public struct AudioExtractionOptions: Sendable {
     public var ffmpegExecutable: URL?
 
     public init() {}
+
+    package var validationIssue: String? {
+        if passthrough, !format.supportsPassthrough {
+            return "Turn off passthrough to export \(format.title)."
+        }
+        if format.requiresFFmpeg, ffmpegExecutable.map(ExternalTool.isExecutable) != true {
+            return "Choose an FFmpeg executable to export \(format.title)."
+        }
+        return nil
+    }
 }
 
 public struct AudioExtractionTrack: Identifiable, Sendable {
@@ -84,6 +94,7 @@ public enum AudioExtraction {
         _ input: URL, to output: URL, options: AudioExtractionOptions, preview: Bool,
         progress: @Sendable (Double) async -> Void
     ) async throws -> String {
+        if let issue = options.validationIssue { throw ToolError.invalid(issue) }
         let asset = AVURLAsset(url: input, options: [
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue)
         ])
