@@ -5,15 +5,15 @@ import System
 enum ExternalTool {
     static func run(
         _ executable: URL, name: String, arguments: [String], directory: URL,
-        standardOutput: FileHandle? = nil
+        standardOutput: FileHandle? = nil, diagnostics: URL? = nil
     ) async throws {
         try Task.checkCancellation()
         guard executable.isFileURL, FileManager.default.isExecutableFile(atPath: executable.path) else {
             throw ToolError.invalid("Choose an executable \(name) binary.")
         }
-        let log = directory.appendingPathComponent(UUID().uuidString + ".log")
+        let log = diagnostics ?? directory.appendingPathComponent(UUID().uuidString + ".log")
         try Data().write(to: log)
-        defer { try? FileManager.default.removeItem(at: log) }
+        defer { if diagnostics == nil { try? FileManager.default.removeItem(at: log) } }
         let handle = try FileHandle(forWritingTo: log)
         defer { try? handle.close() }
 

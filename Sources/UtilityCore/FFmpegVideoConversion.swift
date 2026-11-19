@@ -3,9 +3,11 @@ import Foundation
 enum FFmpegVideoConversion {
     static func export(
         _ input: URL, to output: URL, options: VideoConversionOptions, executable: URL
-    ) async throws {
+    ) async throws -> String? {
+        let webm = options.format == .webm
+        let logLevel = webm ? "repeat+level+info" : "error"
         var arguments = [
-            "-nostdin", "-hide_banner", "-loglevel", "error", "-n",
+            "-nostdin", "-hide_banner", "-nostats", "-loglevel", logLevel, "-n",
             "-protocol_whitelist", "file", "-i", input.path
         ]
 
@@ -36,12 +38,25 @@ enum FFmpegVideoConversion {
 
         arguments += ["-f", options.format.ffmpegMuxer, output.path]
         let directory = output.deletingLastPathComponent()
-        try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: directory)
-        if options.format == .webm {
-            var validation = ["-nostdin", "-v", "error", "-xerror", "-protocol_whitelist", "file"]
-            if options.mode == .transcode { validation += ["-c:v", "vp9"] }
-            validation += ["-i", output.path, "-map", "0:V:0", "-frames:v", "1", "-f", "null", "-"]
-            try await ExternalTool.run(executable, name: "FFmpeg", arguments: validation, directory: directory)
+        guard webm else {
+            try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: directory)
+            return nil
         }
+
+        let scratch = directory.appending(path: ".video-streams-" + UUID().uuidString, directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: scratch) }
+        let inputLog = scratch.appending(path: "Input.log")
+        let outputLog = scratch.appending(path: "Output.log")
+        try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: directory,
+                                   diagnostics: inputLog)
+        var validation = ["-nostdin", "-hide_banner", "-nostats", "-loglevel", logLevel, "-xerror",
+                          "-protocol_whitelist", "file"]
+        if options.mode == .transcode { validation += ["-c:v", "vp9"] }
+        validation += ["-i", output.path, "-map", "0:V:0", "-frames:v", "1", "-f", "null", "-"]
+        try await ExternalTool.run(executable, name: "FFmpeg", arguments: validation, directory: directory,
+                                   diagnostics: outputLog)
+        return try FFmpegStreamInventory.webMSummary(input: inputLog, output: outputLog)
     }
 }

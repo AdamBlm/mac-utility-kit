@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 @Test func videoConversionExportsPlayableH264() async throws {
     let folder = try conversionFolder()
@@ -120,6 +120,76 @@ func videoConversionCanKeepOrRemoveAudioWithNativePassthrough() async throws {
     let muted = try await VideoConversion.convert(source, to: withoutAudio, options: options) { _ in }
     #expect(muted.contains("1 audio track dropped"))
     #expect(try await AVURLAsset(url: withoutAudio).loadTracks(withMediaType: .audio).isEmpty)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+func videoConversionReportsObservedWebMCodecsAndDroppedStreams() async throws {
+    let executable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let sources = ["-f", "lavfi", "-i", "testsrc2=s=80x48:r=10:d=1", "-f", "lavfi", "-i", "sine=d=1"]
+    func fixture(_ arguments: [String], named filename: String) throws -> URL {
+        let file = folder.appending(path: filename)
+        let writer = Process()
+        writer.executableURL = executable
+        writer.arguments = ["-nostdin", "-v", "error"] + sources + arguments + [file.path]
+        try writer.run()
+        writer.waitUntilExit()
+        try #require(writer.terminationStatus == 0)
+        return file
+    }
+
+    var options = VideoConversionOptions()
+    options.ffmpegExecutable = executable
+    options.format = .webm
+    options.mode = .passthrough
+    for (encoder, audioEncoder, video, audio) in [
+        ("libvpx", "libvorbis", "VP8", "Vorbis"),
+        ("libvpx-vp9", "libopus", "VP9", "Opus")
+    ] {
+        let input = try fixture(["-c:v", encoder, "-c:a", audioEncoder], named: "\(video).webm")
+        let output = folder.appending(path: "\(video) copy.webm")
+        let summary = try await VideoConversion.convert(input, to: output, options: options) { _ in }
+        #expect(summary.contains("Video: \(video) · Audio: \(audio)"))
+        #expect(!summary.contains("dropped"))
+    }
+
+    let subtitle = folder.appending(path: "Sample.srt")
+    try Data("1\n00:00:00,100 --> 00:00:00,900\nCaption\n".utf8).write(to: subtitle)
+    let multi = try fixture([
+        "-i", subtitle.path, "-map", "0:v", "-map", "0:v", "-map", "1:a", "-map", "2:s",
+        "-c:v", "libx264", "-c:a", "aac", "-c:s", "srt"
+    ], named: "Multiple tracks.mkv")
+    options.mode = .transcode
+    options.codec = .vp9
+    options.audio = .remove
+    let webm = folder.appending(path: "One track.webm")
+    let summary = try await VideoConversion.convert(multi, to: webm, options: options) { _ in }
+    for detail in ["Video: VP9", "No audio", "1 audio track dropped", "1 video track dropped", "1 subtitle track dropped"] {
+        #expect(summary.contains(detail))
+    }
+}
+
+@Test func webMStreamSummaryWithholdsClaimsForAnIncompleteInventory() throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appending(path: "source.log")
+    let output = folder.appending(path: "output.log")
+    let complete = """
+        [info] Input #0, matroska,webm, from 'clip.webm':
+        [info]   Stream #0:0[0x1]: Video: vp9, yuv420p
+        [info]   Stream #0:1[0x2](eng): Audio: opus, 48000 Hz
+        [info] Stream mapping:
+        """
+    try Data(complete.utf8).write(to: source)
+    try Data(complete.utf8).write(to: output)
+    #expect(try FFmpegStreamInventory.webMSummary(input: source, output: output) == "WebM · Video: VP9 · Audio: Opus")
+
+    let variant = complete.replacingOccurrences(of: "Audio: opus", with: "Audio in variant layout")
+    try Data(variant.utf8).write(to: output)
+    let report = try FFmpegStreamInventory.webMSummary(input: source, output: output)
+    #expect(report.contains("Stream details unavailable"))
+    #expect(!report.contains("No audio") && !report.contains("dropped"))
 }
 
 private func conversionFolder() throws -> URL {
