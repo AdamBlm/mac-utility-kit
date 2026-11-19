@@ -28,9 +28,24 @@ public struct PDFCropOptions: Equatable, Sendable {
 }
 
 public enum PDFCrop {
+    public static func visibleSize(for page: CGPDFPage) -> CGSize {
+        let size = PDFSigning.visibleSize(for: page)
+        let unit = pageUnit(page)
+        return CGSize(width: size.width * unit, height: size.height * unit)
+    }
+
+    private static func pageUnit(_ page: CGPDFPage) -> CGFloat {
+        var unit: CGPDFReal = 1
+        guard let dictionary = page.dictionary, CGPDFDictionaryGetNumber(dictionary, "UserUnit", &unit),
+              unit.isFinite, unit > 0 else { return 1 }
+        return unit
+    }
+
     public static func box(for page: CGPDFPage, offsets: PDFCropOffsets) throws -> CGRect {
         let size = PDFSigning.visibleSize(for: page)
-        let topLeft = try offsets.displayedBounds(in: size)
+        let unit = pageUnit(page)
+        let physical = try offsets.displayedBounds(in: visibleSize(for: page))
+        let topLeft = physical.applying(CGAffineTransform(scaleX: 1 / unit, y: 1 / unit))
         let bottomLeft = CGRect(x: topLeft.minX, y: size.height - topLeft.maxY,
                                 width: topLeft.width, height: topLeft.height)
         let transform = page.getDrawingTransform(
@@ -87,6 +102,7 @@ public enum PDFCrop {
 
         var expected: [CGRect] = []
         var rotations: [Int] = []
+        var units: [CGFloat] = []
         for index in 0..<document.pageCount {
             try Task.checkCancellation()
             guard let page = document.page(at: index), let reference = page.pageRef else {
@@ -95,6 +111,7 @@ public enum PDFCrop {
             try validateSignatureFields(on: page)
             expected.append(reference.getBoxRect(.cropBox))
             rotations.append(page.rotation)
+            units.append(pageUnit(reference))
         }
 
         // Derive every box from the source before changing PDFKit page state.
@@ -118,6 +135,7 @@ public enum PDFCrop {
         for index in expected.indices {
             guard let page = reopened.page(at: index), let reference = page.pageRef,
                   page.rotation == rotations[index],
+                  pageUnit(reference) == units[index],
                   sameBounds(reference.getBoxRect(.cropBox), expected[index]) else {
                 throw ToolError.invalid("The exported crop on page \(index + 1) could not be verified.")
             }

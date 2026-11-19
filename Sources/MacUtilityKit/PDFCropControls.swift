@@ -60,7 +60,7 @@ struct PDFCropControls: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 if let page = document.page(at: previewPage - 1), let reference = page.pageRef {
-                    preview(page, size: PDFSigning.visibleSize(for: reference), showsCrop: cropsPreviewPage)
+                    preview(page, size: PDFCrop.visibleSize(for: reference), showsCrop: cropsPreviewPage)
                 }
             }
             Text("Cropping changes the visible area. Use Redact PDF to permanently remove content.")

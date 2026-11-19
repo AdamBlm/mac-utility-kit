@@ -210,6 +210,19 @@ private func conversionPDF(in folder: URL) throws -> URL {
     let properties = try #require(CGImageSourceCopyPropertiesAtIndex(imageSource, 0, nil) as? [CFString: Any])
     let dpi = try #require(properties[kCGImagePropertyDPIWidth] as? Double)
     #expect(abs(dpi - 72) < 0.05)
+
+    let input = try #require(PDFDocument(url: pdf))
+    let inputPage = try #require(input.page(at: 0)?.pageRef)
+    #expect(PDFCrop.visibleSize(for: inputPage) == CGSize(width: 200, height: 300))
+    var crop = PDFCropOptions()
+    crop.offsets.left = 20
+    crop.offsets.top = 30
+    let cropped = folder.appendingPathComponent("Cropped.pdf")
+    _ = try await PDFCrop.export(pdf, to: cropped, options: crop) { _ in }
+    let result = try #require(PDFDocument(url: cropped))
+    let resultPage = try #require(result.page(at: 0)?.pageRef)
+    #expect(resultPage.getBoxRect(.cropBox) == CGRect(x: 10, y: 0, width: 90, height: 135))
+    #expect(PDFCrop.visibleSize(for: resultPage) == CGSize(width: 180, height: 270))
 }
 
 @Test func PDFToImagesHonorsCopyrightRestrictionsAndCanEncodeHEIC() async throws {
