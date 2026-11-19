@@ -38,6 +38,9 @@ enum PDFOperations {
         try Task.checkCancellation()
         try validate(stamps, inputs: inputs, selected: pages)
         guard result.write(to: output) else { throw ToolError.invalid("Could not write the PDF.") }
+        guard let saved = PDFDocument(url: output), !saved.isLocked, saved.pageCount == pages.count else {
+            throw ToolError.invalid("The merged PDF could not be reopened with the expected page count.")
+        }
         try validate(stamps, inputs: inputs, selected: pages)
         await progress(1)
     }

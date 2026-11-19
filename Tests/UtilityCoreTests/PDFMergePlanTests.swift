@@ -94,6 +94,35 @@ struct PDFMergePlanTests {
         #expect(PDFDocument(url: output)?.page(at: 0)?.bounds(for: .mediaBox).width == 210)
     }
 
+    @Test func replacingReviewedSourceDuringMergeDiscardsOutput() async throws {
+        let stage = try directory()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let source = stage.appending(path: "Source.pdf")
+        let replacement = stage.appending(path: "Replacement.pdf")
+        try pdf([110], to: source)
+        try pdf([210], to: replacement)
+        var options = ToolOptions()
+        options.pdfMergeOrder = [page(0, 0)]
+        options.pdfMergeSourceStamps = try [0: PDFMergeSourceStamp.read(source)]
+
+        do {
+            _ = try await ToolRunner.run(.mergePDFs, inputs: [source], destination: stage, imageSize: 0, options: options) {
+                if $0 == 0.25 {
+                    do {
+                        _ = try FileManager.default.replaceItemAt(source, withItemAt: replacement)
+                    } catch {
+                        Issue.record("Could not replace the fixture: \(error)")
+                    }
+                }
+            }
+            Issue.record("Published a merge after its reviewed source was replaced.")
+        } catch {
+            #expect(error.localizedDescription.contains("changed after preview"))
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: stage.path) == ["Source.pdf"])
+        #expect(PDFDocument(url: source)?.page(at: 0)?.bounds(for: .mediaBox).width == 210)
+    }
+
     private func page(_ source: Int, _ index: Int) -> PDFMergePageReference { .init(source: source, page: index) }
 
     private func directory() throws -> URL {
