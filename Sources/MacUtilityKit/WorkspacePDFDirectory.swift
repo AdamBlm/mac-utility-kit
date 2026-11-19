@@ -2,8 +2,10 @@ import Foundation
 import PDFKit
 
 /// Keeps temporary PDFs available to the reader and its tool handoffs for the workspace's lifetime.
+@MainActor
 final class WorkspacePDFDirectory {
     let url: URL
+    private var nextClipboardNumber = 1
 
     init() throws {
         let manager = FileManager.default
@@ -21,15 +23,9 @@ final class WorkspacePDFDirectory {
         guard let document = PDFDocument(data: data), document.isLocked || document.pageCount > 0 else {
             throw CocoaError(.fileReadCorruptFile)
         }
-        let folder = url.appending(path: UUID().uuidString, directoryHint: .isDirectory)
-        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
-        let output = folder.appending(path: "Clipboard PDF.pdf")
-        do {
-            try data.write(to: output, options: .atomic)
-            return output
-        } catch {
-            try? FileManager.default.removeItem(at: folder)
-            throw error
-        }
+        let output = url.appending(path: "Clipboard PDF \(nextClipboardNumber).pdf")
+        try data.write(to: output, options: .atomic)
+        nextClipboardNumber += 1
+        return output
     }
 }
