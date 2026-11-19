@@ -138,10 +138,26 @@ extension ToolWorkspace {
 private struct ImageMetadataControls: View {
     let inputs: [URL]
     @Binding var options: ImageMetadataOptions
-    @State private var snapshot: ImageMetadataSnapshot?
-    @State private var error: String?
+    @State private var selectedInput: URL?
+    @State private var inspection: Inspection?
+
+    private struct Request: Equatable {
+        let input: URL
+        let executable: URL?
+    }
+
+    private struct Inspection {
+        let request: Request
+        let result: Result<ImageMetadataSnapshot, any Error>
+    }
+
+    private var activeInput: URL? {
+        if let selectedInput, inputs.contains(selectedInput) { return selectedInput }
+        return inputs.first
+    }
 
     var body: some View {
+        let request = activeInput.map { Request(input: $0, executable: options.exifToolExecutable) }
         VStack(alignment: .leading, spacing: 12) {
             ForEach(ImageMetadataGroup.allCases) { group in
                 Toggle(group.title, isOn: Binding(
@@ -157,25 +173,44 @@ private struct ImageMetadataControls: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             executablePicker("ExifTool", selection: $options.exifToolExecutable)
-            if let snapshot, let input = inputs.first {
+            if let request {
                 Divider()
-                DisclosureGroup("Inspect \(input.lastPathComponent)") {
-                    MetadataSnapshotView(snapshot: snapshot)
+                if inputs.count > 1 {
+                    SettingRow("Inspect file") {
+                        Picker("Inspect file", selection: Binding(get: { activeInput }, set: { selectedInput = $0 })) {
+                            ForEach(Array(inputs.enumerated()), id: \.offset) { index, input in
+                                Text("\(index + 1). \(input.lastPathComponent)").tag(Optional(input))
+                            }
+                        }
+                        .labelsHidden()
+                    }
                 }
-            } else if let error {
-                Text(error).font(.caption).foregroundStyle(.secondary)
+                if let inspection, inspection.request == request {
+                    switch inspection.result {
+                    case .success(let snapshot):
+                        DisclosureGroup("Metadata in \(request.input.lastPathComponent)") {
+                            MetadataSnapshotView(snapshot: snapshot)
+                        }
+                    case .failure(let error):
+                        Text(error.localizedDescription).font(.caption).foregroundStyle(.secondary)
+                    }
+                } else {
+                    ProgressView("Inspecting metadata…").controlSize(.small)
+                }
             }
         }
-        .task(id: [inputs.first, options.exifToolExecutable]) {
-            snapshot = nil
-            error = nil
-            guard let input = inputs.first else { return }
+        .task(id: request) {
+            inspection = nil
+            guard let request else { return }
+            var inspectionOptions = ImageMetadataOptions()
+            inspectionOptions.exifToolExecutable = request.executable
+            let result: Result<ImageMetadataSnapshot, any Error>
             do {
-                let result = try await ImageMetadata.inspect(input, options: options)
-                if !Task.isCancelled { snapshot = result }
+                result = .success(try await ImageMetadata.inspect(request.input, options: inspectionOptions))
             } catch {
-                if !Task.isCancelled { self.error = error.localizedDescription }
+                result = .failure(error)
             }
+            if !Task.isCancelled { inspection = Inspection(request: request, result: result) }
         }
     }
 }
