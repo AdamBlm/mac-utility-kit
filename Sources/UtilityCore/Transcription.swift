@@ -1,3 +1,4 @@
+import AVFoundation
 import Foundation
 
 public struct TranscriptionOptions: Equatable, Sendable {
@@ -20,6 +21,8 @@ public enum TranscriptFormat: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum Transcription {
+    package static let selectionPreviewSeconds: Int64 = 10
+
     public enum ModelCapability: Equatable, Sendable {
         case englishOnly, multilingual, unknown
     }
@@ -112,6 +115,26 @@ public enum Transcription {
         options.start = Double(start) / 1_000
         options.end = Double(end) / 1_000
         let selection = try await TranscriptionAudio.selection(sourceStamp.resolved, options: options, permitsCueRounding: true)
+        return try await renderPreview(input, selection: selection, sourceStamp: sourceStamp)
+    }
+
+    package static func previewSelectionAudio(_ input: URL, start: Double, end: Double?) async throws -> Data {
+        let sourceStamp = try PDFSourceStamp.read(input)
+        var options = TranscriptionOptions()
+        options.start = start
+        options.end = end
+        let selection = try await TranscriptionAudio.selection(sourceStamp.resolved, options: options)
+        let duration = min(selection.range.duration, CMTime(value: selectionPreviewSeconds, timescale: 1))
+        let sample = TranscriptionAudio.Selection(
+            asset: selection.asset, track: selection.track,
+            range: CMTimeRange(start: selection.range.start, duration: duration)
+        )
+        return try await renderPreview(input, selection: sample, sourceStamp: sourceStamp)
+    }
+
+    private static func renderPreview(
+        _ input: URL, selection: TranscriptionAudio.Selection, sourceStamp: PDFSourceStamp
+    ) async throws -> Data {
         let manager = FileManager.default
         let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: directory, withIntermediateDirectories: false)

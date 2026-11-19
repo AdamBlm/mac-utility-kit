@@ -150,6 +150,40 @@ import Testing
         }
     }
 
+    @Test func previewsOnlyTheStartOfTheChosenTranscriptionRange() async throws {
+        let folder = try makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appendingPathComponent("source.wav")
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 16_000, channels: 1))
+        let audio = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 192_000))
+        audio.frameLength = 192_000
+        let samples = try #require(audio.floatChannelData?.pointee)
+        for index in 0..<Int(audio.frameLength) {
+            samples[index] = index >= 16_000 ? 0.3 * sin(Float(index) / 10) : 0
+        }
+        try writeWave(audio, to: source)
+
+        let preview = try await Transcription.previewSelectionAudio(source, start: 1, end: 1.2)
+        let previewFile = folder.appendingPathComponent("preview.wav")
+        try preview.write(to: previewFile)
+        let audible = try AVAudioFile(forReading: previewFile)
+        #expect(abs(Double(audible.length) / audible.fileFormat.sampleRate - 0.2) < 0.01)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: audible.processingFormat, frameCapacity: 3_200))
+        try audible.read(into: buffer)
+        let values = try #require(buffer.floatChannelData?.pointee)
+        #expect((0..<Int(buffer.frameLength)).contains { abs(values[$0]) > 0.2 })
+
+        let longPreview = try await Transcription.previewSelectionAudio(source, start: 1, end: nil)
+        let cappedFile = folder.appendingPathComponent("capped.wav")
+        try longPreview.write(to: cappedFile)
+        let capped = try AVAudioFile(forReading: cappedFile)
+        #expect(abs(Double(capped.length) / capped.fileFormat.sampleRate - 10) < 0.01)
+
+        await #expect(throws: ToolError.self) {
+            try await Transcription.previewSelectionAudio(source, start: 2, end: 1)
+        }
+    }
+
     @Test func reportsVideoWithoutAudioBeforeRunningWhisper() async throws {
         let folder = try makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }

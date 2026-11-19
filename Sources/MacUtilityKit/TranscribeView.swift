@@ -22,6 +22,7 @@ struct TranscribeView: View {
     let onCaptionHandoff: (URL, String) -> Void
 
     @State private var inputSummary: InputSummary?
+    @State private var sourceRevision = 0
     @State private var inspectedModel: URL?
     @State private var modelCapability: Transcription.ModelCapability?
     @State private var modelRevision = 0
@@ -29,7 +30,7 @@ struct TranscribeView: View {
     @State private var endText: String?
     @State private var listening: ListenRequest?
     @State private var player: AVAudioPlayer?
-    @State private var playbackIssue: String?
+    @State private var playbackIssue: (message: String, isSelection: Bool)?
 
     private struct InputSummary {
         let url: URL
@@ -37,15 +38,25 @@ struct TranscribeView: View {
         let hasVideo: Bool
     }
 
-    private struct ModelRequest: Equatable {
+    private struct FileRequest: Equatable {
         let url: URL?
         let revision: Int
     }
 
     private struct ListenRequest: Equatable {
+        enum Segment: Equatable {
+            case selection(start: Double, end: Double?)
+            case cue(Int)
+        }
+
         let id = UUID()
         let source: URL
-        let cueIndex: Int
+        let segment: Segment
+
+        var isSelection: Bool {
+            if case .selection = segment { return true }
+            return false
+        }
     }
 
     private var timeFormat: FloatingPointFormatStyle<Double> {
@@ -55,6 +66,11 @@ struct TranscribeView: View {
     private var activeSource: InputSummary? { inputSummary?.url == draft.input ? inputSummary : nil }
 
     private var invalidTimecode: Bool { draft.options.start < 0 || (draft.options.end ?? 0) < 0 }
+
+    private var invalidRange: Bool {
+        guard let duration = activeSource?.duration, !invalidTimecode else { return false }
+        return (try? VideoTrimRange.validate(start: draft.options.start, end: draft.options.end, duration: duration)) == nil
+    }
 
     private var englishOnly: Bool {
         inspectedModel == draft.options.model && modelCapability == .englishOnly
@@ -81,7 +97,11 @@ struct TranscribeView: View {
                 timecodeControls
                 if invalidTimecode {
                     Text("Enter seconds, MM:SS, or HH:MM:SS.").foregroundStyle(.red).font(.callout)
+                } else if invalidRange {
+                    Text("Set the in point before the out point, within the source duration.")
+                        .foregroundStyle(.red).font(.callout)
                 }
+                if let input = draft.input { selectionPreview(input) }
             }
             .disabled(draft.task != nil)
             WorkspaceSection("Local transcription", palette: palette) {
@@ -116,7 +136,7 @@ struct TranscribeView: View {
             HStack {
                 Button("Transcribe", systemImage: "waveform", action: run)
                     .disabled(draft.task != nil || draft.input == nil || draft.options.executable == nil ||
-                              draft.options.model == nil || invalidTimecode || unsupportedLanguage)
+                              draft.options.model == nil || invalidTimecode || invalidRange || unsupportedLanguage)
                     .buttonStyle(.borderedProminent)
                 if draft.task != nil {
                     ProgressView(value: draft.progress).controlSize(.small)
@@ -141,13 +161,15 @@ struct TranscribeView: View {
                 .disabled(draft.task != nil)
             }
         }
-        .task(id: draft.input) { await inspect(draft.input) }
+        .task(id: FileRequest(url: draft.input, revision: sourceRevision)) { await inspect(draft.input) }
         .task(id: listening) {
             if let listening { await play(listening) }
         }
         .onChange(of: draft.input) { stopPlayback() }
+        .onChange(of: draft.options.start) { invalidateSelectionPreview() }
+        .onChange(of: draft.options.end) { invalidateSelectionPreview() }
         .onDisappear { stopPlayback() }
-        .task(id: ModelRequest(url: draft.options.model, revision: modelRevision)) {
+        .task(id: FileRequest(url: draft.options.model, revision: modelRevision)) {
             guard !Task.isCancelled else { return }
             let model = draft.options.model
             modelCapability = model.flatMap { try? Transcription.modelCapability(at: $0) }
@@ -203,18 +225,38 @@ struct TranscribeView: View {
     }
 
     @ViewBuilder
+    private func selectionPreview(_ input: URL) -> some View {
+        let isListening = listening?.isSelection == true
+        HStack {
+            Button(isListening ? "Stop Preview" : "Preview Selection",
+                   systemImage: isListening ? "stop.circle" : "play.circle") {
+                stopPlayback()
+                if !isListening {
+                    listening = ListenRequest(source: input, segment: .selection(start: draft.options.start, end: draft.options.end))
+                }
+            }
+            .disabled(activeSource == nil || invalidTimecode || invalidRange)
+            if isListening && player == nil { ProgressView().controlSize(.small) }
+            Text("First \(Transcription.selectionPreviewSeconds) seconds").font(.caption).foregroundStyle(.secondary)
+        }
+        if let playbackIssue, playbackIssue.isSelection {
+            Label(playbackIssue.message, systemImage: "exclamationmark.circle").font(.callout)
+        }
+    }
+
+    @ViewBuilder
     private func transcriptControls(source: URL) -> some View {
-        if let playbackIssue {
-            Label(playbackIssue, systemImage: "exclamationmark.circle").font(.callout)
+        if let playbackIssue, !playbackIssue.isSelection {
+            Label(playbackIssue.message, systemImage: "exclamationmark.circle").font(.callout)
         }
         ForEach(draft.cues.indices, id: \.self) { index in
             let cue = draft.cues[index]
             HStack(spacing: 6) {
-                let isListening = listening?.cueIndex == index
+                let isListening = listening?.segment == .cue(index)
                 Button(isListening ? "Stop Segment \(index + 1)" : "Play Segment \(index + 1)",
                        systemImage: isListening ? "stop.circle" : "play.circle") {
                     stopPlayback()
-                    if !isListening { listening = ListenRequest(source: source, cueIndex: index) }
+                    if !isListening { listening = ListenRequest(source: source, segment: .cue(index)) }
                 }
                 .labelStyle(.iconOnly)
                 .disabled(draft.resultSourceStamp == nil)
@@ -263,26 +305,37 @@ struct TranscribeView: View {
 
     private func play(_ request: ListenRequest) async {
         guard listening == request else { return }
-        guard draft.resultInput == request.source, let sourceStamp = draft.resultSourceStamp,
-              draft.cues.indices.contains(request.cueIndex) else {
-            stopPlayback()
-            return
-        }
-        let cue = draft.cues[request.cueIndex]
         do {
-            let audio = try await Transcription.previewAudio(request.source, cue: cue, sourceStamp: sourceStamp)
+            let audio: Data
+            switch request.segment {
+            case .selection(let start, let end):
+                audio = try await Transcription.previewSelectionAudio(request.source, start: start, end: end)
+            case .cue(let index):
+                guard draft.resultInput == request.source, let sourceStamp = draft.resultSourceStamp,
+                      draft.cues.indices.contains(index) else {
+                    stopPlayback()
+                    return
+                }
+                let cue = draft.cues[index]
+                audio = try await Transcription.previewAudio(request.source, cue: cue, sourceStamp: sourceStamp)
+            }
             try Task.checkCancellation()
             guard listening == request else { return }
             let playback = try AVAudioPlayer(data: audio)
-            guard playback.play() else { throw ToolError.invalid("Could not play this transcript segment.") }
+            guard playback.play() else { throw ToolError.invalid("Could not play this audio preview.") }
             player = playback
             while playback.isPlaying { try await Task.sleep(for: .milliseconds(100)) }
             if listening == request { stopPlayback() }
         } catch {
             guard !Task.isCancelled, listening == request else { return }
             stopPlayback()
-            playbackIssue = error.localizedDescription
+            playbackIssue = (error.localizedDescription, request.isSelection)
         }
+    }
+
+    private func invalidateSelectionPreview() {
+        if listening?.isSelection == true { stopPlayback() }
+        else if playbackIssue?.isSelection == true { playbackIssue = nil }
     }
 
     private func stopPlayback() {
@@ -296,6 +349,8 @@ struct TranscribeView: View {
 
     private func replaceInput(_ input: URL) {
         stopPlayback()
+        inputSummary = nil
+        sourceRevision += 1
         draft.input = input
         draft.resultInput = nil
         draft.resultSourceStamp = nil
