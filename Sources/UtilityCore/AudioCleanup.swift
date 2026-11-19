@@ -27,10 +27,13 @@ public enum AudioCleanup {
         let wet = staging.appending(path: "cleaned.wav")
         let selection = ["-map", "0:a:\(options.trackIndex)", "-t", decimal(duration), "-ar", "48000",
                          "-ac", "2", "-c:a", "pcm_f32le", "-f", "wav"]
-        try await ExternalTool.run(executable, name: "FFmpeg",
-                                   arguments: prefix + ["-ss", decimal(start), "-i", input.path]
-                                   + selection + [dry.path]
-                                   + selection + ["-af", filter(options), wet.path], directory: staging)
+        var arguments = prefix
+        arguments.append(contentsOf: ["-ss", decimal(start), "-i", input.path])
+        arguments.append(contentsOf: selection)
+        arguments.append(dry.path)
+        arguments.append(contentsOf: selection)
+        arguments.append(contentsOf: ["-af", filter(options), wet.path])
+        try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: staging)
         let dryLevel = try measure(dry)
         let wetLevel = try measure(wet)
         guard dryLevel.rms > 0.000_01 else {
