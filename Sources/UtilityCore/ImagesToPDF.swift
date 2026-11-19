@@ -151,6 +151,11 @@ public enum ImagesToPDF {
 }
 
 enum PDFConversionStaging {
+    static func supportsFilename(_ filename: String) -> Bool {
+        // Foundation file operations can normalize components to decomposed UTF-8.
+        filename.decomposedStringWithCanonicalMapping.utf8.count <= 255
+    }
+
     static func create(in directory: URL) throws -> URL {
         guard directory.isFileURL else { throw ToolError.invalid("Choose a local output folder.") }
         let staging = directory.appendingPathComponent(".pdf-conversion-" + UUID().uuidString, isDirectory: true)

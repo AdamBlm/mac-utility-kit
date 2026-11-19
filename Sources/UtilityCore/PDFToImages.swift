@@ -134,7 +134,11 @@ public enum PDFToImages {
                                         number: index + 1, digits: digits)
             let ext = "." + options.format.fileExtension
             if !filename.lowercased().hasSuffix(ext) { filename += ext }
-            guard used.insert(filename.precomposedStringWithCanonicalMapping.lowercased()).inserted else {
+            let normalized = filename.precomposedStringWithCanonicalMapping
+            guard PDFConversionStaging.supportsFilename(filename) else {
+                throw ToolError.invalid("The image filename is too long. Shorten the filename pattern.")
+            }
+            guard used.insert(normalized.lowercased()).inserted else {
                 throw ToolError.invalid("The filename pattern repeats an output name. Include {page} or {number}.")
             }
             return PDFPageRasterPlan(pageNumber: pageIndex + 1, filename: filename, width: size.0, height: size.1)

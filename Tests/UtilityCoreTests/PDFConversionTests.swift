@@ -94,6 +94,13 @@ import UniformTypeIdentifiers
     }
     #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
     options.range = "1"
+    options.filenamePattern = String(repeating: "a", count: 252)
+    let longName = await #expect(throws: ToolError.self) {
+        try await PDFToImages.export(input, into: exports, options: options) { _ in }
+    }
+    #expect(longName?.localizedDescription.contains("filename is too long") == true)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
+    options.filenamePattern = String(repeating: "é", count: 83)
     let results = try await PDFToImages.export(input, into: exports, options: options) { _ in }
     let image = try conversionReadImage(try #require(results.first))
     #expect(image.width == 50 && image.height == 30)

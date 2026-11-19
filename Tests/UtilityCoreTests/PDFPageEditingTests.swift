@@ -45,14 +45,14 @@ import UtilityCore
             try await PDFPageEditing.split(source, into: directory, options: options) { _ in }
         }
         let groups = try PDFPageEditing.splitGroups(pageCount: 5, options: options)
-        let maximumStem = String(repeating: "é", count: 251)
+        let maximumStem = String(repeating: "é", count: 83)
         #expect(try PDFPageEditing.splitFilenames(source, groups: Array(groups.prefix(1)), pattern: maximumStem)
                 == [maximumStem + ".pdf"])
         options.filenamePattern = String(repeating: "a", count: 252)
         let longName = await #expect(throws: ToolError.self) {
             try await PDFPageEditing.split(source, into: directory, options: options) { _ in }
         }
-        #expect(longName?.localizedDescription.contains("longer than 255") == true)
+        #expect(longName?.localizedDescription.contains("filename is too long") == true)
         let files = try FileManager.default.contentsOfDirectory(atPath: directory.path)
         #expect(files == [source.lastPathComponent])
     }

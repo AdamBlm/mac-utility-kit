@@ -169,8 +169,8 @@ public enum PDFPageEditing {
             }
             if !name.lowercased().hasSuffix(".pdf") { name += ".pdf" }
             let normalized = name.precomposedStringWithCanonicalMapping
-            guard normalized.utf16.count <= 255 else {
-                throw ToolError.invalid("The filename pattern produced a name longer than 255 characters. Shorten the pattern or group name.")
+            guard PDFConversionStaging.supportsFilename(name) else {
+                throw ToolError.invalid("The output filename is too long. Shorten the pattern or group name.")
             }
             guard names.insert(normalized.lowercased()).inserted else {
                 throw ToolError.invalid("The filename pattern repeats an output name. Add {number} to make each name unique.")
