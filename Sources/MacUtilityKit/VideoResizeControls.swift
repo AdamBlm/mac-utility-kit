@@ -4,13 +4,23 @@ import UtilityCore
 struct VideoResizeControls: View {
     let inputs: [URL]
     @Binding var options: VideoResizeOptions
-    @State private var source: Source?
+    @State private var sources: SourceReview?
+    @State private var previewFile: URL?
     @State private var rendered: Rendered?
 
     private struct Source {
-        let url: URL
         let size: CGSize?
         let error: String?
+    }
+
+    private struct SourceReview {
+        let inputs: [URL]
+        var details: [URL: Source] = [:]
+    }
+
+    private struct SourceRequest: Equatable {
+        let inputs: [URL]
+        let priority: URL?
     }
 
     private struct PreviewRequest: Equatable {
@@ -24,9 +34,15 @@ struct VideoResizeControls: View {
         let error: String?
     }
 
+    private var activeFile: URL? {
+        if let previewFile, inputs.contains(previewFile) { return previewFile }
+        return inputs.first
+    }
+
     var body: some View {
-        let url = inputs.first
-        let request = url.map { PreviewRequest(url: $0, options: options) }
+        let active = activeFile
+        let request = active.map { PreviewRequest(url: $0, options: options) }
+        let sourceRequest = SourceRequest(inputs: inputs, priority: active)
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Size by") {
                 Picker("Size by", selection: $options.sizing) {
@@ -68,27 +84,64 @@ struct VideoResizeControls: View {
                     .labelsHidden()
                 }
             }
-            if source?.url == url {
-                if let size = source?.size {
+            if inputs.count > 1 {
+                batchDimensions
+                SettingRow("Preview file") {
+                    Picker("Preview file", selection: Binding(get: { activeFile }, set: { previewFile = $0 })) {
+                        ForEach(Array(inputs.enumerated()), id: \.offset) { index, file in
+                            Text("\(index + 1). \(file.lastPathComponent)").tag(Optional(file))
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
+            if let request {
+                if let source = source(for: request.url), let size = source.size {
                     sourceDetails(size, request: request)
-                } else if let error = source?.error {
+                } else if let error = source(for: request.url)?.error {
                     Text(error).font(.callout).foregroundStyle(.secondary)
+                } else {
+                    ProgressView("Reading video dimensions…").controlSize(.small)
                 }
             }
         }
-        .task(id: url) { await loadSource(url) }
+        .task(id: sourceRequest) { await loadSources(sourceRequest) }
         .task(id: request) { await render(request) }
     }
 
+    private var batchDimensions: some View {
+        DisclosureGroup("Batch output dimensions") {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 7) {
+                    ForEach(Array(inputs.enumerated()), id: \.offset) { index, file in
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("\(index + 1). \(file.lastPathComponent)").lineLimit(1).help(file.path)
+                            if let source = source(for: file), let size = source.size {
+                                switch Result(catching: { try VideoResizeLayout.plan(sourceSize: size, options: options) }) {
+                                case .success(let layout):
+                                    let before = "\(Int(size.width.rounded())) × \(Int(size.height.rounded())) px"
+                                    Text("\(before) → \(layout.width) × \(layout.height) px").monospacedDigit()
+                                case .failure(let error):
+                                    Text(error.localizedDescription)
+                                }
+                            } else {
+                                Text(source(for: file)?.error ?? "Reading dimensions…")
+                            }
+                        }
+                        .font(.callout)
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 205)
+        }
+    }
+
     @ViewBuilder
-    private func sourceDetails(_ size: CGSize, request: PreviewRequest?) -> some View {
+    private func sourceDetails(_ size: CGSize, request: PreviewRequest) -> some View {
         let layout = Result { try VideoResizeLayout.plan(sourceSize: size, options: options) }
         switch layout {
         case .success(let layout):
-            if inputs.count > 1, let request {
-                Text(request.url.lastPathComponent).lineLimit(1).truncationMode(.middle)
-                    .font(.callout).foregroundStyle(.secondary)
-            }
             LabeledContent("Source", value: "\(Double(size.width).formatted(.number.precision(.fractionLength(0)))) × \(Double(size.height).formatted(.number.precision(.fractionLength(0)))) px")
                 .font(.callout.monospacedDigit())
                 .frame(maxWidth: 310)
@@ -110,13 +163,26 @@ struct VideoResizeControls: View {
         }
     }
 
-    private func loadSource(_ url: URL?) async {
-        guard let url else { source = nil; return }
-        do {
-            let size = try await VideoResize.sourceSize(url)
-            if !Task.isCancelled { source = Source(url: url, size: size, error: nil) }
-        } catch {
-            if !Task.isCancelled { source = Source(url: url, size: nil, error: error.localizedDescription) }
+    private func source(for file: URL) -> Source? {
+        guard sources?.inputs == inputs else { return nil }
+        return sources?.details[file]
+    }
+
+    private func loadSources(_ request: SourceRequest) async {
+        guard !Task.isCancelled else { return }
+        if sources?.inputs != request.inputs { sources = SourceReview(inputs: request.inputs) }
+        let ordered = request.priority.map { [$0] } ?? []
+        let files = ordered + request.inputs.filter { $0 != request.priority }
+        for file in files where sources?.details[file] == nil {
+            let result: Source
+            do {
+                let size = try await VideoResize.sourceSize(file)
+                result = Source(size: size, error: nil)
+            } catch {
+                result = Source(size: nil, error: error.localizedDescription)
+            }
+            guard !Task.isCancelled, sources?.inputs == request.inputs else { return }
+            sources?.details[file] = result
         }
     }
 

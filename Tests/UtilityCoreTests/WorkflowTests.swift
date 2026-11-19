@@ -475,19 +475,30 @@ private func writePDF(widths: [Int], to url: URL) throws {
     defer { try? FileManager.default.removeItem(at: folder) }
     let source = folder.appendingPathComponent("source.mov")
     try await writeVideoFixture(to: source)
+    let rotated = try await VideoResizeTests.makePortraitVideo(in: folder)
     var options = ToolOptions()
     options.videoResize.sizing = .percentage
     options.videoResize.percentage = 50
+    let inputs = [source, rotated]
+    let dimensions = [CGSize(width: 320, height: 240), CGSize(width: 32, height: 64)]
+    for (file, expected) in zip(inputs, dimensions) {
+        let size = try await VideoResize.sourceSize(file)
+        let layout = try VideoResizeLayout.plan(sourceSize: size, options: options.videoResize)
+        #expect(CGSize(width: layout.width, height: layout.height) == expected)
+        let framing = try await VideoResize.preview(file, options: options.videoResize)
+        #expect(CGSize(width: framing.width, height: framing.height) == expected)
+    }
     let report = try await ToolRunner.run(
-        .resizeVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+        .resizeVideo, inputs: inputs, destination: folder, imageSize: 0, options: options
     ) { _ in }
     #expect(report.failures.isEmpty)
-    let output = try #require(report.outputs.first)
-    #expect(output.pathExtension == "mp4")
-    let asset = AVURLAsset(url: output)
-    let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
-    #expect(try await track.load(.naturalSize) == CGSize(width: 320, height: 240))
-    #expect(FileManager.default.fileExists(atPath: source.path))
+    #expect(report.outputs.count == inputs.count)
+    for (output, expected) in zip(report.outputs, dimensions) {
+        #expect(output.pathExtension == "mp4")
+        let report = try await MediaInspection.inspect(output)
+        #expect(report.summary.contains("Dimensions: \(Int(expected.width)) × \(Int(expected.height))"))
+    }
+    #expect(inputs.allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
 }
 
 @Test func mergeVideosPublishesOneOutputAndRejectsABrokenSequence() async throws {
