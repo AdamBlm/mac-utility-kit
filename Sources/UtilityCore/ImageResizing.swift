@@ -33,13 +33,18 @@ enum ImageResizing {
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: decodeLimit
         ] as CFDictionary),
-              let writer = CGImageDestinationCreateWithURL(output as CFURL, options.imageFormat.type.identifier as CFString, 1, nil),
-              let context = CGContext(
-                data: nil, width: size.width, height: size.height, bitsPerComponent: 8,
-                bytesPerRow: 0, space: CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB(),
-                bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
-              )
+              let writer = CGImageDestinationCreateWithURL(output as CFURL, options.imageFormat.type.identifier as CFString, 1, nil)
         else { throw ToolError.invalid("Could not prepare the selected image output.") }
+
+        let fallback = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
+        let sourceRGB = image.colorSpace.flatMap { $0.model == .rgb ? $0 : nil }
+        func canvas(in colorSpace: CGColorSpace) -> CGContext? {
+            CGContext(data: nil, width: size.width, height: size.height, bitsPerComponent: 8,
+                      bytesPerRow: 0, space: colorSpace, bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue)
+        }
+        guard let context = sourceRGB.flatMap({ canvas(in: $0) }) ?? canvas(in: fallback) else {
+            throw ToolError.invalid("Could not prepare the selected image output.")
+        }
 
         let bounds = CGRect(x: 0, y: 0, width: size.width, height: size.height)
         if options.imageFormat == .jpg {

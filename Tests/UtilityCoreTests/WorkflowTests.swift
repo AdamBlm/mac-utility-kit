@@ -233,6 +233,48 @@ private func writePDF(widths: [Int], to url: URL) throws {
     context.closePDF()
 }
 
+@Test func nativeResizePreservesDisplayP3ColorAndAlpha() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let input = folder.appending(path: "wide-gamut.png")
+    let space = try #require(CGColorSpace(name: CGColorSpace.displayP3))
+    let layout = CGImageAlphaInfo.premultipliedLast.rawValue
+    let context = try #require(CGContext(data: nil, width: 48, height: 24, bitsPerComponent: 8,
+                                         bytesPerRow: 0, space: space, bitmapInfo: layout))
+    let green = try #require(CGColor(colorSpace: space, components: [0, 1, 0, 1]))
+    context.setFillColor(green)
+    context.fill(CGRect(x: 0, y: 0, width: 24, height: 24))
+    let image = try #require(context.makeImage())
+    let writer = try #require(CGImageDestinationCreateWithURL(input as CFURL, UTType.png.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(writer, image, nil)
+    try #require(CGImageDestinationFinalize(writer))
+
+    var options = ToolOptions()
+    options.imageSizing = .percentage
+    options.imagePercentage = 50
+    options.imageFormat = .png
+    let report = try await ToolRunner.run(
+        .resizeImages, inputs: [input], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    let output = try #require(report.outputs.first)
+    let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    let resized = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+    #expect(resized.width == 24 && resized.height == 12)
+    #expect(resized.colorSpace?.model == .rgb)
+
+    func sample(_ x: Int) throws -> [UInt8] {
+        let pixel = try #require(resized.cropping(to: CGRect(x: x, y: 5, width: 1, height: 1)))
+        let buffer = try #require(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8,
+                                            bytesPerRow: 4, space: space, bitmapInfo: layout))
+        buffer.draw(pixel, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        return Array(UnsafeBufferPointer(start: try #require(buffer.data).assumingMemoryBound(to: UInt8.self), count: 4))
+    }
+
+    let opaque = try sample(4)
+    #expect(opaque[0] < 4 && opaque[1] > 250 && opaque[2] < 4 && opaque[3] == 255)
+    #expect(try sample(20)[3] == 0)
+}
+
 @Test func exactImageFillMatchesPreviewAndSelectedFormat() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
