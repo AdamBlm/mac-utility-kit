@@ -49,6 +49,7 @@ struct ClipboardFileButton: View {
                 .onPasteCommand(of: [.fileURL, .pdf, .image]) { _ in paste() }
         } else if onPasteImage != nil {
             Button("Paste Image", systemImage: "clipboard") { paste() }
+                .onPasteCommand(of: [.fileURL, .image]) { _ in paste() }
         } else if onPastePDF != nil {
             Button("Paste PDF", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL, .pdf]) { _ in paste() }
