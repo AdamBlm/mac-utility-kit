@@ -8,6 +8,7 @@ struct EjectDisksDraft {
     var outcomes: [EjectOutcome] = []
     var loading = false
     var ejecting = false
+    var refreshPending = false
     var error: String?
 }
 
@@ -29,7 +30,7 @@ struct EjectDisksView: View {
                 }
             }
         }
-        .task { await refresh() }
+        .onAppear { scheduleRefresh() }
         .onReceive(NSWorkspace.shared.notificationCenter.publisher(for: NSWorkspace.didMountNotification)) { _ in
             scheduleRefresh()
         }
@@ -139,26 +140,33 @@ struct EjectDisksView: View {
     }
 
     private func scheduleRefresh() {
-        guard !isBusy else { return }
-        Task { await refresh() }
-    }
-
-    private func refresh() async {
+        draft.refreshPending = true
         guard !isBusy else { return }
         draft.loading = true
-        defer { draft.loading = false }
-        await reload()
+        Task {
+            defer { draft.loading = false }
+            await reloadUntilCurrent()
+        }
+    }
+
+    private func reloadUntilCurrent() async {
+        repeat {
+            draft.refreshPending = false
+            await reload()
+        } while draft.refreshPending && !Task.isCancelled
     }
 
     private func reload() async {
         do {
             let devices = try await EjectDisks.inventory()
             try Task.checkCancellation()
+            guard !draft.refreshPending else { return }
             draft.devices = devices
             draft.selected.formIntersection(devices.map(\.id))
             draft.error = nil
         } catch is CancellationError {
         } catch {
+            guard !draft.refreshPending else { return }
             draft.devices = []
             draft.selected.removeAll()
             draft.error = error.localizedDescription
@@ -175,7 +183,7 @@ struct EjectDisksView: View {
                 draft.outcomes.removeAll { $0.id == result.id }
                 draft.outcomes.append(result)
             }
-            await reload()
+            await reloadUntilCurrent()
         }
     }
 }
