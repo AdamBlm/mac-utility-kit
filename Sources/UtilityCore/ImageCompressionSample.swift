@@ -16,15 +16,19 @@ package final class ImageCompressionSample: Sendable {
         try? FileManager.default.removeItem(at: directory)
     }
 
-    package static func make(_ input: URL, options: ImageCompressionOptions) async throws -> ImageCompressionSample {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "MacUtilityKit-ImagePreview-\(UUID())")
+    package static func make(
+        _ input: URL, options: ImageCompressionOptions,
+        temporaryDirectory: URL = FileManager.default.temporaryDirectory,
+        progress: @escaping @Sendable (Double) async -> Void = { _ in }
+    ) async throws -> ImageCompressionSample {
+        let folder = temporaryDirectory.appending(path: "MacUtilityKit-ImagePreview-\(UUID())")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
                                                 attributes: [.posixPermissions: 0o700])
         do {
             var settings = ToolOptions()
             settings.imageCompression = options
             let report = try await ToolRunner.run(.compressImages, inputs: [input], destination: folder,
-                                                  imageSize: 0, options: settings) { _ in }
+                                                  imageSize: 0, options: settings, progress: progress)
             try Task.checkCancellation()
             guard let comparison = report.imageComparisons.first, let summary = report.summaries.first else {
                 throw ToolError.invalid(report.failures.first ?? "Could not create the compression preview.")

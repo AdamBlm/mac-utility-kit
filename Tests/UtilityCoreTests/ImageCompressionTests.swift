@@ -29,6 +29,29 @@ import UtilityCore
     #expect(!FileManager.default.fileExists(atPath: preview.output.path))
 }
 
+@Test func imageCompressionPreviewCancellationRemovesItsTemporaryDirectory() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appending(path: "camera.jpg")
+    try writeCompressionFixture(to: source, format: .jpeg, withAlpha: false)
+    let original = try Data(contentsOf: source)
+
+    let preview = Task {
+        try await ImageCompressionSample.make(source, options: .init(), temporaryDirectory: directory) { fraction in
+            guard fraction == 1 else { return }
+            let files = FileManager.default.enumerator(at: directory, includingPropertiesForKeys: nil)
+            let staged = files?.allObjects.compactMap { $0 as? URL }.contains {
+                $0.lastPathComponent == "1 - camera.jpg"
+            }
+            #expect(staged == true)
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
+    }
+    await #expect(throws: CancellationError.self) { try await preview.value }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["camera.jpg"])
+    #expect(try Data(contentsOf: source) == original)
+}
+
 @Test func imageCompressionMeetsMeasuredGoalAndLeavesSourceUntouched() async throws {
     let directory = try compressionDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
