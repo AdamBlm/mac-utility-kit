@@ -80,16 +80,34 @@ struct PDFFormsTests {
         #expect(PDFDocument(url: input)?.page(at: 0)?.annotations.isEmpty == true)
     }
 
-    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FORMS_PYTHON"] != nil))
-    func editableAndFlattenedCopiesRoundTripWithVisibleValues() async throws {
+    @Test(.serialized, .enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FORMS_PYTHON"] != nil), arguments: [0, 90])
+    func editableAndFlattenedCopiesRoundTripWithVisibleValues(rotation: Int) async throws {
         let environment = ProcessInfo.processInfo.environment
         let python = URL(fileURLWithPath: try #require(environment["MAC_UTILITY_FORMS_PYTHON"]))
-        let (url, directory) = try fixture()
+        let (url, directory) = try fixture(withBoxes: rotation != 0)
         defer { try? FileManager.default.removeItem(at: directory) }
 
-        let subject = try PDFForms(source: url)
-        let textBounds = CGRect(x: 30, y: 155, width: 145, height: 28)
-        let boxBounds = CGRect(x: 30, y: 112, width: 20, height: 20)
+        let input: URL
+        if rotation == 0 {
+            input = url
+        } else {
+            let document = try #require(PDFDocument(url: url))
+            let page = try #require(document.page(at: 0))
+            page.rotation = rotation
+            input = directory.appending(path: "Rotated.pdf")
+            try #require(document.write(to: input))
+        }
+        let subject = try PDFForms(source: input)
+        let textBounds: CGRect
+        let boxBounds: CGRect
+        if rotation == 0 {
+            textBounds = CGRect(x: 30, y: 155, width: 145, height: 28)
+            boxBounds = CGRect(x: 30, y: 112, width: 20, height: 20)
+        } else {
+            let detected = try subject.candidates(on: 0)
+            textBounds = try #require(detected.first { $0.kind == .text && abs($0.bounds.midX - 144) < 5 }).bounds
+            boxBounds = try #require(detected.first { $0.kind == .checkbox && abs($0.bounds.midX - 42) < 5 }).bounds
+        }
         let offBounds = boxBounds.offsetBy(dx: 45, dy: 0)
         let textID = try subject.add(.text, on: 0, bounds: textBounds, name: "Applicant")
         let boxID = try subject.add(.checkbox, on: 0, bounds: boxBounds, name: "Accepted")
@@ -103,6 +121,10 @@ struct PDFFormsTests {
         let editable = try await subject.export(.editable, python: python)
         let editableDocument = try #require(PDFDocument(data: editable))
         let page = try #require(editableDocument.page(at: 0))
+        #expect(page.rotation == rotation)
+        let savedBounds = try #require(page.annotations.first { $0.fieldName == "Applicant" }).bounds
+        #expect(abs(savedBounds.minX - textBounds.minX) < 0.02 && abs(savedBounds.minY - textBounds.minY) < 0.02)
+        #expect(abs(savedBounds.width - textBounds.width) < 0.02 && abs(savedBounds.height - textBounds.height) < 0.02)
         #expect(page.annotations.first { $0.fieldName == "Applicant" }?.widgetStringValue == "Mélanie")
         #expect(page.annotations.first { $0.fieldName == "Accepted" }?.buttonWidgetState == .onState)
         #expect(page.annotations.first { $0.fieldName == "Declined" }?.buttonWidgetState == .offState)
@@ -111,9 +133,11 @@ struct PDFFormsTests {
         let flattened = try await subject.export(.flattened, python: python)
         let flattenedDocument = try #require(PDFDocument(data: flattened))
         let flattenedPage = try #require(flattenedDocument.page(at: 0))
+        #expect(flattenedPage.rotation == rotation)
         #expect(flattenedPage.annotations.isEmpty)
         #expect(flattenedPage.string?.contains("Mélanie") == true)
-        #expect(flattenedPage.string?.contains("Reviewed") == true)
+        // PDFKit can insert line breaks while extracting text from rotated appearances.
+        #expect(flattenedPage.string?.filter { !$0.isWhitespace }.contains("Reviewed") == true)
         #expect(subject.fields(on: 0).count == 4)
 
         let existingURL = directory.appendingPathComponent("existing.pdf")
@@ -126,7 +150,7 @@ struct PDFFormsTests {
             $0.fieldName == "Applicant"
         }?.widgetStringValue == "Lucie")
 
-        if let outputPath = environment["MAC_UTILITY_FORMS_FIXTURE_DIR"] {
+        if rotation == 0, let outputPath = environment["MAC_UTILITY_FORMS_FIXTURE_DIR"] {
             let output = URL(fileURLWithPath: outputPath, isDirectory: true)
             try editable.write(to: output.appendingPathComponent("editable.pdf"))
             try flattened.write(to: output.appendingPathComponent("flattened.pdf"))
