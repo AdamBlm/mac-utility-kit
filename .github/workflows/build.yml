@@ -79,7 +79,7 @@ jobs:
           xcrun lldb --batch -o 'settings set target.disable-aslr false' \
             -o "settings set target.env-vars DYLD_FRAMEWORK_PATH=$frameworks" \
             -o run -k 'thread backtrace all' -- \
-            "$helper" --test-bundle-path "$bundle" --no-parallel
+            "$helper" --test-bundle-path "$bundle" --no-parallel "$bundle" --testing-library swift-testing
       - run: ./scripts/build-app.sh
       - run: codesign --verify --deep --strict 'build/Mac Utility Kit.app'
       - name: Verify the packaged tool catalog
