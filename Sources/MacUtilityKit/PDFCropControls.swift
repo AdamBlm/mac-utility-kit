@@ -10,6 +10,13 @@ struct PDFCropControls: View {
     @State private var document: PDFDocument?
     @State private var previewPage = 1
     @State private var dragBounds: CGRect?
+    @State private var refreshID = UUID()
+    @State private var inspecting = false
+
+    private struct PreviewRequest: Equatable {
+        let input: URL?
+        let refreshID: UUID
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -29,7 +36,14 @@ struct PDFCropControls: View {
             }
             Button("Reset offsets") { options.offsets = PDFCropOffsets() }
             if input != nil {
-                Button("Refresh PDF Preview", systemImage: "arrow.clockwise", action: reload)
+                Button("Refresh PDF Preview", systemImage: "arrow.clockwise") {
+                    ready = false
+                    options.sourceStamp = nil
+                    refreshID = UUID()
+                }
+            }
+            if inspecting {
+                ProgressView("Checking PDF…").controlSize(.small)
             }
             if let validationIssue {
                 Text(validationIssue).font(.callout).foregroundStyle(.secondary)
@@ -53,7 +67,7 @@ struct PDFCropControls: View {
                 .font(.caption)
                 .foregroundStyle(.secondary)
         }
-        .task(id: input) { reload() }
+        .task(id: PreviewRequest(input: input, refreshID: refreshID)) { [refreshID] in await reload(refreshID) }
         .onChange(of: options) { _, _ in updateReadiness() }
     }
 
@@ -72,20 +86,36 @@ struct PDFCropControls: View {
         }
     }
 
-    private func reload() {
+    private func reload(_ requestID: UUID) async {
+        guard !Task.isCancelled, requestID == refreshID else { return }
         ready = false
         options.sourceStamp = nil
         document = nil
         validationIssue = nil
         previewPage = 1
         dragBounds = nil
+        inspecting = input != nil
         guard let input else { return }
+        defer { if !Task.isCancelled, requestID == refreshID { inspecting = false } }
         do {
-            let stamp = try PDFSourceStamp.read(input)
+            let scan = Task.detached(priority: .userInitiated) {
+                let stamp = try PDFSourceStamp.read(input)
+                guard let pdf = PDFDocument(url: stamp.resolved), pdf.pageCount > 0 else {
+                    throw ToolError.invalid("Could not open this PDF.")
+                }
+                try PDFCrop.validateSignatureFields(in: pdf)
+                return stamp
+            }
+            let stamp = try await withTaskCancellationHandler {
+                try await scan.value
+            } onCancel: {
+                scan.cancel()
+            }
+            try Task.checkCancellation()
+            guard requestID == refreshID else { return }
             guard let loaded = PDFDocument(url: stamp.resolved), loaded.pageCount > 0 else {
                 throw ToolError.invalid("Could not open this PDF.")
             }
-            try PDFCrop.validateSignatureFields(in: loaded)
             guard (try? PDFSourceStamp.read(input)) == stamp else {
                 throw ToolError.invalid("This PDF changed while opening. Refresh the PDF preview.")
             }
@@ -93,6 +123,7 @@ struct PDFCropControls: View {
             options.sourceStamp = stamp
             updateReadiness()
         } catch {
+            guard !Task.isCancelled, requestID == refreshID else { return }
             validationIssue = error.localizedDescription
         }
     }
