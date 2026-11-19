@@ -7,6 +7,7 @@ import UtilityCore
 struct PDFExtractSettings: View {
     let document: PDFDocument
     @Binding var options: PDFExtractOptions
+    @State private var showsOrder = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -19,9 +20,16 @@ struct PDFExtractSettings: View {
             }
             PDFExportPagePicker(document: document, range: $options.range, startsWithAll: false)
             if let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options) {
-                let preview = pages.prefix(20).map(String.init).joined(separator: ", ")
-                Text("Export order: \(preview)\(pages.count > 20 ? " …" : "")")
-                    .font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Export order · \(pages.count) \(pages.count == 1 ? "page" : "pages")", isExpanded: $showsOrder) {
+                    ScrollView {
+                        Text(PageSelection.expression(for: pages.map { $0 - 1 }))
+                            .font(.callout.monospacedDigit())
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 4)
+                    }
+                    .frame(maxHeight: 120)
+                }
             }
         }
     }
@@ -104,16 +112,23 @@ private struct PDFExportPagePicker: View {
     @State private var expanded = false
 
     var body: some View {
-        let selected = pageIndices
+        let selection = Result { try pageIndices() }
+        let selected = try? selection.get()
         VStack(alignment: .leading, spacing: 8) {
             SettingRow("Pages") {
                 TextField(startsWithAll ? "All, or e.g. 1, 4–6" : "Enter pages, e.g. 1, 4–6", text: $range)
                     .accessibilityLabel("Page range")
             }
             HStack(spacing: 8) {
-                Text(selected == nil ? "Enter pages from 1 to \(document.pageCount)"
-                     : "\(selected?.count ?? 0) of \(document.pageCount) pages selected")
-                    .font(.caption).foregroundStyle(.secondary)
+                Group {
+                    switch selection {
+                    case .success(let pages):
+                        Text("\(pages.count) of \(document.pageCount) pages selected")
+                    case .failure(let error):
+                        Text(error.localizedDescription)
+                    }
+                }
+                .font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Select all") { range = "all" }
                 Button("Clear") { range = "none" }
@@ -126,9 +141,9 @@ private struct PDFExportPagePicker: View {
         }
     }
 
-    private var pageIndices: [Int]? {
+    private func pageIndices() throws -> [Int] {
         if !startsWithAll, range.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return [] }
-        return try? PageSelection.indices(range, pageCount: document.pageCount)
+        return try PageSelection.indices(range, pageCount: document.pageCount)
     }
 
     private func thumbnailStrip(selected: [Int]) -> some View {
