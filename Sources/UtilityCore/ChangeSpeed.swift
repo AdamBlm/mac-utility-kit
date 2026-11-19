@@ -27,6 +27,17 @@ public enum ChangeSpeed {
         _ input: URL, to output: URL, options: ChangeSpeedOptions,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
+        try await render(input, to: output, options: options, preview: false, progress: progress)
+    }
+
+    public static func preview(_ input: URL, to output: URL, options: ChangeSpeedOptions) async throws {
+        _ = try await render(input, to: output, options: options, preview: true) { _ in }
+    }
+
+    private static func render(
+        _ input: URL, to output: URL, options: ChangeSpeedOptions, preview: Bool,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> String {
         guard options.isValid else {
             throw ToolError.invalid("Choose a speed between 0.25× and 4×.")
         }
@@ -40,7 +51,9 @@ public enum ChangeSpeed {
         guard let video = try await primaryTrack(.video, in: asset) else {
             throw ToolError.invalid("Choose a readable file with a video track.")
         }
-        let videoLength = try await videoDuration(video)
+        let fullLength = try await videoDuration(video)
+        let previewLimit = CMTime(seconds: min(5, 8 * options.multiplier), preferredTimescale: 90_000)
+        let videoLength = preview ? CMTimeMinimum(fullLength, previewLimit) : fullLength
         let audio = try await primaryTrack(.audio, in: asset)
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appending(path: ".speed-\(UUID().uuidString)")
@@ -54,7 +67,9 @@ public enum ChangeSpeed {
             guard let executable = options.ffmpegExecutable else {
                 throw ToolError.invalid("Choose an FFmpeg executable to change both audio speed and pitch.")
             }
-            try await FFmpegChangeSpeed.export(input, to: candidate, multiplier: options.multiplier, executable: executable)
+            try await FFmpegChangeSpeed.export(input, to: candidate, multiplier: options.multiplier,
+                                               executable: executable,
+                                               durationLimit: videoLength < fullLength ? videoLength.seconds / options.multiplier : nil)
             expectsAudio = true
         } else {
             expectsAudio = try await nativeExport(video: video, audio: audio, duration: videoLength,

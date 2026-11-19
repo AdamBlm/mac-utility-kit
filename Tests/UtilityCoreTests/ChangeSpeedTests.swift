@@ -50,6 +50,21 @@ struct ChangeSpeedTests {
     }
 
     @Test
+    func previewUsesSelectedSpeedAndKeepsPitchWithinAShortSample() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await Self.makeVideo(in: directory, audio: true, videoSeconds: 6)
+        let output = directory.appending(path: "preview.mp4")
+        var options = ChangeSpeedOptions()
+        options.multiplier = 2
+        try await ChangeSpeed.preview(source, to: output, options: options)
+        let duration = try await ChangeSpeed.sourceDuration(output)
+        #expect(abs(duration - 2.5) < 0.1)
+        let pitch = try await Self.audioFrequency(output)
+        #expect(abs(pitch - 440) < 35)
+    }
+
+    @Test
     func preservesPitch() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -67,7 +82,7 @@ struct ChangeSpeedTests {
         let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let source = try await Self.makeVideo(in: directory, audio: true)
+        let source = try await Self.makeVideo(in: directory, audio: true, videoSeconds: 6)
         let output = directory.appending(path: "pitch.mp4")
         var options = ChangeSpeedOptions()
         options.multiplier = 2
@@ -79,6 +94,12 @@ struct ChangeSpeedTests {
         _ = try await ChangeSpeed.export(source, to: output, options: options) { _ in }
         let pitch = try await Self.audioFrequency(output)
         #expect(abs(pitch - 880) < 35)
+        let preview = directory.appending(path: "preview.mp4")
+        try await ChangeSpeed.preview(source, to: preview, options: options)
+        let previewDuration = try await ChangeSpeed.sourceDuration(preview)
+        #expect(abs(previewDuration - 2.5) < 0.1)
+        let previewPitch = try await Self.audioFrequency(preview)
+        #expect(abs(previewPitch - 880) < 35)
     }
 
     @Test(arguments: [0, 0.1, 5, -1, Double.infinity, Double.nan])
@@ -100,7 +121,7 @@ struct ChangeSpeedTests {
         return directory
     }
 
-    private static func makeVideo(in directory: URL, audio: Bool, audioOffset: Double = 0) async throws -> URL {
+    private static func makeVideo(in directory: URL, audio: Bool, audioOffset: Double = 0, videoSeconds: Int = 2) async throws -> URL {
         let url = directory.appending(path: "fixture.mov")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -119,7 +140,7 @@ struct ChangeSpeedTests {
             memset(bytes, 120, CVPixelBufferGetBytesPerRow(frame) * 96)
         }
         CVPixelBufferUnlockBaseAddress(frame, [])
-        for index in 0..<48 {
+        for index in 0..<(24 * videoSeconds) {
             for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
                 try await Task.sleep(for: .milliseconds(2))
             }
