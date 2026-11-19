@@ -20,6 +20,15 @@ public struct TranslationDocument: Sendable {
         let ending: String
     }
 
+    private struct Dialogue: Sendable {
+        let range: Range<String.Index>
+        let line: Int
+    }
+
+    private static let webVTTInlineMarkup = try! NSRegularExpression(
+        pattern: #"^<(?:/(?:b|i|u|c|v)|(?:b|i|u|c)(?:\.[^\s.<>]+)*|v(?:\.[^\s.<>]+)*[ \t]+[^<>]+)>$"#
+    )
+
     private static let maximumBytes = 512 * 1024
     private static let maximumRequests = 3_000
     private static let maximumLineBytes = 8_000
@@ -27,8 +36,9 @@ public struct TranslationDocument: Sendable {
     public let kind: Kind
     private let lines: [Line]
     private let editableIndices: [Int]
+    private let dialogue: [Dialogue]
 
-    public var requests: [String] { editableIndices.map { lines[$0].text } }
+    public var requests: [String] { dialogue.map { String(lines[$0.line].text[$0.range]) } }
 
     public init(_ source: String, kind: Kind) throws {
         guard source.utf8.count <= Self.maximumBytes else {
@@ -36,35 +46,49 @@ public struct TranslationDocument: Sendable {
         }
         let lines = Self.splitLines(source)
         let indices = try Self.editableLines(lines, kind: kind)
-        guard indices.count <= Self.maximumRequests else {
-            throw ToolError.invalid("Translate up to 3,000 lines per operation.")
+        let dialogue = try indices.flatMap { index in
+            let line = lines[index].text
+            if kind == .vtt {
+                let tags = try Self.webVTTMarkup(in: line, number: index + 1)
+                return Self.webVTTDialogue(in: line, between: tags)
+                    .compactMap { $0.map { Dialogue(range: $0, line: index) } }
+            }
+            return [Dialogue(range: line.startIndex..<line.endIndex, line: index)]
+        }
+        guard dialogue.count <= Self.maximumRequests else {
+            throw ToolError.invalid("Translate up to 3,000 dialogue segments per operation.")
         }
         guard indices.allSatisfy({ lines[$0].text.utf8.count <= Self.maximumLineBytes }) else {
             throw ToolError.invalid("Break lines over 8,000 UTF-8 bytes into smaller paragraphs before translating.")
         }
-        guard !indices.isEmpty else { throw ToolError.invalid("The source does not contain text to translate.") }
+        guard !dialogue.isEmpty else { throw ToolError.invalid("The source does not contain text to translate.") }
         self.kind = kind
         self.lines = lines
         self.editableIndices = indices
+        self.dialogue = dialogue
     }
 
     public func rendering(_ translations: [String]) throws -> String {
-        guard translations.count == editableIndices.count else {
-            throw ToolError.invalid("The translation did not return all lines.")
+        guard translations.count == dialogue.count else {
+            throw ToolError.invalid("The translation did not return all dialogue segments.")
         }
         var output = ""
         var translationIndex = 0
         for (index, line) in lines.enumerated() {
-            if translationIndex < editableIndices.count, editableIndices[translationIndex] == index {
+            var cursor = line.text.startIndex
+            while translationIndex < dialogue.count, dialogue[translationIndex].line == index {
+                let range = dialogue[translationIndex].range
                 let translated = translations[translationIndex].split(whereSeparator: \.isNewline).joined(separator: " ")
                 guard !translated.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-                    throw ToolError.invalid("The translation returned an empty line at source line \(index + 1).")
+                    throw ToolError.invalid("The translation returned an empty segment at source line \(index + 1).")
                 }
-                output += translated + line.ending
+                output.append(contentsOf: line.text[cursor..<range.lowerBound])
+                output += translated
+                cursor = range.upperBound
                 translationIndex += 1
-            } else {
-                output += line.text + line.ending
             }
+            output.append(contentsOf: line.text[cursor...])
+            output += line.ending
         }
         try validateEdit(output)
         return output
@@ -83,6 +107,20 @@ public struct TranslationDocument: Sendable {
         let editable = Set(editableIndices)
         guard lines.indices.allSatisfy({ editable.contains($0) || lines[$0].text.utf8.elementsEqual(proposed.lines[$0].text.utf8) }) else {
             throw ToolError.invalid("Keep subtitle timestamps, identifiers, and metadata intact.")
+        }
+        if kind == .vtt {
+            for index in editableIndices {
+                let originalTags = try Self.webVTTMarkup(in: lines[index].text, number: index + 1)
+                let proposedTags = try Self.webVTTMarkup(in: proposed.lines[index].text, number: index + 1)
+                guard originalTags.map({ Array($0.utf8) }) == proposedTags.map({ Array($0.utf8) }) else {
+                    throw ToolError.invalid("Keep WebVTT formatting tags intact at line \(index + 1).")
+                }
+                let originalSlots = Self.webVTTDialogue(in: lines[index].text, between: originalTags).map { $0 != nil }
+                let proposedSlots = Self.webVTTDialogue(in: proposed.lines[index].text, between: proposedTags).map { $0 != nil }
+                guard originalSlots == proposedSlots else {
+                    throw ToolError.invalid("Keep dialogue within its original WebVTT formatting tags at line \(index + 1).")
+                }
+            }
         }
         return lines.indices.map { index in proposed.lines[index].text + lines[index].ending }.joined()
     }
@@ -121,7 +159,8 @@ public struct TranslationDocument: Sendable {
         let timestamp = kind == .srt ? #"[0-9]{2,}:[0-5][0-9]:[0-5][0-9],[0-9]{3}"#
             : #"(?:[0-9]{2,}:)?[0-5][0-9]:[0-5][0-9]\.[0-9]{3}"#
         let timing = try NSRegularExpression(pattern: "^(\(timestamp))[ \t]+-->[ \t]+(\(timestamp))([ \t].*)?$")
-        let markup = try NSRegularExpression(pattern: #"<[^>]+>|\\[Nn]|\{\\[^}]+\}|&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z]+);"#)
+        let otherMarkup = #"\\[Nn]|\{\\[^}]+\}|&(?:#[0-9]+|#x[0-9A-Fa-f]+|[A-Za-z]+);"#
+        let markup = try NSRegularExpression(pattern: kind == .srt ? #"<[^>]+>|"# + otherMarkup : otherMarkup)
         var result: [Int] = []
         while cursor < lines.count {
             if blank(lines[cursor].text) {
@@ -146,13 +185,47 @@ public struct TranslationDocument: Sendable {
             }
             for index in (line + 1)..<cursor {
                 let dialogue = lines[index].text
-                guard !dialogue.contains("-->"), markup.firstMatch(in: dialogue, range: NSRange(dialogue.startIndex..., in: dialogue)) == nil else {
+                guard !dialogue.contains("-->"),
+                      markup.firstMatch(in: dialogue, range: NSRange(dialogue.startIndex..., in: dialogue)) == nil else {
                     throw ToolError.invalid("Unsupported inline subtitle markup or missing cue separator at line \(index + 1).")
                 }
                 result.append(index)
             }
         }
         return result
+    }
+
+    private static func webVTTMarkup(in line: String, number: Int) throws -> [Substring] {
+        let scalars = line.unicodeScalars
+        var tags: [Substring] = []
+        var cursor = scalars.startIndex
+        while let start = scalars[cursor...].firstIndex(of: "<") {
+            let end = scalars[start...].firstIndex(of: ">").map { scalars.index(after: $0) } ?? scalars.endIndex
+            let tag = line[start..<end]
+            let candidate = String(tag)
+            guard webVTTInlineMarkup.firstMatch(in: candidate, range: NSRange(candidate.startIndex..., in: candidate)) != nil else {
+                throw ToolError.invalid("Unsupported WebVTT markup at line \(number).")
+            }
+            tags.append(tag)
+            cursor = end
+        }
+        return tags
+    }
+
+    private static func webVTTDialogue(in line: String, between tags: [Substring]) -> [Range<String.Index>?] {
+        func rangeOfDialogue(_ text: Substring) -> Range<String.Index>? {
+            guard let first = text.firstIndex(where: { !$0.isWhitespace }),
+                  let last = text.lastIndex(where: { !$0.isWhitespace }) else { return nil }
+            return first..<text.index(after: last)
+        }
+        var ranges: [Range<String.Index>?] = []
+        var cursor = line.startIndex
+        for tag in tags {
+            ranges.append(rangeOfDialogue(line[cursor..<tag.startIndex]))
+            cursor = tag.endIndex
+        }
+        ranges.append(rangeOfDialogue(line[cursor...]))
+        return ranges
     }
 
     private static func seconds(_ text: Substring) -> Double? {

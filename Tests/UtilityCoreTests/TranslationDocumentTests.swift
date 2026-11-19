@@ -53,6 +53,32 @@ struct TranslationDocumentTests {
         #expect(throws: ToolError.self) { try document.rendering(["text --> another cue"]) }
     }
 
+    @Test func webVTTTranslatesAndEditsDialogueWhilePreservingFormatting() throws {
+        let header = "WEBVTT\r\n\r\n00:01.000 --> 00:04.000 align:start\r\n"
+        let source = header + "<v Narrateur><c.highlight>Bonjour <i>à tous</i></c>\r\n<b>Bienvenue</b></v>\r\n"
+        let file = try TranslationDocument(source, kind: .vtt)
+        #expect(file.requests == ["Bonjour", "à tous", "Bienvenue"])
+        let result = try file.rendering(["Hello", "everyone", "Welcome"])
+        #expect(result == header + "<v Narrateur><c.highlight>Hello <i>everyone</i></c>\r\n<b>Welcome</b></v>\r\n")
+        let edited = result.replacingOccurrences(of: "everyone", with: "all")
+        #expect(try file.applyingEdits(edited.replacingOccurrences(of: "\r\n", with: "\n")) == edited)
+        #expect(throws: ToolError.self) {
+            try file.applyingEdits(result.replacingOccurrences(of: "highlight", with: "different-class"))
+        }
+        #expect(throws: ToolError.self) {
+            try file.applyingEdits(result.replacingOccurrences(of: "<b>Welcome</b></v>", with: "<b></b></v>Welcome"))
+        }
+        #expect(throws: ToolError.self) {
+            try file.rendering(["<b>Hello</b>", "everyone", "Welcome"])
+        }
+        #expect(throws: ToolError.self) {
+            try TranslationDocument(header + "Unsupported <custom>markup</custom>", kind: .vtt)
+        }
+        #expect(throws: ToolError.self) {
+            try TranslationDocument(header + "<lang fr>Bonjour</lang>", kind: .vtt)
+        }
+    }
+
     @Test func plainTextPreservesParagraphSeparation() throws {
         let document = try TranslationDocument("Bonjour\r\n\r\nA bientôt", kind: .text)
         #expect(document.requests == ["Bonjour", "A bientôt"])
