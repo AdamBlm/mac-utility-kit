@@ -20,7 +20,8 @@ struct StorageExplorerView: View {
     @State private var queryResults: BrowserResult?
     @State private var maximumRows = 150
     @State private var threshold = SizeFilter.all
-    @State private var measurement = Measurement.allocated
+    @State private var customMinimum = "250"
+    @State private var measurement = StorageExplorer.Measurement.allocated
     @State private var confirmsTrash = false
 
     @MainActor @Observable
@@ -29,24 +30,16 @@ struct StorageExplorerView: View {
         func update(_ progress: StorageScanProgress) { self.progress = progress }
     }
 
-    private enum Measurement: String, CaseIterable, Identifiable, Sendable {
-        case allocated = "On disk"
-        case apparent = "File size"
-        var id: Self { self }
-        func bytes(_ item: StorageScanItem) -> Int64 {
-            self == .allocated ? item.allocatedBytes : item.apparentBytes
-        }
-    }
-
     private enum SizeFilter: String, CaseIterable, Identifiable, Sendable {
         case all = "Folder contents"
         case ten = "Files ≥ 10 MB"
         case hundred = "Files ≥ 100 MB"
         case thousand = "Files ≥ 1 GB"
+        case custom = "Custom Minimum"
         var id: Self { self }
-        var minimum: Int64 {
+        var minimum: Int64? {
             switch self {
-            case .all: 0
+            case .all, .custom: nil
             case .ten: 10_000_000
             case .hundred: 100_000_000
             case .thousand: 1_000_000_000
@@ -58,7 +51,10 @@ struct StorageExplorerView: View {
         let reportID: UUID
         let directory: Int
         let threshold: SizeFilter
-        let measurement: Measurement
+        let minimum: Int64?
+        let measurement: StorageExplorer.Measurement
+
+        var isValid: Bool { threshold != .custom || minimum != nil }
     }
 
     private struct BrowserResult {
@@ -69,7 +65,9 @@ struct StorageExplorerView: View {
     private var busy: Bool { scanTask != nil || draft.isTrashing }
 
     private var query: BrowserQuery {
-        BrowserQuery(reportID: draft.reportID, directory: draft.directory, threshold: threshold, measurement: measurement)
+        let minimum = threshold == .custom ? StorageExplorer.minimumBytes(megabytes: customMinimum) : threshold.minimum
+        return BrowserQuery(reportID: draft.reportID, directory: draft.directory, threshold: threshold,
+                            minimum: minimum, measurement: measurement)
     }
 
     var body: some View {
@@ -89,7 +87,7 @@ struct StorageExplorerView: View {
         .task(id: query) {
             guard let report = draft.report else { return }
             let request = query
-            let ids = await Self.browserItems(in: report, query: request)
+            guard request.isValid, let ids = await Self.browserItems(in: report, query: request) else { return }
             guard !Task.isCancelled, request == query else { return }
             queryResults = BrowserResult(query: request, ids: ids)
             maximumRows = 150
@@ -99,9 +97,11 @@ struct StorageExplorerView: View {
         } message: {
             if let report = draft.report {
                 let preview = StorageExplorer.trashPreview(draft.selected, in: report)
-                let names = preview.items.prefix(4).map(\.name).joined(separator: ", ")
+                let names = preview.items.prefix(4).map {
+                    StorageExplorer.displayedPath(for: $0, under: report.root)
+                }.joined(separator: "\n")
                 let additional = max(0, preview.items.count - 4)
-                let label = additional == 0 ? names : names + " and \(additional) more"
+                let label = additional == 0 ? names : names + "\nand \(additional) more"
                 Text("\(label)\nEstimated space after emptying Trash: \(format(preview.estimatedBytes)).")
             }
         }
@@ -154,7 +154,7 @@ struct StorageExplorerView: View {
             }
             HStack {
                 Picker("Measurement", selection: $measurement) {
-                    ForEach(Measurement.allCases) { Text($0.rawValue).tag($0) }
+                    ForEach(StorageExplorer.Measurement.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .pickerStyle(.segmented)
                 .labelsHidden()
@@ -164,15 +164,29 @@ struct StorageExplorerView: View {
                     ForEach(SizeFilter.allCases) { Text($0.rawValue).tag($0) }
                 }
             }
+            if threshold == .custom {
+                SettingRow("Minimum size") {
+                    TextField("250", text: $customMinimum)
+                        .textFieldStyle(.roundedBorder)
+                        .frame(width: 95)
+                        .accessibilityLabel("Minimum file size in megabytes")
+                    Text("MB").foregroundStyle(.secondary)
+                }
+            }
             Text("On-disk sizes are estimates. Hard-linked data counts once; shared APFS clone blocks can overlap.")
                 .font(.caption).foregroundStyle(.secondary)
-            if let ids {
+            if !query.isValid {
+                Text("Enter a valid positive whole number of megabytes.")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else if let ids {
                 if ids.isEmpty {
                     Text("No matching items.").font(.callout).foregroundStyle(.secondary)
                 }
                 LazyVStack(alignment: .leading, spacing: 8) {
                     ForEach(ids.prefix(maximumRows), id: \.self) { id in
-                        itemRow(report.items[id], parentBytes: bytes)
+                        let item = report.items[id]
+                        let name = threshold == .all ? item.name : StorageExplorer.displayedPath(for: item, under: current)
+                        itemRow(item, name: name, parentBytes: bytes)
                     }
                 }
                 if ids.count > maximumRows {
@@ -199,25 +213,25 @@ struct StorageExplorerView: View {
         .disabled(busy)
     }
 
-    private func itemRow(_ item: StorageScanItem, parentBytes: Int64) -> some View {
+    private func itemRow(_ item: StorageScanItem, name: String, parentBytes: Int64) -> some View {
         HStack(spacing: 9) {
             Toggle(isOn: Binding(get: { draft.selected.contains(item.id) }, set: { checked in
                 if checked { draft.selected.insert(item.id) } else { draft.selected.remove(item.id) }
             })) { EmptyView() }
                 .toggleStyle(.checkbox)
-                .accessibilityLabel("Select \(item.name)")
+                .accessibilityLabel("Select \(name)")
                 .disabled(!item.canTrash)
             if item.kind == .folder {
                 Button {
                     draft.directory = item.id
                     threshold = .all
                 } label: {
-                    Label(item.name, systemImage: "folder").lineLimit(1)
+                    Label(name, systemImage: "folder").lineLimit(1)
                 }
                 .buttonStyle(.plain).help(item.url.path)
             } else {
-                Label(item.name, systemImage: item.kind == .link ? "link" : "doc")
-                    .lineLimit(1).help(item.url.path)
+                Label(name, systemImage: item.kind == .link ? "link" : "doc")
+                    .lineLimit(1).truncationMode(.middle).help(item.url.path)
             }
             if item.isPartial {
                 Image(systemName: "exclamationmark.circle")
@@ -231,7 +245,7 @@ struct StorageExplorerView: View {
             ProgressView(value: fraction(measurement.bytes(item), of: parentBytes))
                 .frame(width: 40).accessibilityHidden(true)
             Text(format(measurement.bytes(item))).monospacedDigit().foregroundStyle(.secondary)
-            Button("Reveal \(item.name) in Finder", systemImage: "arrow.up.right.square") {
+            Button("Reveal \(name) in Finder", systemImage: "arrow.up.right.square") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
             }.labelStyle(.iconOnly)
         }
@@ -325,24 +339,9 @@ struct StorageExplorerView: View {
         }
     }
 
-    private nonisolated static func browserItems(in report: StorageScanReport, query: BrowserQuery) async -> [Int] {
-        let node = report.items[query.directory]
-        let items = if query.threshold == .all {
-            node.children
-        } else {
-            report.descendants(of: node.id).filter { id in
-                let item = report.items[id]
-                return !Task.isCancelled && item.kind == .file && query.measurement.bytes(item) >= query.threshold.minimum
-            }
-        }
-        return items.sorted { first, second in
-            let a = report.items[first]
-            let b = report.items[second]
-            let aBytes = query.measurement.bytes(a)
-            let bBytes = query.measurement.bytes(b)
-            if aBytes != bBytes { return aBytes > bBytes }
-            return a.name.localizedStandardCompare(b.name) == .orderedAscending
-        }
+    private nonisolated static func browserItems(in report: StorageScanReport, query: BrowserQuery) async -> [Int]? {
+        try? StorageExplorer.browserItems(in: report, directory: query.directory, minimumBytes: query.minimum,
+                                          measurement: query.measurement)
     }
 
     private func fraction(_ bytes: Int64, of total: Int64) -> Double {

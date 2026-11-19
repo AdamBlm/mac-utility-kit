@@ -46,6 +46,58 @@ public struct StorageScanReport: Sendable {
 }
 
 public enum StorageExplorer {
+    public enum Measurement: String, CaseIterable, Identifiable, Sendable {
+        case allocated = "On disk"
+        case apparent = "File size"
+
+        public var id: Self { self }
+
+        public func bytes(_ item: StorageScanItem) -> Int64 {
+            self == .allocated ? item.allocatedBytes : item.apparentBytes
+        }
+    }
+
+    public static func minimumBytes(megabytes text: String) -> Int64? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard value.utf8.allSatisfy({ (48...57).contains($0) }),
+              let megabytes = Int64(value), megabytes > 0 else { return nil }
+        let bytes = megabytes.multipliedReportingOverflow(by: 1_000_000)
+        return bytes.overflow ? nil : bytes.partialValue
+    }
+
+    public static func browserItems(
+        in report: StorageScanReport, directory: Int, minimumBytes: Int64?, measurement: Measurement
+    ) throws -> [Int] {
+        guard report.items.indices.contains(directory) else { return [] }
+        let candidates: [Int]
+        if let minimumBytes {
+            candidates = try report.descendants(of: directory).filter { id in
+                try Task.checkCancellation()
+                let item = report.items[id]
+                return item.kind == .file && measurement.bytes(item) >= minimumBytes
+            }
+        } else {
+            candidates = report.items[directory].children
+        }
+        return try candidates.sorted { first, second in
+            try Task.checkCancellation()
+            let a = report.items[first]
+            let b = report.items[second]
+            let aBytes = measurement.bytes(a)
+            let bBytes = measurement.bytes(b)
+            if aBytes != bBytes { return aBytes > bBytes }
+            let nameOrder = a.name.localizedStandardCompare(b.name)
+            return nameOrder == .orderedSame ? a.url.path < b.url.path : nameOrder == .orderedAscending
+        }
+    }
+
+    public static func displayedPath(for item: StorageScanItem, under directory: StorageScanItem) -> String {
+        let folder = directory.url.pathComponents
+        let path = item.url.pathComponents
+        guard path.starts(with: folder), path.count > folder.count else { return item.name }
+        return path.dropFirst(folder.count).joined(separator: "/")
+    }
+
     public static func scan(
         _ folder: URL, progress: @Sendable (StorageScanProgress) async -> Void = { _ in }
     ) async throws -> StorageScanReport {

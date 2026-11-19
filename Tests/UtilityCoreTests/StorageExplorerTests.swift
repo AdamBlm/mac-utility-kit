@@ -127,6 +127,29 @@ struct StorageExplorerTests {
         await #expect(throws: CancellationError.self) { _ = try await scan.value }
     }
 
+    @Test func customMinimumIsInclusiveAndDistinguishesNestedFilesWithTheSameName() async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        for (folderName, byteCount) in [("A", 2_000_000), ("B", 2_000_000), ("C", 1_999_999)] {
+            let folder = root.appending(path: folderName)
+            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+            try Data(repeating: 7, count: byteCount).write(to: folder.appending(path: "recording.bin"))
+        }
+        let report = try await StorageExplorer.scan(root)
+        let minimum = try #require(StorageExplorer.minimumBytes(megabytes: " 2 "))
+        let ids = try StorageExplorer.browserItems(in: report, directory: report.root.id,
+                                                   minimumBytes: minimum, measurement: .apparent)
+        #expect(ids.map { StorageExplorer.displayedPath(for: report.items[$0], under: report.root) }
+                == ["A/recording.bin", "B/recording.bin"])
+        let folder = try #require(report.items.first { $0.name == "A" })
+        let nested = try StorageExplorer.browserItems(in: report, directory: folder.id,
+                                                      minimumBytes: minimum, measurement: .apparent)
+        #expect(nested.map { StorageExplorer.displayedPath(for: report.items[$0], under: folder) } == ["recording.bin"])
+        for invalid in ["", "0", "-1", "1.5", "2 MB", "9223372036854775807"] {
+            #expect(StorageExplorer.minimumBytes(megabytes: invalid) == nil)
+        }
+    }
+
     private func makeRoot() throws -> URL {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
