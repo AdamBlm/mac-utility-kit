@@ -102,3 +102,11 @@ jobs:
           PYTHON
       - run: python3 scripts/check-mcp.py 'build/Mac Utility Kit.app/Contents/MacOS/muk'
       - run: ./scripts/build-dmg.sh
+      - name: Launch the workspace from the packaged disk image
+        timeout-minutes: 2
+        shell: bash
+        run: |
+          mountpoint="$(mktemp -d "$RUNNER_TEMP/muk-preview.XXXXXX")"
+          hdiutil attach 'build/Mac Utility Kit Preview.dmg' -quiet -readonly -nobrowse -mountpoint "$mountpoint"
+          trap 'hdiutil detach "$mountpoint" -quiet && rmdir "$mountpoint"' EXIT
+          swift scripts/check-app-launch.swift "$mountpoint/Mac Utility Kit.app"
