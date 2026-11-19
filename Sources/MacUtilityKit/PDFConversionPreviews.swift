@@ -166,11 +166,15 @@ private struct PDFRasterThumbnail: View {
                 Image(decorative: image, scale: 1)
                     .resizable()
                     .scaledToFit()
-                    .frame(maxWidth: 280, maxHeight: 200)
-                    .background(.quaternary.opacity(0.45))
+                    .background {
+                        if options.transparent {
+                            transparencyBackdrop
+                        }
+                    }
                     .overlay { Rectangle().strokeBorder(.secondary.opacity(0.25)) }
+                    .frame(maxWidth: 280, maxHeight: 200)
                     .accessibilityLabel("Rendered page \(pageNumber)")
-                Text(options.transparent ? "Scaled preview. Shaded areas will be transparent." : "Scaled preview.")
+                Text(options.transparent ? "Scaled preview. The checkerboard shows through transparent areas." : "Scaled preview.")
                     .font(.caption).foregroundStyle(.secondary)
             } else if failed {
                 Text("Could not render this preview.").font(.caption).foregroundStyle(.secondary)
@@ -187,5 +191,24 @@ private struct PDFRasterThumbnail: View {
                 if !Task.isCancelled { failed = true }
             }
         }
+    }
+
+    private var transparencyBackdrop: some View {
+        Canvas { context, size in
+            let tile: CGFloat = 8
+            let columns = Int((size.width / tile).rounded(.up))
+            let rows = Int((size.height / tile).rounded(.up))
+            var squares = Path()
+            for row in 0..<rows {
+                for column in stride(from: row % 2, to: columns, by: 2) {
+                    squares.addRect(CGRect(x: CGFloat(column) * tile, y: CGFloat(row) * tile,
+                                           width: tile, height: tile))
+                }
+            }
+            context.fill(squares, with: .color(.primary.opacity(0.18)))
+        }
+        .background(.background)
+        .clipped()
+        .accessibilityHidden(true)
     }
 }

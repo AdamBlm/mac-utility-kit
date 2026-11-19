@@ -139,6 +139,33 @@ import UniformTypeIdentifiers
     #expect(try #require(results.first).pathExtension == "jpg")
 }
 
+@Test func PDFToImagesPreviewAndPNGKeepPartialTransparency() async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("PartialAlpha.pdf")
+    var box = CGRect(x: 0, y: 0, width: 100, height: 100)
+    let context = try #require(CGContext(source as CFURL, mediaBox: &box, nil))
+    context.beginPDFPage(nil)
+    context.setFillColor(red: 1, green: 0, blue: 0, alpha: 0.5)
+    context.fill(CGRect(x: 25, y: 25, width: 50, height: 50))
+    context.endPDFPage()
+    context.closePDF()
+
+    let exports = try folder.subdirectory("exports")
+    var options = PDFToImagesOptions()
+    options.transparent = true
+    options.resolution = .bounds
+    options.maxWidth = 420
+    options.maxHeight = 420
+    let preview = try await PDFToImages.preview(source, pageNumber: 1, options: options)
+    let outputs = try await PDFToImages.export(source, into: exports, options: options) { _ in }
+    let png = try conversionReadImage(try #require(outputs.first))
+    for image in [preview, png] {
+        #expect(try conversionPixel(image, x: 5, y: 5).alpha == 0)
+        #expect((125...130).contains(try conversionPixel(image, x: 210, y: 210).alpha))
+    }
+}
+
 @Test func imagesToPDFLeavesNoOutputForAnInvalidSource() async throws {
     let folder = try conversionFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
