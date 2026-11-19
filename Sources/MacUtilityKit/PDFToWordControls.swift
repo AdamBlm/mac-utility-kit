@@ -23,14 +23,28 @@ struct PDFToWordControls: View {
         VStack(alignment: .leading, spacing: 12) {
             optionsControls
                 .disabled(job != nil)
-            if let source, let issue = PDFToWord.optionIssue(source, options: options) {
-                Text(issue).font(.callout).foregroundStyle(.secondary)
-            }
+            exportAvailability
             previewControls
         }
         .onChange(of: options) { resetPreview() }
         .onChange(of: source) { resetPreview() }
         .onDisappear { job?.cancel() }
+    }
+
+    @ViewBuilder
+    private var exportAvailability: some View {
+        let issues = inputs.enumerated().compactMap { index, input in
+            PDFToWord.optionIssue(input, options: options).map { (index: index, input: input, message: $0) }
+        }
+        if let first = issues.first, issues.count == inputs.count,
+           issues.allSatisfy({ $0.message == first.message }) {
+            Text(first.message).font(.callout).foregroundStyle(.secondary)
+        } else {
+            ForEach(issues, id: \.index) { issue in
+                Text("\(issue.input.lastPathComponent) · \(issue.message)")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+        }
     }
 
     private var optionsControls: some View {
