@@ -75,8 +75,8 @@ struct TextExtractionSettings: View {
                                 .labelsHidden()
                             }
                         }
-                        OCRSourcePreview(input: input, pageNumber: nil, pageRange: options.range, password: options.password, region: $options.region)
-                            .frame(height: 205)
+                        OCRRegionPagePreview(input: input, range: options.range, password: options.password,
+                                             region: $options.region)
                         HStack(spacing: 8) {
                             regionField("Left %", \.origin.x, origin: true, horizontal: true)
                             regionField("Top %", \.origin.y, origin: true, horizontal: false)
@@ -166,6 +166,62 @@ struct TextExtractionResultView: View {
             }
         }
         .font(.callout)
+    }
+}
+
+private struct OCRRegionPagePreview: View {
+    let input: URL
+    let range: String
+    let password: String
+    @Binding var region: CGRect?
+    @State private var selected: Int?
+    @State private var listing: (request: Request, result: Result<[Int], any Error>)?
+
+    private struct Request: Equatable {
+        let input: URL
+        let range: String
+        let password: String
+    }
+
+    var body: some View {
+        let request = Request(input: input, range: range, password: password)
+        Group {
+            if let listing, listing.request == request {
+                switch listing.result {
+                case .success(let pages):
+                    let page = selected.flatMap { pages.contains($0) ? $0 : nil } ?? pages.first
+                    if pages.count > 1, let page {
+                        SettingRow("Preview page") {
+                            Picker("Region preview page", selection: Binding(get: { page }, set: { selected = $0 })) {
+                                ForEach(pages, id: \.self) { number in Text("Page \(number)").tag(number) }
+                            }
+                            .labelsHidden()
+                        }
+                    }
+                    preview(page: page)
+                case .failure(let error):
+                    Text(error.localizedDescription).font(.caption).foregroundStyle(.secondary)
+                }
+            } else {
+                ProgressView("Reading preview pages…").controlSize(.small)
+            }
+        }
+        .task(id: request) {
+            do {
+                let pages = try await TextExtraction.regionPreviewPages(input, range: range, password: password)
+                try Task.checkCancellation()
+                if listing?.request.input != request.input { selected = nil }
+                listing = (request, .success(pages))
+            } catch {
+                guard !Task.isCancelled else { return }
+                listing = (request, .failure(error))
+            }
+        }
+    }
+
+    private func preview(page: Int?) -> some View {
+        OCRSourcePreview(input: input, pageNumber: page, pageRange: range, password: password, region: $region)
+            .frame(height: 205)
     }
 }
 

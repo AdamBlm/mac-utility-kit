@@ -84,16 +84,7 @@ public enum TextExtraction {
         _ input: URL, options: TextExtractionOptions, progress: @Sendable (Double) async -> Void
     ) async throws -> TextExtractionResult {
         let stamp = try PDFSourceStamp.read(input)
-        guard let document = PDFDocument(url: stamp.resolved) else {
-            throw ToolError.invalid("Could not open this PDF.")
-        }
-        if document.isLocked || (document.isEncrypted && !options.password.isEmpty),
-           !document.unlock(withPassword: options.password) {
-            throw ToolError.invalid("Could not open this PDF. Check the password.")
-        }
-        guard document.allowsCopying else {
-            throw ToolError.invalid("This PDF does not allow copying.")
-        }
+        let document = try openPDF(stamp.resolved, password: options.password)
         return try await extractPages(
             count: document.pageCount, options: options, progress: progress,
             verifySource: {
@@ -112,6 +103,38 @@ public enum TextExtraction {
             let image = try PDFToImages.rasterizeForRecognition(page, pageNumber: index + 1)
             return try recognize(image, options: options)
         }
+    }
+
+    @concurrent
+    package static func regionPreviewPages(_ input: URL, range: String, password: String) async throws -> [Int] {
+        try Task.checkCancellation()
+        let type = try input.resourceValues(forKeys: [.contentTypeKey]).contentType
+        let count: Int
+        if type?.conforms(to: .pdf) == true {
+            count = try openPDF(input, password: password).pageCount
+        } else {
+            let source = try imageSource(input)
+            guard isTIFF(source) else { return [] }
+            count = CGImageSourceGetCount(source)
+        }
+        try Task.checkCancellation()
+        let selected = try PageSelection.indices(range, pageCount: count)
+        guard !selected.isEmpty else { throw ToolError.invalid("Select at least one page to preview.") }
+        return selected.map { $0 + 1 }
+    }
+
+    private static func openPDF(_ input: URL, password: String) throws -> PDFDocument {
+        guard let document = PDFDocument(url: input) else {
+            throw ToolError.invalid("Could not open this PDF.")
+        }
+        if document.isLocked || (document.isEncrypted && !password.isEmpty),
+           !document.unlock(withPassword: password) {
+            throw ToolError.invalid("Could not open this PDF. Check the password.")
+        }
+        guard document.allowsCopying else {
+            throw ToolError.invalid("This PDF does not allow copying.")
+        }
+        return document
     }
 
     private static func extractPages(

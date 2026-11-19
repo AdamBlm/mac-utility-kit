@@ -81,6 +81,10 @@ import UtilityCore
     options.includePageBreaks = false
     let withoutBreaks = try await TextExtraction.extract(embedded, options: options)
     #expect(withoutBreaks.text == "SECOND DOCUMENT PAGE\n\nFIRST DOCUMENT PAGE")
+    #expect(try await TextExtraction.regionPreviewPages(embedded, range: "2, 1", password: "") == [2, 1])
+    await #expect(throws: ToolError.self) {
+        try await TextExtraction.regionPreviewPages(embedded, range: "none", password: "")
+    }
     options.preferEmbeddedText = false
     options.range = "2"
     let forcedOCR = try await TextExtraction.extract(embedded, options: options)
@@ -127,6 +131,13 @@ import UtilityCore
     let selected = try await TextExtraction.extract(file, options: options)
     #expect(selected.pages.compactMap(\.pageNumber) == [2])
     #expect(selected.text == "Page 2\n\nSECOND MEADOW")
+    #expect(try await TextExtraction.regionPreviewPages(file, range: "2, 1", password: "") == [2, 1])
+    let mislabeled = file.deletingPathExtension().appendingPathExtension("png")
+    try original.write(to: mislabeled)
+    #expect(try await TextExtraction.regionPreviewPages(mislabeled, range: "2, 1", password: "") == [2, 1])
+    await #expect(throws: ToolError.self) {
+        try await TextExtraction.regionPreviewPages(file, range: "3", password: "")
+    }
     let preview = try TextExtraction.imagePreview(file, pageNumber: nil, pageRange: options.range)
     let first = try TextExtraction.imagePreview(file, pageNumber: 1, pageRange: options.range)
     #expect(preview.width < first.width)
