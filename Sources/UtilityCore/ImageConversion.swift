@@ -197,7 +197,7 @@ public enum ImageConversion {
         return false
     }
 
-    private static func flattenImage(_ image: CGImage, backgroundRGB: UInt32) throws -> CGImage {
+    static func flattenImage(_ image: CGImage, backgroundRGB: UInt32) throws -> CGImage {
         let colorSpace: CGColorSpace
         if let original = image.colorSpace, original.model == .rgb {
             colorSpace = original

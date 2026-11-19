@@ -79,18 +79,21 @@ public enum ImagesToPDF {
     private static func draw(_ input: URL, in context: CGContext, options: ImagesToPDFOptions) throws {
         let metadata = try readImage(input)
         let layout = try layout(for: metadata.orientedSize, options: options)
-        guard let image = CGImageSourceCreateThumbnailAtIndex(metadata.source, metadata.index, [
+        guard let orientedImage = CGImageSourceCreateThumbnailAtIndex(metadata.source, metadata.index, [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
             kCGImageSourceThumbnailMaxPixelSize: max(metadata.orientedSize.width, metadata.orientedSize.height)
         ] as CFDictionary) else { throw ToolError.invalid("Could not decode \(input.lastPathComponent).") }
+        let rgb = options.backgroundRGB
+        let image = try ImageConversion.imageContainsAlpha(orientedImage)
+            ? ImageConversion.flattenImage(orientedImage, backgroundRGB: rgb) : orientedImage
 
         var box = layout.page
         let boxData = Data(bytes: &box, count: MemoryLayout<CGRect>.size)
         context.beginPDFPage([kCGPDFContextMediaBox: boxData] as CFDictionary)
-        let rgb = options.backgroundRGB
-        context.setFillColor(red: Double((rgb >> 16) & 255) / 255, green: Double((rgb >> 8) & 255) / 255,
-                             blue: Double(rgb & 255) / 255, alpha: 1)
+        context.setFillColor(CGColor(srgbRed: Double((rgb >> 16) & 255) / 255,
+                                     green: Double((rgb >> 8) & 255) / 255,
+                                     blue: Double(rgb & 255) / 255, alpha: 1))
         context.fill(layout.page)
         context.saveGState()
         context.clip(to: layout.printableArea)

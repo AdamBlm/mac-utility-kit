@@ -24,6 +24,27 @@ import UniformTypeIdentifiers
     #expect(pdf.pageCount == 2)
     #expect(pdf.page(at: 0)?.bounds(for: .mediaBox).size == CGSize(width: 48, height: 80))
     #expect(pdf.page(at: 1)?.bounds(for: .mediaBox).size == CGSize(width: 40, height: 32))
+    let page = try #require(pdf.page(at: 1)?.pageRef)
+    let dictionary = try #require(page.dictionary)
+    var resources: CGPDFDictionaryRef?
+    var objects: CGPDFDictionaryRef?
+    try #require(CGPDFDictionaryGetDictionary(dictionary, "Resources", &resources))
+    try #require(CGPDFDictionaryGetDictionary(try #require(resources), "XObject", &objects))
+    var embeddedImages = 0
+    CGPDFDictionaryApplyBlock(try #require(objects), { _, object, _ in
+        var stream: CGPDFStreamRef?
+        var subtype: UnsafePointer<CChar>?
+        guard CGPDFObjectGetValue(object, .stream, &stream), let stream,
+              let properties = CGPDFStreamGetDictionary(stream),
+              CGPDFDictionaryGetName(properties, "Subtype", &subtype), let subtype,
+              String(cString: subtype) == "Image" else { return true }
+        embeddedImages += 1
+        var mask: CGPDFObjectRef?
+        #expect(!CGPDFDictionaryGetObject(properties, "SMask", &mask))
+        #expect(!CGPDFDictionaryGetObject(properties, "Mask", &mask))
+        return true
+    }, nil)
+    #expect(embeddedImages == 1)
     let exports = try folder.subdirectory("exports")
     var raster = PDFToImagesOptions()
     raster.range = "2"
@@ -32,6 +53,11 @@ import UniformTypeIdentifiers
     let image = try conversionReadImage(try #require(files.first))
     let sampled = try conversionPixel(image, x: 20, y: 16)
     #expect(sampled.green > 240 && sampled.red < 15 && sampled.blue < 15 && sampled.alpha == 255)
+    let blended = try conversionPixel(image, x: 12, y: 16)
+    #expect((105...150).contains(blended.red) && (105...150).contains(blended.green)
+            && blended.blue < 15 && blended.alpha == 255)
+    let margin = try conversionPixel(image, x: 2, y: 16)
+    #expect(margin == sampled)
     #expect(try Data(contentsOf: portrait) == original)
 }
 
@@ -147,6 +173,9 @@ private func conversionImage(_ url: URL, kind: UTType, width: Int, height: Int,
     if !transparent {
         context.setFillColor(red: 1, green: 0, blue: 0, alpha: 1)
         context.fill(CGRect(x: 0, y: 0, width: width, height: height))
+    } else {
+        context.setFillColor(red: 1, green: 0, blue: 0, alpha: 0.5)
+        context.fill(CGRect(x: 0, y: 0, width: width / 2 - 2, height: height))
     }
     let image = try #require(context.makeImage())
     let destination = try #require(CGImageDestinationCreateWithURL(url as CFURL, kind.identifier as CFString, 1, nil))
