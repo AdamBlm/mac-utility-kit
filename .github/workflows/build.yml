@@ -9,7 +9,40 @@ jobs:
       DEVELOPER_DIR: /Applications/Xcode_26.3.app/Contents/Developer
     steps:
       - uses: actions/checkout@v4
-      - run: swift test --no-parallel
+      - name: Run tests
+        id: tests
+        run: swift test --no-parallel
+      - name: Print Swift test crash reports
+        if: failure() && steps.tests.conclusion == 'failure'
+        run: |
+          python3 - <<'PYTHON'
+          import json
+          import time
+          from pathlib import Path
+
+          roots = [Path.home() / "Library/Logs/DiagnosticReports", Path("/Library/Logs/DiagnosticReports")]
+          for attempt in range(6):
+              reports = [p for root in roots for p in root.glob("swiftpm-testing-helper*.ips")
+                         if time.time() - p.stat().st_mtime < 600]
+              if reports:
+                  break
+              time.sleep(2)
+          for report in sorted(reports):
+              heading, body = report.read_text().split("\n", 1)
+              crash = json.loads(body)
+              print(report.name, crash.get("exception"), crash.get("termination"))
+              threads = crash.get("threads", [])
+              images = crash.get("usedImages", [])
+              for thread in threads:
+                  if not thread.get("triggered"):
+                      continue
+                  for frame in thread.get("frames", []):
+                      index = frame.get("imageIndex", -1)
+                      image = images[index].get("name") if 0 <= index < len(images) else "Unknown"
+                      print(image, frame.get("symbol", ""), frame.get("imageOffset"))
+          if not reports:
+              print("No Swift test crash reports were collected.")
+          PYTHON
       - run: ./scripts/build-app.sh
       - run: codesign --verify --deep --strict 'build/Mac Utility Kit.app'
       - name: Verify the packaged tool catalog
