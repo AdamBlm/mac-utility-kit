@@ -2,6 +2,7 @@ import CoreGraphics
 import CoreText
 import PDFKit
 import Testing
+import Vision
 @testable import UtilityCore
 
 @Suite(.serialized)
@@ -41,8 +42,20 @@ struct SearchablePDFTests {
                                 y: selection.minY / pixels.bounds.height,
                                 width: selection.width / pixels.bounds.width,
                                 height: selection.height / pixels.bounds.height)
-        #expect(abs(normalized.minX - 0.13) < 0.025)
-        #expect(abs(normalized.minY - 0.60) < 0.06)
+        let recognitionRaster = try SearchablePDFTextLayer.rasterize(before, limit: 4_096)
+        let request = VNRecognizeTextRequest()
+        request.recognitionLevel = .accurate
+        request.usesLanguageCorrection = true
+        request.recognitionLanguages = ["en-US"]
+        try VNImageRequestHandler(cgImage: recognitionRaster.image).perform([request])
+        let phrase = try #require(request.results?.first {
+            $0.topCandidates(1).first?.string == "Searchable sample 7429"
+        }?.boundingBox)
+        let overlap = normalized.intersection(phrase)
+        #expect(!overlap.isNull)
+        #expect(overlap.width >= phrase.width * 0.8)
+        #expect(overlap.height >= min(normalized.height, phrase.height) * 0.6)
+        #expect(phrase.minX...phrase.maxX ~= normalized.midX)
     }
 
     @Test

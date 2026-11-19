@@ -14,7 +14,7 @@ struct ChangeSpeedTests {
         var options = ChangeSpeedOptions()
         options.multiplier = multiplier
         _ = try await ChangeSpeed.export(source, to: output, options: options) { _ in }
-        let result = AVURLAsset(url: output)
+        let result = AVURLAsset(url: output, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
         let track = try #require(try await result.loadTracks(withMediaType: .video).first)
         let expected = originalDuration / multiplier
         let videoEnd = try await track.load(.timeRange).end.seconds
@@ -23,7 +23,13 @@ struct ChangeSpeedTests {
         if withAudio {
             let track = try #require(audio.first)
             let range = try await track.load(.timeRange)
-            #expect(abs(range.end.seconds - videoEnd) < 0.1)
+            let original = AVURLAsset(url: source, options: [AVURLAssetPreferPreciseDurationAndTimingKey: true])
+            let originalAudio = try #require(try await original.loadTracks(withMediaType: .audio).first)
+            let sourceRange = try await originalAudio.load(.timeRange)
+            let expectedAudioEnd = min(sourceRange.end.seconds, originalDuration) / multiplier
+            let outputSampleRate = 48_000.0
+            let aacPacketDuration = 1_024 / outputSampleRate
+            #expect(abs(range.end.seconds - expectedAudioEnd) <= 5 * aacPacketDuration + 1 / outputSampleRate)
         } else {
             #expect(audio.isEmpty)
         }
