@@ -184,12 +184,22 @@ func videoConversionReportsObservedWebMCodecsAndDroppedStreams() async throws {
     var batch = ToolOptions()
     batch.conversion = options
     batch.videoPassthroughRecheck = [0]
+    let supported = folder.appending(path: "VP9.webm")
+    let inputs = [incompatible, supported]
     let report = try await ToolRunner.run(.convertVideo,
-                                          inputs: [incompatible, folder.appending(path: "VP9.webm")],
+                                          inputs: inputs,
                                           destination: folder, imageSize: 0, options: batch) { _ in }
     #expect(report.outputs.map(\.lastPathComponent) == ["2 - VP9.webm"])
     #expect(report.failures.count == 1)
     #expect(report.failures.first?.hasPrefix("H264.mp4 — Passthrough check failed") == true)
+
+    let replacement = folder.appending(path: "Replacement.webm")
+    try FileManager.default.copyItem(at: supported, to: replacement)
+    _ = try FileManager.default.replaceItemAt(incompatible, withItemAt: replacement)
+    let retried = try await ToolRunner.run(.convertVideo, inputs: inputs, destination: folder,
+                                          imageSize: 0, options: batch) { _ in }
+    #expect(retried.failures.isEmpty)
+    #expect(retried.outputs.map(\.lastPathComponent) == ["1 - H264.webm", "2 - VP9.webm"])
 
     let subtitle = folder.appending(path: "Sample.srt")
     try Data("1\n00:00:00,100 --> 00:00:00,900\nCaption\n".utf8).write(to: subtitle)
