@@ -13,7 +13,11 @@ import UtilityCore
 
     let output = directory.appendingPathComponent("Signed.pdf")
     var options = PDFSignatureOptions()
-    options.pageRange = "1, 3"
+    let first = PageSelection.updating([], at: 2, extendingFrom: nil)
+    let span = PageSelection.updating(first, at: 0, extendingFrom: 2)
+    let selected = PageSelection.updating(span, at: 1, extendingFrom: nil)
+    options.pageRange = PageSelection.expression(for: selected)
+    #expect(try PDFSigning.signingPageIndices(options, pageCount: 3) == [2, 0])
     options.text = "Avery Chen"
     options.dateLabel = "18 November 2026"
     options.center = CGPoint(x: 0.35, y: 0.67)

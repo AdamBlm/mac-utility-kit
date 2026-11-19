@@ -117,8 +117,14 @@ struct PDFExportPagePicker: View {
         let selected = try? selection.get()
         VStack(alignment: .leading, spacing: 8) {
             SettingRow("Pages") {
-                TextField(startsWithAll ? "All, or e.g. 1, 4–6" : "Enter pages, e.g. 1, 4–6", text: $range)
-                    .accessibilityLabel("Page range")
+                TextField(startsWithAll ? "All, or e.g. 1, 4–6" : "Enter pages, e.g. 1, 4–6", text: Binding(
+                    get: { range },
+                    set: { value in
+                        range = value
+                        anchor = nil
+                    }
+                ))
+                .accessibilityLabel("Page range")
             }
             HStack(spacing: 8) {
                 Group {

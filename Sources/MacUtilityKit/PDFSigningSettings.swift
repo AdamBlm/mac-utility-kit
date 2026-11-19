@@ -55,14 +55,12 @@ struct PDFSigningSettings: View {
 
     private func signingControls(_ document: PDFDocument) -> some View {
         let pages = (try? PDFSigning.pageIndices(options.pageRange, pageCount: document.pageCount)) ?? []
+        let range = options.pageRange.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentPage = pages.contains(previewPage) ? previewPage : pages.first
         return VStack(alignment: .leading, spacing: 12) {
-            SettingRow("Pages") {
-                TextField("Pages, e.g. 1, 3–5", text: $options.pageRange)
-                    .accessibilityLabel("Pages to sign")
-            }
-            if pages.isEmpty {
-                Text("Choose pages from 1 to \(document.pageCount).")
+            PDFExportPagePicker(document: document, range: $options.pageRange, startsWithAll: false)
+            if range.isEmpty || range.lowercased() == "none" {
+                Text("Choose at least one page to sign.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             SettingRow("Signature") {
