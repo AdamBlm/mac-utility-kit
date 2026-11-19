@@ -30,6 +30,40 @@ struct TextToSpeechTests {
         #expect(try await SpeechDocument.load(pdf).contains("Readable text"))
     }
 
+    @Test func importsReadableMarkdownContentForSpeech() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let markdown = folder.appending(path: "talk.markdown")
+        let source = """
+        # Café talk
+
+        **Welcome**, [reader](https://example.invalid/private).
+        This line continues with &amp; and an image ![description](photo.png).
+
+        1. First item
+        2. Second item
+
+        <!-- Hidden note -->
+
+        ~~~swift
+        print("Hello")
+        ~~~
+        """
+        try Data(source.utf8).write(to: markdown)
+        #expect(try await SpeechDocument.load(markdown) == source)
+        #expect(try await SpeechDocument.loadForSpeech(markdown) == """
+        Café talk
+
+        Welcome, reader. This line continues with & and an image description.
+
+        First item
+
+        Second item
+
+        print("Hello")
+        """)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_SPEECH_TEST"] != nil))
     @MainActor
     func nativeVoiceProducesPlayableWaveAndUsesRequestedText() async throws {

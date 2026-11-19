@@ -164,7 +164,9 @@ struct TextToSpeechView: View {
         }
     }
 
-    private var documentTypes: [UTType] { [.plainText, UTType(filenameExtension: "md") ?? .plainText, .rtf, .pdf] }
+    private var documentTypes: [UTType] {
+        [.plainText, .rtf, .pdf] + ["md", "markdown"].compactMap { UTType(filenameExtension: $0) }
+    }
 
     private func openDocument() {
         guard let url = DeveloperToolFiles.choose(allowedTypes: documentTypes) else { return }
@@ -176,7 +178,7 @@ struct TextToSpeechView: View {
         issue = nil
         importTask = Task {
             do {
-                let loaded = try await SpeechDocument.load(url)
+                let loaded = try await SpeechDocument.loadForSpeech(url)
                 guard !Task.isCancelled else { return }
                 selection = nil
                 draft.text = loaded
