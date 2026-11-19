@@ -98,5 +98,14 @@ struct TranslationDocumentTests {
         let output = try await AppleTranslationProvider.translate(document, using: session, source: source, target: target)
         #expect(output.hasPrefix("1\n00:00:01,000 --> 00:00:03,000\n"))
         #expect(output.localizedCaseInsensitiveContains("bonjour"))
+
+        let webVTT = try TranslationDocument(
+            "WEBVTT\n\n00:01.000 --> 00:03.000\n<v Narrator><b>Good morning</b></v>\n",
+            kind: .vtt
+        )
+        let formatted = try await AppleTranslationProvider.translate(webVTT, using: session, source: source, target: target)
+        #expect(formatted.hasPrefix("WEBVTT\n\n00:01.000 --> 00:03.000\n<v Narrator><b>"))
+        #expect(formatted.hasSuffix("</b></v>\n"))
+        #expect(formatted.localizedCaseInsensitiveContains("bonjour"))
     }
 }
