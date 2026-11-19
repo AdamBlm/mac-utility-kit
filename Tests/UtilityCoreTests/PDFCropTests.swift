@@ -28,7 +28,10 @@ struct PDFCropTests {
         try #require(source.write(to: input))
 
         var options = PDFCropOptions()
-        options.pages = "2"
+        let allPages = try PageSelection.indices(options.pages, pageCount: source.pageCount)
+        let selected = PageSelection.updating(allPages, at: 0, extendingFrom: nil)
+        options.pages = PageSelection.expression(for: selected)
+        #expect(options.pages == "2")
         options.offsets.top = 5
         options.offsets.right = 15
         options.offsets.bottom = 25

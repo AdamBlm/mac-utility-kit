@@ -109,6 +109,7 @@ struct PDFExportPagePicker: View {
     let document: PDFDocument
     @Binding var range: String
     let startsWithAll: Bool
+    var anchorResetID: UUID? = nil
     @State private var expanded = false
     @State private var anchor: Int?
 
@@ -147,6 +148,7 @@ struct PDFExportPagePicker: View {
             }
         }
         .onChange(of: ObjectIdentifier(document)) { anchor = nil }
+        .onChange(of: anchorResetID) { anchor = nil }
     }
 
     private func pageIndices() throws -> [Int] {

@@ -11,6 +11,7 @@ struct PDFCropControls: View {
     @State private var previewPage = 1
     @State private var dragBounds: CGRect?
     @State private var refreshID = UUID()
+    @State private var anchorResetID = UUID()
     @State private var inspecting = false
 
     private struct PreviewRequest: Equatable {
@@ -19,10 +20,16 @@ struct PDFCropControls: View {
     }
 
     var body: some View {
+        let selected = document.flatMap { try? PageSelection.indices(options.pages, pageCount: $0.pageCount) }
         VStack(alignment: .leading, spacing: 12) {
-            SettingRow("Pages") {
-                TextField("All pages, or e.g. 1, 3–5", text: $options.pages)
-                    .accessibilityLabel("Pages to crop")
+            if let document {
+                PDFExportPagePicker(document: document, range: $options.pages, startsWithAll: true,
+                                    anchorResetID: anchorResetID)
+            } else {
+                SettingRow("Pages") {
+                    TextField("All pages, or e.g. 1, 3–5", text: $options.pages)
+                        .accessibilityLabel("Pages to crop")
+                }
             }
             Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
                 GridRow {
@@ -45,15 +52,17 @@ struct PDFCropControls: View {
             if inspecting {
                 ProgressView("Checking PDF…").controlSize(.small)
             }
-            if let validationIssue {
+            if let validationIssue, document == nil || selected != nil {
                 Text(validationIssue).font(.callout).foregroundStyle(.secondary)
             }
             if let document, document.pageCount > 0 {
-                let selected = try? PageSelection.indices(options.pages, pageCount: document.pageCount)
                 let cropsPreviewPage = selected?.contains(previewPage - 1) == true
                 Stepper("Preview page \(previewPage) of \(document.pageCount)", value: $previewPage, in: 1...document.pageCount)
                 if document.pageCount > 1 {
-                    Button("Crop Only This Page") { options.pages = String(previewPage) }
+                    Button("Crop Only This Page") {
+                        options.pages = String(previewPage)
+                        anchorResetID = UUID()
+                    }
                 }
                 if selected != nil, !cropsPreviewPage {
                     Text("This page is outside the selected crop range.")
