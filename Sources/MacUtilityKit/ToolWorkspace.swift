@@ -292,6 +292,11 @@ struct ToolWorkspace: View {
                     }
                     if let report = session.reports[tool] {
                         WorkspaceSection("Results", palette: palette) {
+                            if !report.failures.isEmpty {
+                                Text("Saved \(report.outputs.count) · Issues \(report.failures.count)")
+                                    .font(.callout)
+                                    .foregroundStyle(.secondary)
+                            }
                             if tool == .mediaInfo {
                                 ForEach(Array(report.inspections.enumerated()), id: \.offset) { _, inspection in
                                     MediaInspectionResultView(inspection: inspection)
@@ -322,7 +327,16 @@ struct ToolWorkspace: View {
                                     Image(systemName: "checkmark.circle.fill")
                                         .foregroundStyle(palette.accent)
                                         .accessibilityHidden(true)
-                                    Text(output.lastPathComponent).lineLimit(1)
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(output.lastPathComponent).lineLimit(1)
+                                        if tool == .extractFrames {
+                                            Text(output.deletingLastPathComponent().lastPathComponent)
+                                                .font(.caption)
+                                                .foregroundStyle(.secondary)
+                                                .lineLimit(1)
+                                        }
+                                    }
+                                    .help(output.path)
                                     Spacer()
                                     if let pair = report.imageComparisons.first(where: { $0.output == output }) {
                                         Button("Compare") { comparison = pair }
