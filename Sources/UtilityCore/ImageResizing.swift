@@ -4,16 +4,8 @@ import UniformTypeIdentifiers
 
 enum ImageResizing {
     static func resize(_ input: URL, output: URL, imageSize: Int, options: ToolOptions) async throws {
-        guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
-              let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
-              let width = properties[kCGImagePropertyPixelWidth] as? Int,
-              let height = properties[kCGImagePropertyPixelHeight] as? Int
-        else { throw ToolError.invalid("Could not decode the image.") }
-
-        let orientation = properties[kCGImagePropertyOrientation] as? Int ?? 1
-        let size = try imageDimensions(width: orientation >= 5 ? height : width,
-                                       height: orientation >= 5 ? width : height,
-                                       longestEdge: imageSize, options: options)
+        let (source, width, height) = try orientedSource(input)
+        let size = try imageDimensions(width: width, height: height, longestEdge: imageSize, options: options)
         if let executable = options.imageMagickExecutable {
             try await ImageMagickResizing.resize(
                 input, source: source, output: output, size: size,
@@ -24,8 +16,7 @@ enum ImageResizing {
             return
         }
         let scale = options.imageSizing == .dimensions && options.imageFit == .fill
-            ? max(Double(size.width) / Double(orientation >= 5 ? height : width),
-                  Double(size.height) / Double(orientation >= 5 ? width : height))
+            ? max(Double(size.width) / Double(width), Double(size.height) / Double(height))
             : 0
         let decodeLimit = max(size.width, size.height, Int(min(16_384, ceil(Double(max(width, height)) * scale))))
         guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
@@ -71,15 +62,19 @@ enum ImageResizing {
     }
 
     static func preview(_ input: URL, longestEdge: Int, options: ToolOptions) throws -> String {
+        let (_, width, height) = try orientedSource(input)
+        let size = try imageDimensions(width: width, height: height, longestEdge: longestEdge, options: options)
+        return "\(size.width) × \(size.height)"
+    }
+
+    private static func orientedSource(_ input: URL) throws -> (CGImageSource, Int, Int) {
         guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
               let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = props[kCGImagePropertyPixelWidth] as? Int,
               let height = props[kCGImagePropertyPixelHeight] as? Int
-        else { throw ToolError.invalid("Unreadable image") }
+        else { throw ToolError.invalid("Could not read the image dimensions.") }
         let rotated = (props[kCGImagePropertyOrientation] as? Int ?? 1) >= 5
-        let size = try imageDimensions(width: rotated ? height : width, height: rotated ? width : height,
-                                       longestEdge: longestEdge, options: options)
-        return "\(size.width) × \(size.height)"
+        return (source, rotated ? height : width, rotated ? width : height)
     }
 
     private static func imageDimensions(width: Int, height: Int, longestEdge: Int, options: ToolOptions)

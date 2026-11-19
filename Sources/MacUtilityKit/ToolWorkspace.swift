@@ -391,6 +391,14 @@ struct ToolWorkspace: View {
         }
     }
 
+    private func resizePreview(for input: URL) -> String {
+        do {
+            return try ToolRunner.imagePreview(input, longestEdge: draft.pixels, options: draft.options)
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     private func sourceFiles(for tool: Tool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
@@ -419,7 +427,7 @@ struct ToolWorkspace: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(input.lastPathComponent).lineLimit(1)
                                     if tool == .resizeImages {
-                                        Text((try? ToolRunner.imagePreview(input, longestEdge: draft.pixels, options: draft.options)) ?? "Check image or sizing options")
+                                        Text(resizePreview(for: input))
                                             .font(.caption).foregroundStyle(.secondary)
                                     }
                                 }
