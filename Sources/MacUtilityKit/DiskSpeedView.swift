@@ -74,21 +74,29 @@ struct DiskSpeedView: View {
     }
 
     private func results(_ result: DiskSpeedResult) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            LabeledContent("Write", value: throughput(result.writeMegabytesPerSecond))
-            LabeledContent("Read", value: throughput(result.readMegabytesPerSecond))
+        let details = result.passDetails()
+        return VStack(alignment: .leading, spacing: 9) {
+            LabeledContent(details.isEmpty ? "Write" : "Median write", value: throughput(result.writeMegabytesPerSecond))
+            LabeledContent(details.isEmpty ? "Read" : "Median read", value: throughput(result.readMegabytesPerSecond))
             Text(result.passes.count == 1 ? "\(result.sizeMiB.formatted()) MiB · One pass"
                  : "\(result.sizeMiB.formatted()) MiB per pass · Median of three")
                 .foregroundStyle(.secondary)
             Text(cacheStatus(result)).foregroundStyle(.secondary)
+            if !details.isEmpty {
+                DisclosureGroup("Individual Passes") {
+                    ForEach(Array(details.enumerated()), id: \.offset) { _, line in
+                        Text(line).foregroundStyle(.secondary)
+                    }
+                }
+            }
             Button("Copy Results", systemImage: "doc.on.doc") {
-                DeveloperToolFiles.copy([
+                DeveloperToolFiles.copy(([
                     "Disk Speed Test", "Location: \(folder.path)",
                     "Test size: \(result.sizeMiB.formatted()) MiB · \(result.passes.count) pass(es)",
-                    "Sequential write: \(throughput(result.writeMegabytesPerSecond))",
-                    "Sequential read: \(throughput(result.readMegabytesPerSecond))",
+                    "\(details.isEmpty ? "Sequential write" : "Median sequential write"): \(throughput(result.writeMegabytesPerSecond))",
+                    "\(details.isEmpty ? "Sequential read" : "Median sequential read"): \(throughput(result.readMegabytesPerSecond))",
                     cacheStatus(result)
-                ].joined(separator: "\n"))
+                ] + details).joined(separator: "\n"))
                 copied = true
             }
             if copied { Text("Copied").foregroundStyle(.secondary) }

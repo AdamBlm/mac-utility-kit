@@ -29,6 +29,16 @@ public struct DiskSpeedResult: Sendable {
     public var writeMegabytesPerSecond: Double { median(passes.map(\.writeMegabytesPerSecond)) }
     public var readMegabytesPerSecond: Double { median(passes.map(\.readMegabytesPerSecond)) }
 
+    package func passDetails(locale: Locale = .current) -> [String] {
+        guard passes.count > 1 else { return [] }
+        let rate = FloatingPointFormatStyle<Double>.number.locale(locale).precision(.fractionLength(1))
+        return passes.enumerated().map { index, pass in
+            let write = pass.writeMegabytesPerSecond.formatted(rate)
+            let read = pass.readMegabytesPerSecond.formatted(rate)
+            return "Pass \(index + 1) · Write \(write) MB/s · Read \(read) MB/s"
+        }
+    }
+
     private func median(_ values: [Double]) -> Double {
         let ordered = values.sorted()
         return ordered[ordered.count / 2]

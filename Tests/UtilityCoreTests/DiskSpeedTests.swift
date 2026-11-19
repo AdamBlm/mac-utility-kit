@@ -4,6 +4,24 @@ import Testing
 @testable import UtilityCore
 
 struct DiskSpeedTests {
+    @Test func displaysIndividualPassesInMeasurementOrderAlongsideMedian() {
+        let passes = [
+            DiskSpeedResult.Pass(writeMegabytesPerSecond: 33.5, readMegabytesPerSecond: 104.5),
+            .init(writeMegabytesPerSecond: 20, readMegabytesPerSecond: 110),
+            .init(writeMegabytesPerSecond: 28, readMegabytesPerSecond: 90)
+        ]
+        let result = DiskSpeedResult(sizeMiB: 256, passes: passes, bypassedFileCache: true, fullFlush: true)
+        #expect(result.writeMegabytesPerSecond == 28)
+        #expect(result.readMegabytesPerSecond == 104.5)
+        #expect(result.passDetails(locale: Locale(identifier: "en_US_POSIX")) == [
+            "Pass 1 · Write 33.5 MB/s · Read 104.5 MB/s",
+            "Pass 2 · Write 20.0 MB/s · Read 110.0 MB/s",
+            "Pass 3 · Write 28.0 MB/s · Read 90.0 MB/s"
+        ])
+        let quick = DiskSpeedResult(sizeMiB: 256, passes: [passes[0]], bypassedFileCache: true, fullFlush: true)
+        #expect(quick.passDetails().isEmpty)
+    }
+
     @Test func refillsEntireChunkBeyondPreviousBufferExtentAndAcrossPasses() async throws {
         let temporary = try Self.folder()
         defer { try? FileManager.default.removeItem(at: temporary) }
