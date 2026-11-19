@@ -4,6 +4,27 @@ import Testing
 
 @Suite(.serialized)
 struct FindDuplicatesTests {
+    @Test func minimumSizeIsInclusiveAcrossFoldersAndLeavesDefaultUnchanged() async throws {
+        let root = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let nested = root.appending(path: "Nested")
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: false)
+        for (folder, suffix) in [(root, "root"), (nested, "nested")] {
+            _ = try Self.write("small-\(suffix)", Data(repeating: 1, count: 63), in: folder)
+            _ = try Self.write("boundary-\(suffix)", Data(repeating: 2, count: 64), in: folder)
+        }
+        let all = try await FindDuplicates.scan([root], options: .init())
+        #expect(all.groups.count == 2)
+        var options = DuplicateScanOptions()
+        options.minimumFileBytes = 64
+        let filtered = try await FindDuplicates.scan([root], options: options)
+        #expect(filtered.fileCount == 2)
+        #expect(filtered.groups.map(\.fileSize) == [64])
+        #expect(filtered.groups.first?.files.count == 2)
+        options.minimumFileBytes = -1
+        await #expect(throws: ToolError.self) { try await FindDuplicates.scan([root], options: options) }
+    }
+
     @Test func filtersFullPathsButKeepsAllCopiesOfEachMatchingGroup() async throws {
         let root = try Self.folder()
         defer { try? FileManager.default.removeItem(at: root) }

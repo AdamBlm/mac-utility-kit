@@ -68,6 +68,17 @@ struct FindDuplicatesView: View {
                 .disabled(busy).onChange(of: draft.options.includesSubfolders) { clearResults() }
             Toggle("Include hidden files", isOn: $draft.options.includesHiddenFiles)
                 .disabled(busy).onChange(of: draft.options.includesHiddenFiles) { clearResults() }
+            SettingRow("Minimum file size") {
+                Picker("Minimum file size", selection: $draft.options.minimumFileBytes) {
+                    Text("Any size").tag(Int64(0))
+                    ForEach([1_000_000, 10_000_000, 100_000_000, 1_000_000_000] as [Int64], id: \.self) { size in
+                        Text(bytes(size)).tag(size)
+                    }
+                }
+                .labelsHidden()
+                .disabled(busy)
+                .onChange(of: draft.options.minimumFileBytes) { clearResults() }
+            }
             Text("Symbolic links and package subfolders are skipped.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack {

@@ -5,6 +5,7 @@ import Synchronization
 public struct DuplicateScanOptions: Equatable, Sendable {
     public var includesSubfolders = true
     public var includesHiddenFiles = false
+    public var minimumFileBytes: Int64 = 0
 
     public init() {}
 }
@@ -73,6 +74,7 @@ public enum FindDuplicates {
         progress: @escaping @Sendable (DuplicateScanProgress) async -> Void = { _ in }
     ) async throws -> DuplicateScanResult {
         guard !roots.isEmpty else { throw ToolError.invalid("Choose at least one folder to scan.") }
+        guard options.minimumFileBytes >= 0 else { throw ToolError.invalid("The minimum file size must be nonnegative.") }
         let collected = try await enumerate(roots, options: options, progress: progress)
         let candidates = Dictionary(grouping: collected.files, by: \.bytes).values.filter { $0.count > 1 }
         let total = candidates.reduce(0) { $0 + $1.count }
@@ -226,7 +228,8 @@ public enum FindDuplicates {
                         let info = try entry.resourceValues(forKeys: keys)
                         if info.isSymbolicLink == true { walker.skipDescendants(); continue }
                         if info.isDirectory == true { continue }
-                        guard let stamp = try DuplicateFileIO.inspect(entry), !seen.contains(stamp.identity) else { continue }
+                        guard let stamp = try DuplicateFileIO.inspect(entry), stamp.bytes >= options.minimumFileBytes,
+                              !seen.contains(stamp.identity) else { continue }
                         try DuplicateFileIO.requireReadable(entry)
                         seen.insert(stamp.identity)
                         files.append(DuplicateFile(url: entry.standardizedFileURL, stamp: stamp))
