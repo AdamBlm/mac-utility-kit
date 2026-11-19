@@ -11,6 +11,10 @@ struct MacUtilityKitApp: App {
     @State private var audioRecordingController = AudioRecordingController()
     @State private var screenRecordingController = ScreenRecordingController()
 
+    init() {
+        _ = DraftRetention.shared
+    }
+
     var body: some Scene {
         @Bindable var launcher = launcherController
         WindowGroup("Mac Utility Kit", id: LauncherController.workspaceID) {
