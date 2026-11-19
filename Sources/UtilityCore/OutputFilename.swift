@@ -9,17 +9,18 @@ enum OutputFilename {
     }
 
     static func numberedSource(_ input: URL, position: Int, suffix: String = "") -> String {
-        let prefix = "\(position) - "
-        let stem = input.deletingPathExtension().lastPathComponent
-        let name = prefix + stem + suffix
-        guard !fits(name) else { return name }
+        let stem = "\(position) - \(input.deletingPathExtension().lastPathComponent)"
+        return shortenedStem(stem, suffix: suffix) + suffix
+    }
 
-        var remaining = byteLimit - byteCount(prefix) - byteCount(suffix)
-        let shortened = stem.prefix { character in
+    static func shortenedStem(_ stem: String, suffix: String) -> String {
+        guard !fits(stem + suffix) else { return stem }
+
+        var remaining = byteLimit - byteCount(suffix)
+        return String(stem.prefix { character in
             remaining -= byteCount(String(character))
             return remaining >= 0
-        }
-        return prefix + shortened + suffix
+        })
     }
 
     private static func byteCount(_ name: String) -> Int {

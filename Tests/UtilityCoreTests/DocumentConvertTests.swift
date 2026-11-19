@@ -58,6 +58,16 @@ struct DocumentConvertTests {
         #expect(DocumentConvert.optionIssue(for: base, options: options)?.contains("different") == true)
         options.filenamePattern = "../{name}"
         #expect(throws: ToolError.self) { try DocumentConvert.outputStem(base, position: 1, options: options) }
+        let longStem = String(repeating: "é", count: 84)
+        options.filenamePattern = "{name}"
+        let longInput = URL(fileURLWithPath: "/tmp/" + longStem + ".txt")
+        let error = #expect(throws: ToolError.self) {
+            try DocumentConvert.outputStem(longInput, position: 3, options: options)
+        }
+        #expect(error?.localizedDescription.contains("filename is too long") == true)
+        options.filenamePattern = DocumentConvertOptions().filenamePattern
+        #expect(try DocumentConvert.outputStem(longInput, position: 3, options: options)
+                == "3 - " + String(longStem.prefix(82)))
         options.target = .markdown
         let oldWord = URL(fileURLWithPath: "/tmp/legacy.doc")
         #expect(try DocumentConvert.requiredEngine(for: oldWord, options: options) == .both)

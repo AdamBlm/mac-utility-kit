@@ -23,7 +23,8 @@ public struct DocumentConvertOptions: Equatable, Sendable {
     }
 
     public var target = Format.docx
-    public var filenamePattern = "{index} - {name}"
+    fileprivate static let defaultFilenamePattern = "{index} - {name}"
+    public var filenamePattern = Self.defaultFilenamePattern
     public var pandocExecutable: URL?
     public var libreOfficeExecutable: URL?
     public var prefersLibreOffice = false
@@ -106,6 +107,7 @@ public enum DocumentConvert {
         let name = input.deletingPathExtension().lastPathComponent
         let pattern = options.filenamePattern
         guard pattern.utf8.count <= 240 else { throw ToolError.invalid("The filename template is too long.") }
+        let targetExtension = "." + options.target.fileExtension
         var remaining = pattern[...]
         var expanded = ""
         while !remaining.isEmpty {
@@ -120,11 +122,16 @@ public enum DocumentConvert {
             }
         }
         var stem = expanded.trimmingCharacters(in: .whitespacesAndNewlines)
-        let targetExtension = "." + options.target.fileExtension
         if stem.lowercased().hasSuffix(targetExtension) { stem = String(stem.dropLast(targetExtension.count)) }
-        guard !stem.isEmpty, stem != ".", stem != "..", !stem.contains("/"), stem.utf8.count <= 240,
+        guard !stem.isEmpty, stem != ".", stem != "..", !stem.contains("/"),
               stem.rangeOfCharacter(from: .controlCharacters) == nil else {
             throw ToolError.invalid("The filename template produces an invalid filename.")
+        }
+        if pattern == DocumentConvertOptions.defaultFilenamePattern {
+            return OutputFilename.shortenedStem(stem, suffix: targetExtension)
+        }
+        guard OutputFilename.fits(stem + targetExtension) else {
+            throw ToolError.invalid("The document filename is too long. Shorten the filename template.")
         }
         return stem
     }
