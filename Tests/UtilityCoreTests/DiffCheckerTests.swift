@@ -1,7 +1,41 @@
+import Foundation
 import Testing
 import UtilityCore
 
 struct DiffCheckerTests {
+    @Test func comparesBOMMarkedFilesAndRejectsMalformedOrOversizedInput() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let utf8 = folder.appending(path: "utf8.txt")
+        let utf16 = folder.appending(path: "utf16.txt")
+        let utf32 = folder.appending(path: "utf32.txt")
+        let unreadable = folder.appending(path: "unreadable.txt")
+        let text = "café 👋"
+        try (Data([0xEF, 0xBB, 0xBF]) + Data("\(text)\nlast".utf8)).write(to: utf8)
+        try (Data([0xFF, 0xFE]) + #require("\(text)\r\nlast".data(using: .utf16LittleEndian))).write(to: utf16)
+        try (Data([0x00, 0x00, 0xFE, 0xFF]) + #require("\(text)\nchanged".data(using: .utf32BigEndian))).write(to: utf32)
+        let original = try await DiffChecker.loadText(utf8)
+        let same = try await DiffChecker.loadText(utf16)
+        let modified = try await DiffChecker.loadText(utf32)
+        #expect(original == "\(text)\nlast")
+        #expect(try DiffChecker.compare(original, same).changeStarts.isEmpty)
+        #expect(try DiffChecker.compare(original, modified).changeStarts == [1])
+
+        try Data([0xFF, 0xFE, 0x61]).write(to: unreadable)
+        await #expect(throws: DiffChecker.InputError.unsupportedEncoding) {
+            try await DiffChecker.loadText(unreadable)
+        }
+        try Data([0x61, 0x00, 0x62]).write(to: unreadable)
+        await #expect(throws: DiffChecker.InputError.unsupportedEncoding) {
+            try await DiffChecker.loadText(unreadable)
+        }
+        try Data(repeating: 0x61, count: DiffChecker.maximumTextBytes + 1).write(to: unreadable)
+        await #expect(throws: DiffChecker.InputError.tooManyBytes) {
+            try await DiffChecker.loadText(unreadable)
+        }
+    }
+
     @Test func lineEndingsCanDifferAndEmptyInputsWork() throws {
         #expect(try DiffChecker.compare("", "").rows.isEmpty)
         #expect(try DiffChecker.compare("first\r\nsecond\r\n", "first\nsecond\n").changeStarts.isEmpty)

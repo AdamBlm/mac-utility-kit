@@ -82,16 +82,7 @@ public enum WordCounter {
         }
         let data = try Data(contentsOf: file, options: [.mappedIfSafe])
         try Task.checkCancellation()
-        let text: String?
-        if data.starts(with: [0xFF, 0xFE, 0x00, 0x00]) || data.starts(with: [0x00, 0x00, 0xFE, 0xFF]) {
-            text = String(data: data, encoding: .utf32)
-        } else if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
-            text = String(data: data, encoding: .utf16)
-        } else {
-            text = String(data: data, encoding: .utf8)
-        }
-
-        guard let text, !text.unicodeScalars.contains(where: { $0.value == 0 }) else {
+        guard let text = PlainTextDecoding.decode(data) else {
             throw ToolError.invalid("Could not read this file as UTF-8 or BOM-marked Unicode plain text.")
         }
         return text

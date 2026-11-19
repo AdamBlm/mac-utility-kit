@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 private enum DiffViewMode: String, CaseIterable {
@@ -70,8 +71,13 @@ struct DiffCheckerView: View {
                 Spacer()
                 Button("Open…", systemImage: "folder") { open(side) }
                     .disabled(loadingFiles.contains(side))
-                    .help("Open a UTF-8 text file")
+                    .help("Open UTF-8 or BOM-marked UTF-16 or UTF-32")
                     .accessibilityLabel("Open \(side.rawValue.lowercased()) text file")
+                ClipboardFileButton(allowedTypes: [.data], buttonOnlyTitle: "Paste \(side.rawValue) File",
+                                    onPasteFile: { load($0, side) })
+                    .labelStyle(.iconOnly)
+                    .help("Paste a file on the \(side.rawValue.lowercased()) side")
+                    .disabled(loadingFiles.contains(side))
             }
             TextEditor(text: Binding(get: { draft[keyPath: side.text] }, set: {
                 draft[keyPath: side.text] = $0
@@ -226,14 +232,17 @@ struct DiffCheckerView: View {
 
     private func open(_ side: Side) {
         guard let url = DeveloperToolFiles.choose() else { return }
+        load(url, side)
+    }
+
+    private func load(_ url: URL, _ side: Side) {
+        guard !loadingFiles.contains(side) else { return }
         loadingFiles.insert(side)
         fileErrors[side] = nil
         Task {
             defer { loadingFiles.remove(side) }
             do {
-                let data = try await DeveloperToolFiles.read(url)
-                guard data.count <= DiffChecker.maximumTextBytes else { throw DiffChecker.InputError.tooManyBytes }
-                draft[keyPath: side.text] = try DeveloperToolFiles.utf8(data)
+                draft[keyPath: side.text] = try await DiffChecker.loadText(url)
                 fileNames[side] = url.lastPathComponent
                 invalidate()
             } catch {

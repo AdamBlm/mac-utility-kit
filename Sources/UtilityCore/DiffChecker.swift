@@ -17,11 +17,15 @@ public enum DiffChecker {
     public enum InputError: LocalizedError {
         case tooManyBytes
         case tooManyLines
+        case unsupportedEncoding
+        case invalidFile
 
         public var errorDescription: String? {
             switch self {
             case .tooManyBytes: "Each input must be 2 MiB or smaller."
             case .tooManyLines: "Each input must have at most 25,000 lines."
+            case .unsupportedEncoding: "Use UTF-8 or UTF-16/UTF-32 with a byte order mark."
+            case .invalidFile: "Choose a local plain-text file."
             }
         }
     }
@@ -47,6 +51,22 @@ public enum DiffChecker {
         public let rows: [Row]
         public let changeStarts: [Int]
         public let usedCoarseAlignment: Bool
+    }
+
+    public static func loadText(_ input: URL) async throws -> String {
+        try Task.checkCancellation()
+        guard input.isFileURL else { throw InputError.invalidFile }
+        let values = try input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
+        guard values.isRegularFile == true else { throw InputError.invalidFile }
+        if let size = values.fileSize, size > maximumTextBytes { throw InputError.tooManyBytes }
+        let file = try FileHandle(forReadingFrom: input)
+        defer { try? file.close() }
+        let data = try file.read(upToCount: maximumTextBytes + 1) ?? Data()
+        try Task.checkCancellation()
+        guard data.count <= maximumTextBytes else { throw InputError.tooManyBytes }
+        guard let text = PlainTextDecoding.decode(data) else { throw InputError.unsupportedEncoding }
+        guard text.utf8.count <= maximumTextBytes else { throw InputError.tooManyBytes }
+        return text
     }
 
     public static func compare(_ original: String, _ modified: String, options: Options = .init()) throws -> Result {
