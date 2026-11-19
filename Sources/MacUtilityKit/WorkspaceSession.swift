@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import Observation
 import UtilityCore
@@ -139,6 +140,7 @@ final class WorkspaceSession {
     private(set) var errors: [Tool: String] = [:]
     @ObservationIgnored private var job: Task<Void, Never>?
     @ObservationIgnored private var temporaryPDFDirectory: WorkspacePDFDirectory?
+    @ObservationIgnored private var nextPastedImageNumber = 1
 
     init() {
         let retention = DraftRetention.shared
@@ -248,6 +250,12 @@ final class WorkspaceSession {
 
     func stageClipboardPDF(_ data: Data) throws -> URL {
         try pdfDirectory().stageClipboardPDF(data)
+    }
+
+    func stageClipboardImage(_ image: CGImage) throws -> CaptureTextAttachment {
+        let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Image \(nextPastedImageNumber).png")
+        nextPastedImageNumber += 1
+        return attachment
     }
 
     private func pdfDirectory() throws -> WorkspacePDFDirectory {

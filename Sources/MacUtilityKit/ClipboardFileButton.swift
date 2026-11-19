@@ -6,17 +6,20 @@ import UtilityCore
 struct ClipboardFileButton: View {
     let allowedTypes: [UTType]
     let allowsMultiple: Bool
+    /// Opt in when the receiver can append several items through separate callbacks.
+    let importsItemsIndividually: Bool
     let onPasteImage: ((CGImage) throws -> Void)?
     let onPastePDF: ((Data) throws -> Void)?
     let onPaste: ([URL]) -> Void
     @State private var message: String?
     @Environment(\.isEnabled) private var isEnabled
 
-    init(allowedTypes: [UTType], allowsMultiple: Bool = true,
+    init(allowedTypes: [UTType], allowsMultiple: Bool = true, importsItemsIndividually: Bool = false,
          onPasteImage: ((CGImage) throws -> Void)? = nil,
          onPastePDF: ((Data) throws -> Void)? = nil, onPaste: @escaping ([URL]) -> Void) {
         self.allowedTypes = allowedTypes
         self.allowsMultiple = allowsMultiple
+        self.importsItemsIndividually = importsItemsIndividually
         self.onPaste = onPaste
         self.onPasteImage = onPasteImage
         self.onPastePDF = onPastePDF
@@ -63,7 +66,8 @@ struct ClipboardFileButton: View {
     private func paste(reportsMissingInput: Bool = true) -> Bool {
         guard isEnabled else { return false }
         let board = NSPasteboard.general
-        if onPasteImage != nil || onPastePDF != nil,
+        if !allowsMultiple || importsItemsIndividually,
+           onPasteImage != nil || onPastePDF != nil,
            let items = board.pasteboardItems, items.count > 1, pasteItems(items) {
             return true
         }

@@ -593,14 +593,16 @@ struct ToolWorkspace: View {
                 _ = addDroppedFiles([try session.stageClipboardPDF(data)], to: tool)
             } : nil
             if tool.inputTypes.contains(.image) {
-                ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF, onPasteImage: { image in
-                    let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Image.png")
+                ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF,
+                                    importsItemsIndividually: true, onPasteImage: { image in
+                    let attachment = try session.stageClipboardImage(image)
                     if addDroppedFiles([attachment.url], to: tool) {
                         draft.captureAttachments.append(attachment)
                     }
                 }, onPastePDF: pastePDF) { _ = addDroppedFiles($0, to: tool) }
             } else {
-                ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF, onPastePDF: pastePDF) {
+                ClipboardFileButton(allowedTypes: tool.inputTypes, allowsMultiple: !tool.requiresSinglePDF,
+                                    importsItemsIndividually: true, onPastePDF: pastePDF) {
                     _ = addDroppedFiles($0, to: tool)
                 }
             }
