@@ -123,6 +123,6 @@ struct PDFPageControls: View {
             pages.append(index)
         }
         anchor = index
-        range = pages.isEmpty ? "none" : pages.map { String($0 + 1) }.joined(separator: ", ")
+        range = PageSelection.expression(for: pages)
     }
 }

@@ -140,7 +140,7 @@ private struct PDFExportPagePicker: View {
                         var edits = selected
                         if marked.contains(index) { edits.removeAll { $0 == index } }
                         else { edits.append(index) }
-                        range = edits.isEmpty ? "none" : edits.map { String($0 + 1) }.joined(separator: ", ")
+                        range = PageSelection.expression(for: edits)
                     } label: {
                         VStack(spacing: 5) {
                             if let page = document.page(at: index) {

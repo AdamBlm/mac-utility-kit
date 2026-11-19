@@ -222,6 +222,11 @@ private func writeVideoFixture(
 }
 
 @Test func pageRangesPreserveUserOrderAndRejectInvalidPages() throws {
+    let selected = [4, 0, 1, 2, 3]
+    let expression = PageSelection.expression(for: selected)
+    #expect(expression == "5, 1–4")
+    #expect(try PageSelection.indices(expression, pageCount: 5) == selected)
+    #expect(PageSelection.expression(for: []) == "none")
     #expect(try PageSelection.indices("5, 1, 3–4, 1", pageCount: 5) == [4, 0, 2, 3])
     #expect(try PageSelection.indices("none", pageCount: 5).isEmpty)
     #expect(throws: ToolError.self) { try PageSelection.indices("6", pageCount: 5) }

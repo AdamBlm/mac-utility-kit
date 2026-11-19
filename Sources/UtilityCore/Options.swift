@@ -119,6 +119,27 @@ public struct ToolOptions: Sendable {
 }
 
 public enum PageSelection {
+    /// Formats distinct zero-based page indices in their selection order.
+    package static func expression(for indices: [Int]) -> String {
+        guard let first = indices.first else { return "none" }
+        var start = first
+        var end = first
+        var ranges: [String] = []
+        func appendRange() {
+            ranges.append(start == end ? String(start + 1) : "\(start + 1)–\(end + 1)")
+        }
+        for index in indices.dropFirst() {
+            if index != end + 1 {
+                appendRange()
+                start = index
+            }
+            end = index
+        }
+        appendRange()
+        return ranges.joined(separator: ", ")
+    }
+
+
     public static func indices(_ expression: String, pageCount: Int) throws -> [Int] {
         let value = expression.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty || value.lowercased() == "all" { return Array(0..<pageCount) }
