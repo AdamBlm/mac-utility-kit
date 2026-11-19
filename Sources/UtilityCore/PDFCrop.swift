@@ -43,6 +43,19 @@ public enum PDFCrop {
         _ = try cropPlan(document, options: options)
     }
 
+    public static func validateSignatureFields(in document: PDFDocument) throws {
+        for index in 0..<document.pageCount {
+            try Task.checkCancellation()
+            if let page = document.page(at: index) { try validateSignatureFields(on: page) }
+        }
+    }
+
+    private static func validateSignatureFields(on page: PDFPage) throws {
+        guard !page.annotations.contains(where: { $0.widgetFieldType == .signature }) else {
+            throw ToolError.invalid("This PDF has a signature field. Cropping can invalidate digital signatures.")
+        }
+    }
+
     private static func cropPlan(_ document: PDFDocument, options: PDFCropOptions) throws -> [(index: Int, box: CGRect)] {
         guard !document.isEncrypted, document.allowsDocumentChanges else {
             throw ToolError.invalid("Choose an unencrypted PDF that allows document changes.")
@@ -79,9 +92,7 @@ public enum PDFCrop {
             guard let page = document.page(at: index), let reference = page.pageRef else {
                 throw ToolError.invalid("Could not read page \(index + 1).")
             }
-            guard !page.annotations.contains(where: { $0.widgetFieldType == .signature }) else {
-                throw ToolError.invalid("This PDF has a signature field. Cropping can invalidate digital signatures.")
-            }
+            try validateSignatureFields(on: page)
             expected.append(reference.getBoxRect(.cropBox))
             rotations.append(page.rotation)
         }

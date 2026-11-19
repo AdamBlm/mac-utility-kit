@@ -85,6 +85,7 @@ struct PDFCropControls: View {
             guard let loaded = PDFDocument(url: stamp.resolved), loaded.pageCount > 0 else {
                 throw ToolError.invalid("Could not open this PDF.")
             }
+            try PDFCrop.validateSignatureFields(in: loaded)
             guard (try? PDFSourceStamp.read(input)) == stamp else {
                 throw ToolError.invalid("This PDF changed while opening. Refresh the PDF preview.")
             }

@@ -84,6 +84,19 @@ struct PDFCropTests {
         #expect(try PDFSourceStamp.read(input) != options.sourceStamp)
     }
 
+    @Test func preflightRejectsSignatureFieldsOnAnyPage() throws {
+        let document = PDFDocument()
+        document.insert(PDFPage(), at: 0)
+        let otherPage = PDFPage()
+        document.insert(otherPage, at: 1)
+        try PDFCrop.validateSignatureFields(in: document)
+        let signature = PDFAnnotation(bounds: CGRect(x: 20, y: 20, width: 80, height: 30),
+                                      forType: .widget, withProperties: nil)
+        signature.widgetFieldType = .signature
+        otherPage.addAnnotation(signature)
+        #expect(throws: ToolError.self) { try PDFCrop.validateSignatureFields(in: document) }
+    }
+
     @Test func rejectsOffsetsThatConsumeThePage() {
         var offsets = PDFCropOffsets()
         offsets.left = 101
