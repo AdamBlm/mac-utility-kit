@@ -164,7 +164,7 @@ struct ToolWorkspace: View {
         case .convertAudio:
             draft.options.audioConvert.validationIssue != nil
         case .cleanUpAudio:
-            draft.options.audioCleanup.executable == nil
+            draft.options.audioCleanup.validationIssue != nil
         case .extractAudio:
             draft.options.extraction.validationIssue != nil
         case .mergePDFs:

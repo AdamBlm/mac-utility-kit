@@ -25,6 +25,16 @@ public struct AudioCleanupOptions: Equatable, Sendable {
     public var reductionDB = 12.0
     public var hum = AudioCleanupHum.off
 
+    package var validationIssue: String? {
+        guard executable.map(ExternalTool.isExecutable) == true else {
+            return "Choose an FFmpeg executable."
+        }
+        guard (0...24).contains(reductionDB), trackIndex >= 0 else {
+            return "Choose a valid audio track and noise reduction from 0 to 24 dB."
+        }
+        return nil
+    }
+
     public init() {}
 }
 

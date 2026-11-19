@@ -95,10 +95,8 @@ public enum AudioCleanup {
         guard input.isFileURL, try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
             throw ToolError.invalid("Choose a readable local audio or video file.")
         }
+        if let issue = options.validationIssue { throw ToolError.invalid(issue) }
         guard let executable = options.executable else { throw ToolError.invalid("Choose an FFmpeg executable.") }
-        guard (0...24).contains(options.reductionDB), options.trackIndex >= 0 else {
-            throw ToolError.invalid("Choose a valid audio track and noise reduction from 0 to 24 dB.")
-        }
         return executable
     }
 

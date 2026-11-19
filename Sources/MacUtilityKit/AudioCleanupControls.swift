@@ -37,9 +37,10 @@ struct AudioCleanupControls: View {
     var body: some View {
         let url = inputs.first
         let loaded = media?.url == url ? media : nil
+        let issue = options.validationIssue
         let request = loaded?.duration.flatMap { duration in
             let segment = min(length, duration - start)
-            return segment >= 0.1 && options.executable != nil && !((loaded?.tracks ?? []).isEmpty)
+            return segment >= 0.1 && issue == nil && !((loaded?.tracks ?? []).isEmpty)
                 ? url.map { PreviewRequest(url: $0, options: options, start: start, duration: segment) } : nil
         }
         VStack(alignment: .leading, spacing: 12) {
@@ -49,6 +50,7 @@ struct AudioCleanupControls: View {
                     Text(executable.lastPathComponent).lineLimit(1).help(executable.path)
                 }
             }
+            if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             SettingRow("Output") {
                 Picker("Output", selection: $options.output) {
                     ForEach(AudioCleanupOutput.allCases) { Text($0.title).tag($0) }

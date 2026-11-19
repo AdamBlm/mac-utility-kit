@@ -4,6 +4,17 @@ import UtilityCore
 
 @Suite(.serialized)
 struct AudioCleanupTests {
+    @Test func validatesFFmpegAndReductionBeforePreview() {
+        var options = AudioCleanupOptions()
+        options.executable = FileManager.default.temporaryDirectory
+        #expect(options.validationIssue == "Choose an FFmpeg executable.")
+        options.executable = URL(fileURLWithPath: "/usr/bin/true")
+        options.reductionDB = 25
+        #expect(options.validationIssue == "Choose a valid audio track and noise reduction from 0 to 24 dB.")
+        options.reductionDB = 12
+        #expect(options.validationIssue == nil)
+    }
+
     @Test
     func validatesToolAndReductionBeforeExport() async throws {
         let folder = try Self.makeDirectory()
