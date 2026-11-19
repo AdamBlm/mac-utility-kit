@@ -60,4 +60,18 @@ struct CoordinateBatchLookupTests {
             _ = try await CoordinateBatchLookup.resolve(entry) { _ in throw CancellationError() }
         }
     }
+
+    @Test func convertsDecimalMinutesLocallyAndRejectsInvalidAxes() async throws {
+        let entries = try CoordinateBatchLookup.prepare("33° 30.0′ N 122° 15.0′ W\n33° N 180° 0.1′ E")
+        let accepted = try await CoordinateBatchLookup.resolve(entries[0]) { _ in
+            Issue.record("A recognized coordinate must not invoke place search.")
+            return nil
+        }
+        let rejected = try await CoordinateBatchLookup.resolve(entries[1]) { _ in
+            Issue.record("An invalid coordinate must not invoke place search.")
+            return nil
+        }
+        #expect(try accepted.outcome == .accepted(MapCoordinate(latitude: 33.5, longitude: -122.25)))
+        #expect(rejected.outcome == .rejected(.invalidCoordinate))
+    }
 }

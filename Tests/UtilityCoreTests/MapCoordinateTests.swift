@@ -19,4 +19,15 @@ struct MapCoordinateTests {
         let east = try MapCoordinate.parse("0, -179.5")
         #expect((110_000...112_000).contains(west.distance(to: east)))
     }
+
+    @Test func acceptsCommonHemisphereCoordinateFormatsWithoutAComma() throws {
+        let expected = try MapCoordinate(latitude: 33.5, longitude: -122.25)
+        #expect(try MapCoordinate.parse("33.5°n 122.25°w") == expected)
+        #expect(try MapCoordinate.parse("33° 30.0′ N; 122° 15.0′ W") == expected)
+        #expect(try MapCoordinate.parse("33° 30' 0\" N 122° 15' 0\" W") == expected)
+        #expect(throws: ToolError.self) { try MapCoordinate.parse("33.5° 30′ N 122.25° W") }
+        #expect(throws: ToolError.self) { try MapCoordinate.parse("33° 30.5′ 20″ N 122.25° W") }
+        #expect(throws: ToolError.self) { try MapCoordinate.parse("122° W 33° N") }
+        #expect(throws: ToolError.self) { try MapCoordinate.parse("33° N 180° 0.1′ E") }
+    }
 }

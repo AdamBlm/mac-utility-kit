@@ -72,7 +72,8 @@ struct CoordinatePickerView: View {
                         .buttonStyle(.plain)
                 }
                 HStack {
-                    TextField("Latitude, longitude or DMS", text: $draft.input)
+                    TextField("Latitude and longitude", text: $draft.input)
+                        .help("Decimal degrees, degrees and decimal minutes, or degrees, minutes, and seconds")
                         .onSubmit { enterCoordinates() }
                     Button("Set Point", action: enterCoordinates)
                 }
