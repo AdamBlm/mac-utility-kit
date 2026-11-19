@@ -5,6 +5,39 @@ import Testing
 
 @MainActor
 struct ClipboardFilesTests {
+    @Test func mixedClipboardItemsKeepOrderAndSelectOneRepresentationEach() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appending(path: "Source.pdf")
+        try Data().write(to: file)
+        let firstPDF = Data("first PDF representation".utf8)
+        let secondPDF = Data("second PDF representation".utf8)
+        let fileItem = NSPasteboardItem()
+        try #require(fileItem.setString(file.absoluteString, forType: .fileURL))
+        try #require(fileItem.setData(firstPDF, forType: .pdf))
+        let first = NSPasteboardItem()
+        try #require(first.setData(firstPDF, forType: .pdf))
+        let second = NSPasteboardItem()
+        try #require(second.setData(secondPDF, forType: .pdf))
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        try #require(board.writeObjects([first, fileItem, second]))
+        let contents = try #require(board.pasteboardItems).compactMap {
+            try ClipboardFiles.content(from: $0, allowedTypes: [.pdf, .image], acceptsPDF: true, acceptsImage: true)
+        }
+        guard contents.count == 3,
+              case .pdf(let firstData) = contents[0],
+              case .file(let url) = contents[1],
+              case .pdf(let lastData) = contents[2] else {
+            Issue.record("The pasteboard item order or representation precedence changed.")
+            return
+        }
+        #expect(firstData == firstPDF)
+        #expect(url == file)
+        #expect(lastData == secondPDF)
+    }
+
     @Test func pastesLocalFilesInOrderAndFiltersUnsupportedClipboardItems() throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)

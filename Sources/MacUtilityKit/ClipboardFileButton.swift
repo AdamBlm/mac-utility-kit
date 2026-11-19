@@ -62,6 +62,10 @@ struct ClipboardFileButton: View {
     private func paste(reportsMissingInput: Bool = true) -> Bool {
         guard isEnabled else { return false }
         let board = NSPasteboard.general
+        if onPasteImage != nil || onPastePDF != nil,
+           let items = board.pasteboardItems, items.count > 1, pasteItems(items) {
+            return true
+        }
         let files = ClipboardFiles.read(from: board, allowedTypes: allowedTypes)
         if !allowsMultiple && files.count > 1 {
             message = "Copy one supported file in Finder, then try again."
@@ -70,10 +74,7 @@ struct ClipboardFileButton: View {
         } else {
             do {
                 if let onPastePDF, let data = board.data(forType: .pdf) {
-                    guard data.count <= 256 * 1024 * 1024 else {
-                        throw ToolError.invalid("The copied PDF exceeds 256 MB. Save it to a file and import the file instead.")
-                    }
-                    try onPastePDF(data)
+                    try pastePDF(data, using: onPastePDF)
                 } else if let onPasteImage, let image = try ClipboardFiles.readImage(from: board) {
                     try onPasteImage(image)
                 } else {
@@ -93,6 +94,54 @@ struct ClipboardFileButton: View {
             }
         }
         return true
+    }
+
+    private func pasteItems(_ items: [NSPasteboardItem]) -> Bool {
+        var handled = false
+        var issues: [String] = []
+        var singleInput: ClipboardFiles.Content?
+        for (index, item) in items.enumerated() {
+            do {
+                guard let content = try ClipboardFiles.content(from: item, allowedTypes: allowedTypes,
+                                                                acceptsPDF: onPastePDF != nil,
+                                                                acceptsImage: onPasteImage != nil) else { continue }
+                handled = true
+                if allowsMultiple {
+                    try deliver(content)
+                } else {
+                    guard singleInput == nil else {
+                        message = "Copy one supported item, then try again."
+                        return true
+                    }
+                    singleInput = content
+                }
+            } catch {
+                handled = true
+                issues.append("Item \(index + 1) — \(error.localizedDescription)")
+            }
+        }
+        if let singleInput, issues.isEmpty {
+            do { try deliver(singleInput) }
+            catch { issues.append(error.localizedDescription) }
+        }
+        if !issues.isEmpty { message = issues.joined(separator: "\n") }
+        return handled
+    }
+
+    private func deliver(_ content: ClipboardFiles.Content) throws {
+        switch content {
+        case .file(let url): onPaste([url])
+        case .pdf(let data):
+            if let onPastePDF { try pastePDF(data, using: onPastePDF) }
+        case .image(let image): try onPasteImage?(image)
+        }
+    }
+
+    private func pastePDF(_ data: Data, using action: (Data) throws -> Void) throws {
+        guard data.count <= 256 * 1024 * 1024 else {
+            throw ToolError.invalid("The copied PDF exceeds 256 MB. Save it to a file and import the file instead.")
+        }
+        try action(data)
     }
 }
 
