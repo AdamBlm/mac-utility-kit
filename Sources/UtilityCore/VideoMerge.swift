@@ -70,7 +70,7 @@ public enum VideoMerge {
         }
         defer { monitor.cancel() }
         try Task.checkCancellation()
-        try await export.export(to: candidate, as: fileType)
+        try await export.exportMedia(to: candidate, as: fileType)
         try await verify(candidate, options: options, prepared: prepared)
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)

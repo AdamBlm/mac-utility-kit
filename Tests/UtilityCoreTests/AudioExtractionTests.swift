@@ -102,7 +102,7 @@ private func audioTestFolder() throws -> URL {
     }
     let input = folder.appendingPathComponent("Two tracks.mov")
     let exporter = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-    try await exporter.export(to: input, as: .mov)
+    try await exporter.exportMedia(to: input, as: .mov)
     let tracks = try await AudioExtraction.trackList(input)
     #expect(tracks.count == 2)
     let french = try #require(tracks.first { $0.language?.hasPrefix("fr") == true })

@@ -67,7 +67,7 @@ struct ScreenRecordingTests {
         }
         let file = folder.appending(path: "segment.mp4")
         let export = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-        try await export.export(to: file, as: .mp4)
+        try await export.exportMedia(to: file, as: .mp4)
         return file
     }
 }

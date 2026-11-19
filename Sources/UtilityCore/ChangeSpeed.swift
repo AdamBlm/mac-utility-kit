@@ -124,7 +124,7 @@ public enum ChangeSpeed {
             }
         }
         defer { monitor.cancel() }
-        try await export.export(to: output, as: .mp4)
+        try await export.exportMedia(to: output, as: .mp4)
         return audioTrack != nil
     }
 

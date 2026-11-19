@@ -105,7 +105,7 @@ struct VideoMergeTests {
         }
         let destination = directory.appending(path: "withAudio.mov")
         let session = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-        try await session.export(to: destination, as: .mov)
+        try await session.exportMedia(to: destination, as: .mov)
         return destination
     }
 

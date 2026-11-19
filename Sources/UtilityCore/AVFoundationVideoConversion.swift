@@ -48,7 +48,7 @@ enum AVFoundationVideoConversion {
             }
         }
         defer { monitor.cancel() }
-        try await export.export(to: output, as: fileType)
+        try await export.exportMedia(to: output, as: fileType)
     }
 
     static func summary(

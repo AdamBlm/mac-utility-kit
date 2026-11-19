@@ -137,7 +137,7 @@ struct ChangeSpeedTests {
         }
         let combined = directory.appending(path: "combined.mov")
         let export = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-        try await export.export(to: combined, as: .mov)
+        try await export.exportMedia(to: combined, as: .mov)
         return combined
     }
 

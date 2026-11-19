@@ -105,6 +105,6 @@ public struct ScreenRecordingFile: Equatable, Sendable, Identifiable {
               exporter.supportedFileTypes.contains(.mp4) else {
             throw ToolError.invalid("The recording audio tracks could not be combined in MP4.")
         }
-        try await exporter.export(to: output, as: .mp4)
+        try await exporter.exportMedia(to: output, as: .mp4)
     }
 }

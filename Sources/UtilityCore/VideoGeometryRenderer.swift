@@ -57,7 +57,7 @@ enum VideoGeometryRenderer {
             }
         }
         defer { monitor.cancel() }
-        try await export.export(to: candidate, as: .mp4)
+        try await export.exportMedia(to: candidate, as: .mp4)
         let result = try await loadSource(candidate)
         let encoded = try await result.track.load(.naturalSize)
         let resultAudio = try await result.asset.loadTracks(withMediaType: .audio)

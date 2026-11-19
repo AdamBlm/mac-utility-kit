@@ -130,7 +130,7 @@ struct MuteVideoTests {
         title.value = "Mute Video fixture" as NSString
         export.metadata = [title]
         let output = directory.appending(path: "two-languages.mov")
-        try await export.export(to: output, as: .mov)
+        try await export.exportMedia(to: output, as: .mov)
         return output
     }
 

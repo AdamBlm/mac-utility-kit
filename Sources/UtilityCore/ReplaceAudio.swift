@@ -68,7 +68,7 @@ public enum ReplaceAudio {
             }
         }
         defer { monitor.cancel() }
-        try await export.export(to: candidate, as: .mp4)
+        try await export.exportMedia(to: candidate, as: .mp4)
         let asset = try localAsset(candidate)
         let (tracks, playable, duration) = try await asset.load(.tracks, .isPlayable, .duration)
         guard playable, tracks.contains(where: { $0.mediaType == .video }),
@@ -101,7 +101,7 @@ public enum ReplaceAudio {
         export.timeRange = range
         let peak = try await samplePeak(graph, within: range)
         try Task.checkCancellation()
-        try await export.export(to: output, as: .m4a)
+        try await export.exportMedia(to: output, as: .m4a)
         try Task.checkCancellation()
         return Sample(data: try Data(contentsOf: output), peak: peak, startSeconds: start)
     }

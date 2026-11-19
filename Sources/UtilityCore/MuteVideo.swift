@@ -153,7 +153,7 @@ public enum MuteVideo {
             }
         }
         defer { monitor.cancel() }
-        try await session.export(to: candidate, as: format.fileType)
+        try await session.exportMedia(to: candidate, as: format.fileType)
         try Task.checkCancellation()
 
         let result = try localAsset(candidate)

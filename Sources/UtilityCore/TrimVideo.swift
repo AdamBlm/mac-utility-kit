@@ -140,7 +140,7 @@ public enum TrimVideo {
             }
         }
         defer { monitor.cancel() }
-        try await export.export(to: candidate, as: .mp4)
+        try await export.exportMedia(to: candidate, as: .mp4)
         try Task.checkCancellation()
 
         let result = try localAsset(candidate)

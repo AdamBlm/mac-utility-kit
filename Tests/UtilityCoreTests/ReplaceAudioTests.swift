@@ -174,7 +174,7 @@ struct ReplaceAudioTests {
         }
         let output = directory.appending(path: "original.mov")
         let export = try #require(AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetPassthrough))
-        try await export.export(to: output, as: .mov)
+        try await export.exportMedia(to: output, as: .mov)
         return output
     }
 
