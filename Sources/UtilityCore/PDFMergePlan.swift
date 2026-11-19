@@ -14,6 +14,19 @@ public struct PDFMergePageReference: Hashable, Sendable {
 public typealias PDFMergeSourceStamp = PDFSourceStamp
 
 public enum PDFMergePlan {
+    package static func outputFilename(_ value: String) throws -> String {
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty, !name.contains("/"), !name.contains(":"), name != ".", name != "..",
+              name.rangeOfCharacter(from: .controlCharacters) == nil else {
+            throw ToolError.invalid("Enter a valid PDF filename.")
+        }
+        let filename = name.lowercased().hasSuffix(".pdf") ? name : name + ".pdf"
+        guard PDFConversionStaging.supportsFilename(filename) else {
+            throw ToolError.invalid("The PDF filename is too long. Enter a shorter name.")
+        }
+        return filename
+    }
+
     public static func selectedPages(counts: [Int], ranges: [String]) throws -> [PDFMergePageReference] {
         try counts.enumerated().flatMap { source, count in
             guard count >= 0 else { throw ToolError.invalid("The source page count is invalid.") }

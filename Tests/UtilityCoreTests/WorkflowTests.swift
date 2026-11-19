@@ -247,6 +247,18 @@ private func writeVideoFixture(
     try writePDF(widths: [300, 400], to: second)
     var options = ToolOptions()
     options.pageRanges = ["3, 1", "2"]
+    let invalidNames = [
+        ("Bad\u{0}Name", "Enter a valid PDF filename."),
+        (String(repeating: "é", count: 84), "The PDF filename is too long. Enter a shorter name.")
+    ]
+    for (invalidName, expectedMessage) in invalidNames {
+        options.pdfOutputName = invalidName
+        let error = await #expect(throws: ToolError.self) {
+            try await ToolRunner.run(.mergePDFs, inputs: [first, second], destination: folder, imageSize: 0, options: options) { _ in }
+        }
+        #expect(error?.localizedDescription == expectedMessage)
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["first.pdf", "second.pdf"])
     options.pdfOutputName = "Chosen"
     let report = try await ToolRunner.run(
         .mergePDFs, inputs: [first, second], destination: folder, imageSize: 0, options: options

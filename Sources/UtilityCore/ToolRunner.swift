@@ -80,11 +80,8 @@ public enum ToolRunner {
         var videoReviews: [VideoCompressionReview] = []
 
         if tool == .mergePDFs {
-            let name = options.pdfOutputName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !name.isEmpty, !name.contains("/"), !name.contains(":"), name != ".", name != ".." else {
-                throw ToolError.invalid("Enter a valid PDF filename.")
-            }
-            let output = staging.appendingPathComponent(name.lowercased().hasSuffix(".pdf") ? name : name + ".pdf")
+            let filename = try PDFMergePlan.outputFilename(options.pdfOutputName)
+            let output = staging.appendingPathComponent(filename)
             try await PDFOperations.merge(inputs, ranges: options.pageRanges, passwords: options.pdfPasswords,
                                           order: options.pdfMergeOrder, stamps: options.pdfMergeSourceStamps,
                                           into: output, progress: progress)

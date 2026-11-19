@@ -168,7 +168,7 @@ struct ToolWorkspace: View {
         case .extractAudio:
             draft.options.extraction.format.requiresFFmpeg && draft.options.extraction.ffmpegExecutable == nil
         case .mergePDFs:
-            draft.mergePages?.isEmpty != false
+            draft.mergePages?.isEmpty != false || (try? PDFMergePlan.outputFilename(draft.outputName)) == nil
         case .pdfToWord:
             draft.inputs.allSatisfy { PDFToWord.optionIssue($0, options: draft.options.pdfToWord) != nil }
         case .compressPDF:
@@ -337,6 +337,9 @@ struct ToolWorkspace: View {
                                     set: { draft.outputName = $0 }
                                 ))
                                 .labelsHidden()
+                            }
+                            if case .failure(let error) = Result(catching: { try PDFMergePlan.outputFilename(draft.outputName) }) {
+                                Text(error.localizedDescription).font(.caption).foregroundStyle(.secondary)
                             }
                         }
                     }
