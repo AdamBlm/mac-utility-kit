@@ -129,11 +129,7 @@ public enum PDFToImages {
             guard let page = document.page(at: pageIndex), let pageRef = page.pageRef else {
                 throw ToolError.invalid("Could not read page \(pageIndex + 1).")
             }
-            let crop = pageRef.getBoxRect(.cropBox).intersection(pageRef.getBoxRect(.mediaBox))
-            let swapsAxes = abs(pageRef.rotationAngle % 180) == 90
-            let width = swapsAxes ? crop.height : crop.width
-            let height = swapsAxes ? crop.width : crop.height
-            let size = try dimensions(width: width, height: height, unit: pageUnit(pageRef), options: options)
+            let size = try dimensions(of: pageRef, options: options)
             var filename = try filename(pattern: pattern, stem: stem, page: pageIndex + 1,
                                         number: index + 1, digits: digits)
             let ext = "." + options.format.fileExtension
@@ -180,6 +176,23 @@ public enum PDFToImages {
         return unit
     }
 
+    private static func dimensions(of page: CGPDFPage, options: PDFToImagesOptions) throws -> (Int, Int) {
+        let crop = page.getBoxRect(.cropBox).intersection(page.getBoxRect(.mediaBox))
+        let swapsAxes = abs(page.rotationAngle % 180) == 90
+        return try dimensions(width: swapsAxes ? crop.height : crop.width,
+                              height: swapsAxes ? crop.width : crop.height, unit: pageUnit(page), options: options)
+    }
+
+    static func rasterizeForRecognition(_ page: PDFPage, pageNumber: Int) throws -> CGImage {
+        guard let reference = page.pageRef else { throw ToolError.invalid("Could not read page \(pageNumber).") }
+        var options = PDFToImagesOptions()
+        options.resolution = .bounds
+        options.maxWidth = 4_096
+        options.maxHeight = 4_096
+        let (width, height) = try dimensions(of: reference, options: options)
+        return try rasterize(page, width: width, height: height, transparent: false, pageNumber: pageNumber)
+    }
+
     private static func dimensions(width: Double, height: Double, unit: Double,
                                    options: PDFToImagesOptions) throws -> (Int, Int) {
         guard width.isFinite, height.isFinite, width > 0, height > 0 else {
@@ -204,18 +217,18 @@ public enum PDFToImages {
         return (Int(outputWidth), Int(outputHeight))
     }
 
-    private static func render(
-        _ page: PDFPage, plan: PDFPageRasterPlan, options: PDFToImagesOptions, to output: URL
-    ) throws {
+    private static func rasterize(
+        _ page: PDFPage, width: Int, height: Int, transparent: Bool, pageNumber: Int
+    ) throws -> CGImage {
         guard let pageRef = page.pageRef,
               let space = CGColorSpace(name: CGColorSpace.sRGB),
-              let context = CGContext(data: nil, width: plan.width, height: plan.height, bitsPerComponent: 8,
+              let context = CGContext(data: nil, width: width, height: height, bitsPerComponent: 8,
                                       bytesPerRow: 0, space: space,
-                                      bitmapInfo: options.transparent ? CGImageAlphaInfo.premultipliedLast.rawValue
+                                      bitmapInfo: transparent ? CGImageAlphaInfo.premultipliedLast.rawValue
                                                                       : CGImageAlphaInfo.noneSkipLast.rawValue)
-        else { throw ToolError.invalid("Could not render page \(plan.pageNumber).") }
-        let rect = CGRect(x: 0, y: 0, width: plan.width, height: plan.height)
-        if !options.transparent {
+        else { throw ToolError.invalid("Could not render page \(pageNumber).") }
+        let rect = CGRect(x: 0, y: 0, width: width, height: height)
+        if !transparent {
             context.setFillColor(CGColor(gray: 1, alpha: 1))
             context.fill(rect)
         }
@@ -225,8 +238,16 @@ public enum PDFToImages {
         context.scaleBy(x: rect.width / (swapsAxes ? crop.height : crop.width),
                         y: rect.height / (swapsAxes ? crop.width : crop.height))
         page.draw(with: .cropBox, to: context)
-        guard let image = context.makeImage(),
-              let destination = CGImageDestinationCreateWithURL(output as CFURL, options.format.type.identifier as CFString, 1, nil)
+        guard let image = context.makeImage() else { throw ToolError.invalid("Could not render page \(pageNumber).") }
+        return image
+    }
+
+    private static func render(
+        _ page: PDFPage, plan: PDFPageRasterPlan, options: PDFToImagesOptions, to output: URL
+    ) throws {
+        let image = try rasterize(page, width: plan.width, height: plan.height,
+                                  transparent: options.transparent, pageNumber: plan.pageNumber)
+        guard let destination = CGImageDestinationCreateWithURL(output as CFURL, options.format.type.identifier as CFString, 1, nil)
         else { throw ToolError.invalid("Could not prepare the image encoder.") }
         var properties: [CFString: Any] = [:]
         if options.format != .png { properties[kCGImageDestinationLossyCompressionQuality] = options.quality }

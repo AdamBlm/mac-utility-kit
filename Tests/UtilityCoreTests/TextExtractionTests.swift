@@ -67,6 +67,36 @@ import UtilityCore
     #expect(!forcedOCR.text.contains("FIRST DOCUMENT PAGE"))
 }
 
+@Test func textExtractionRejectsPDFReplacedBetweenPages() async throws {
+    let folder = try textExtractionFixtureFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("source.pdf")
+    let replacement = folder.appendingPathComponent("replacement.pdf")
+    for (file, marker) in [(source, "ORIGINAL"), (replacement, "REPLACEMENT")] {
+        var bounds = CGRect(x: 0, y: 0, width: 600, height: 400)
+        let context = try #require(CGContext(file as CFURL, mediaBox: &bounds, nil))
+        for number in 1...2 {
+            context.beginPDFPage(nil)
+            drawOCRFixture("\(marker) PAGE \(number)", in: context, at: .init(x: 35, y: 150))
+            context.endPDFPage()
+        }
+        context.closePDF()
+    }
+    let replacementBytes = try Data(contentsOf: replacement)
+    var options = TextExtractionOptions()
+    options.language = "en-US"
+    options.preferEmbeddedText = false
+    let failure = await #expect(throws: ToolError.self) {
+        try await TextExtraction.extract(source, options: options) { fraction in
+            if fraction == 0.5 {
+                try? replacementBytes.write(to: source, options: .atomic)
+            }
+        }
+    }
+    #expect(failure?.localizedDescription.contains("source PDF changed") == true)
+    #expect(try Data(contentsOf: source) == replacementBytes)
+}
+
 @Test func textExtractionRejectsUnknownLanguagesAndOffPageRegions() async throws {
     let folder = try textExtractionFixtureFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

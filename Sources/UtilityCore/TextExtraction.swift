@@ -69,7 +69,8 @@ public enum TextExtraction {
     private static func extractPDF(
         _ input: URL, options: TextExtractionOptions, progress: @Sendable (Double) async -> Void
     ) async throws -> TextExtractionResult {
-        guard let document = PDFDocument(url: input) else {
+        let stamp = try PDFSourceStamp.read(input)
+        guard let document = PDFDocument(url: stamp.resolved) else {
             throw ToolError.invalid("Could not open this PDF.")
         }
         if document.isLocked || (document.isEncrypted && !options.password.isEmpty),
@@ -82,34 +83,20 @@ public enum TextExtraction {
         let indices = try PageSelection.indices(options.range, pageCount: document.pageCount)
         guard !indices.isEmpty else { throw ToolError.invalid("Select at least one page.") }
 
-        let scratch = FileManager.default.temporaryDirectory
-            .appendingPathComponent("MacUtilityKit-OCR-" + UUID().uuidString, isDirectory: true)
-        try FileManager.default.createDirectory(at: scratch, withIntermediateDirectories: false,
-                                                attributes: [.posixPermissions: 0o700])
-        defer { try? FileManager.default.removeItem(at: scratch) }
-
         var pages: [TextExtractionPage] = []
         for (offset, index) in indices.enumerated() {
             try Task.checkCancellation()
             do {
+                guard let page = document.page(at: index) else {
+                    throw ToolError.invalid("Could not read page \(index + 1).")
+                }
                 let text: String
-                if options.region == nil, options.preferEmbeddedText, let embedded = document.page(at: index)?.string?
+                if options.region == nil, options.preferEmbeddedText, let embedded = page.string?
                     .trimmingCharacters(in: .whitespacesAndNewlines), !embedded.isEmpty {
                     text = embedded
                 } else {
-                    var raster = PDFToImagesOptions()
-                    raster.range = String(index + 1)
-                    raster.password = options.password
-                    raster.resolution = .bounds
-                    raster.maxWidth = 4_096
-                    raster.maxHeight = 4_096
-                    raster.filenamePattern = "OCR-{page}"
-                    let images = try await PDFToImages.export(input, into: scratch, options: raster) { _ in }
-                    guard let image = images.first else {
-                        throw ToolError.invalid("Could not render this page.")
-                    }
-                    defer { try? FileManager.default.removeItem(at: image) }
-                    text = try recognize(readImage(image), options: options)
+                    let image = try PDFToImages.rasterizeForRecognition(page, pageNumber: index + 1)
+                    text = try recognize(image, options: options)
                 }
                 pages.append(TextExtractionPage(pageNumber: index + 1, text: text, error: nil))
             } catch {
@@ -117,6 +104,10 @@ public enum TextExtraction {
                 pages.append(TextExtractionPage(pageNumber: index + 1, text: "", error: error.localizedDescription))
             }
             await progress(Double(offset + 1) / Double(indices.count))
+            try Task.checkCancellation()
+            guard (try? PDFSourceStamp.read(input)) == stamp else {
+                throw ToolError.invalid("The source PDF changed during text extraction. Try again.")
+            }
         }
         let text = pages.filter { $0.error == nil && !$0.text.isEmpty }.map { page in
             options.includePageBreaks ? "Page \(page.id)\n\n\(page.text)" : page.text
