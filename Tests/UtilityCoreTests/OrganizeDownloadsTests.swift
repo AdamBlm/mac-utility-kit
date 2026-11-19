@@ -10,13 +10,18 @@ struct OrganizeDownloadsTests {
         try manager.createDirectory(at: folder, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: folder) }
         let misleading = folder.appending(path: "Downloaded.jpg")
+        let generic = folder.appending(path: "Generic.bin")
+        let extensionless = folder.appending(path: "NoSuffix")
         let invalid = folder.appending(path: "Invalid.png")
         let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
         try bytes.write(to: misleading)
+        try bytes.write(to: generic)
+        try bytes.write(to: extensionless)
         try Data("Not an image".utf8).write(to: invalid)
         let images = try OrganizeDownloads.scan(folder)
-        #expect(images.map(\.relativePath) == ["Downloaded.jpg"])
-        #expect(images.map(\.fileType) == ["PNG"])
+        #expect(images.map(\.relativePath) == ["Downloaded.jpg", "Generic.bin", "NoSuffix"])
+        #expect(images.map(\.fileType) == ["PNG", "PNG", "PNG"])
+        #expect(images.map(\.typeIdentifier) == ["public.png", "public.png", "public.png"])
         #expect(try Data(contentsOf: misleading) == bytes)
     }
 

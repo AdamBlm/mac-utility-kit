@@ -14,9 +14,9 @@ public enum DownloadPhotoAlbums {
         let groups = Dictionary(grouping: entries) { $0.origin ?? "Unknown Source" }
         for (origin, group) in groups.sorted(by: { $0.key < $1.key }) {
             try Task.checkCancellation()
-            let ready = group.compactMap { entry -> URL? in
+            let ready = group.compactMap { entry -> (url: URL, typeIdentifier: String)? in
                 do {
-                    return try OrganizeDownloads.copyForPhotos(entry, into: stage)
+                    return (try OrganizeDownloads.copyForPhotos(entry, into: stage), entry.typeIdentifier)
                 } catch {
                     outcome.failures.append(entry.file.lastPathComponent + " · " + error.localizedDescription)
                     return nil
@@ -26,16 +26,18 @@ public enum DownloadPhotoAlbums {
             do {
                 try await PHPhotoLibrary.shared().performChanges {
                     let album = PHAssetCollectionChangeRequest.creationRequestForAssetCollection(withTitle: origin)
-                    let assets = ready.map { url in
+                    let assets = ready.map { entry in
                         let request = PHAssetCreationRequest.forAsset()
-                        request.addResource(with: .photo, fileURL: url, options: nil)
+                        let options = PHAssetResourceCreationOptions()
+                        options.uniformTypeIdentifier = entry.typeIdentifier
+                        request.addResource(with: .photo, fileURL: entry.url, options: options)
                         return request.placeholderForCreatedAsset
                     }.compactMap { $0 }
                     album.addAssets(assets as NSArray)
                 }
-                outcome.completed.append(contentsOf: ready.map { $0.lastPathComponent + " → " + origin })
+                outcome.completed.append(contentsOf: ready.map { $0.url.lastPathComponent + " → " + origin })
             } catch {
-                outcome.failures.append(contentsOf: ready.map { $0.lastPathComponent + " · " + error.localizedDescription })
+                outcome.failures.append(contentsOf: ready.map { $0.url.lastPathComponent + " · " + error.localizedDescription })
             }
         }
         return outcome

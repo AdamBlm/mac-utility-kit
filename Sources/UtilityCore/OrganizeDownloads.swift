@@ -9,6 +9,7 @@ public struct DownloadImage: Identifiable, Sendable {
     public let relativePath: String
     public let origin: String?
     public let fileType: String
+    let typeIdentifier: String
     fileprivate let stamp: DuplicateFileStamp
 }
 
@@ -55,7 +56,6 @@ public enum OrganizeDownloads {
             let properties = try file.resourceValues(forKeys: keys)
             if properties.isSymbolicLink == true { continue }
             guard properties.isRegularFile == true,
-                  let type = UTType(filenameExtension: file.pathExtension), type.conforms(to: .image),
                   let stamp = try? DuplicateFileIO.inspect(file) else { continue }
             let canonical = file.resolvingSymlinksInPath().standardizedFileURL
             guard canonical.pathComponents.starts(with: rootComponents),
@@ -67,7 +67,7 @@ public enum OrganizeDownloads {
             let path = canonical.pathComponents.dropFirst(rootComponents.count).joined(separator: "/")
             images.append(DownloadImage(file: canonical, relativePath: path, origin: sourceOrigin(canonical),
                                         fileType: detectedType.preferredFilenameExtension?.uppercased() ?? detectedType.localizedDescription
-                                            ?? detectedType.identifier, stamp: stamp))
+                                            ?? detectedType.identifier, typeIdentifier: detectedType.identifier, stamp: stamp))
         }
         try Task.checkCancellation()
         if let scanError { throw scanError }
