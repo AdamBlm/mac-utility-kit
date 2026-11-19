@@ -68,6 +68,32 @@ struct ClipboardHistoryTests {
         #expect(history.entries.isEmpty)
     }
 
+    @Test func recopyRefreshesRetentionOrderWithoutLosingIdentityOrPin() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let history = ClipboardHistoryController(pasteboard: { board }, foregroundApp: { ("example.app", "Example") })
+        history.retention = 2
+        history.start()
+        defer { history.disable() }
+
+        write("first", on: board)
+        history.poll()
+        let first = try #require(history.entries.first)
+        for text in ["second", "first", "third"] {
+            write(text, on: board)
+            history.poll()
+        }
+        #expect(history.entries.map(\.content) == [.text("third"), .text("first")])
+        #expect(history.entries.last?.id == first.id)
+
+        history.togglePin(first.id)
+        write("first", on: board)
+        history.poll()
+        #expect(history.entries.map(\.content) == [.text("first"), .text("third")])
+        #expect(history.entries.first?.id == first.id)
+        #expect(history.entries.first?.pinned == true)
+    }
+
     @Test func recordsAndRestoresOnlyTheSelectedImageRepresentation() throws {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }

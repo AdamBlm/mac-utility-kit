@@ -37,7 +37,7 @@ package final class ClipboardHistoryController {
 
         package let id = UUID()
         package let content: Content
-        package let date = Date()
+        package fileprivate(set) var date = Date()
         package let foregroundApp: String?
         package var pinned = false
     }
@@ -124,8 +124,14 @@ package final class ClipboardHistoryController {
         }
         // A different process can replace the clipboard while AppKit loads its data.
         guard board.changeCount == change, foregroundApp().id == appID else { return }
-        for entry in captured.reversed() where !entries.contains(where: { $0.content == entry.content }) {
-            entries.insert(entry, at: 0)
+        for entry in captured.reversed() {
+            if let index = entries.firstIndex(where: { $0.content == entry.content }) {
+                var existing = entries.remove(at: index)
+                existing.date = entry.date
+                entries.insert(existing, at: 0)
+            } else {
+                entries.insert(entry, at: 0)
+            }
         }
         trimHistory()
     }
