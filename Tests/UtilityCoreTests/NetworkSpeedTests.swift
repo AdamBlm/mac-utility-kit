@@ -18,6 +18,26 @@ struct NetworkSpeedTests {
         }
     }
 
+    @Test func choosesTheFirstValidMetricAndInterfaceAlias() throws {
+        let preferred = try NetworkSpeedTest.decode(
+            Data(#"{"responsiveness":0,"rpm":812,"interface_name":"en3","interface":"en7"}"#.utf8), interface: "en0"
+        )
+        #expect(preferred.responsiveness == 0)
+        #expect(preferred.interface == "en3")
+
+        let alternate = try NetworkSpeedTest.decode(
+            Data(#"{"responsiveness":null,"rpm":812,"interface_name":" ","interface":"en7"}"#.utf8), interface: "en0"
+        )
+        #expect(alternate.responsiveness == 812)
+        #expect(alternate.interface == "en7")
+
+        let unreported = try NetworkSpeedTest.decode(
+            Data(#"{"responsiveness":true,"rpm":-1,"interface_name":0,"interface":null}"#.utf8), interface: "en0"
+        )
+        #expect(unreported.responsiveness == nil)
+        #expect(unreported.interface == "en0")
+    }
+
     @Test func rejectsOfflineAndCancelsOnInterfaceChange() async throws {
         let (paths, changes) = AsyncStream<NetworkSpeedTest.Path>.makeStream()
         defer { changes.finish() }

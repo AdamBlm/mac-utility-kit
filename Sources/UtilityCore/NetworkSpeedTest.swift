@@ -89,16 +89,22 @@ public enum NetworkSpeedTest {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ToolError.invalid("Network Quality did not return a readable report.")
         }
-        let reportedInterface = (object["interface_name"] ?? object["interface"]) as? String
+        let reportedInterface = interfaceName(object["interface_name"]) ?? interfaceName(object["interface"])
         return NetworkSpeedResult(
             downloadBitsPerSecond: metric(object["dl_throughput"]),
             uploadBitsPerSecond: metric(object["ul_throughput"]),
-            responsiveness: metric(object["responsiveness"] ?? object["rpm"]),
+            responsiveness: metric(object["responsiveness"]) ?? metric(object["rpm"]),
             uploadResponsiveness: metric(object["ul_responsiveness"]),
             downloadResponsiveness: metric(object["dl_responsiveness"]),
-            interface: reportedInterface.flatMap { $0.isEmpty ? nil : $0 } ?? interface,
+            interface: reportedInterface ?? interface,
             timestamp: timestamp
         )
+    }
+
+    private static func interfaceName(_ value: Any?) -> String? {
+        guard let value = value as? String else { return nil }
+        let name = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        return name.isEmpty ? nil : name
     }
 
     private static func metric(_ value: Any?) -> Double? {
