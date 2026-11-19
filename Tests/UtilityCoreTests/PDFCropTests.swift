@@ -28,6 +28,25 @@ struct PDFCropTests {
         try #require(source.write(to: input))
 
         var options = PDFCropOptions()
+        options.offsets.left = 210
+        let rotatedReference = try #require(second.pageRef)
+        #expect(try PDFCrop.box(for: rotatedReference, offsets: options.offsets).width > 0)
+        let issue = "Page 1: Enter nonnegative crop offsets that leave a visible page."
+        do {
+            try PDFCrop.validate(document: source, options: options)
+            Issue.record("The selected offsets consume page 1.")
+        } catch {
+            #expect(error.localizedDescription == issue)
+        }
+        let invalidOutput = directory.appendingPathComponent("invalid.pdf")
+        do {
+            _ = try await PDFCrop.export(input, to: invalidOutput, options: options) { _ in }
+            Issue.record("The selected offsets consume page 1.")
+        } catch {
+            #expect(error.localizedDescription == issue)
+        }
+        #expect(!FileManager.default.fileExists(atPath: invalidOutput.path))
+
         let allPages = try PageSelection.indices(options.pages, pageCount: source.pageCount)
         let selected = PageSelection.updating(allPages, at: 0, extendingFrom: nil)
         options.pages = PageSelection.expression(for: selected)

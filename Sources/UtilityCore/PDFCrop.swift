@@ -79,9 +79,13 @@ public enum PDFCrop {
         guard !selected.isEmpty else { throw ToolError.invalid("Choose at least one page to crop.") }
         return try selected.map { index in
             guard let reference = document.page(at: index)?.pageRef else {
-                throw ToolError.invalid("Could not read the selected page.")
+                throw ToolError.invalid("Could not read page \(index + 1).")
             }
-            return (index, try box(for: reference, offsets: options.offsets))
+            do {
+                return (index, try box(for: reference, offsets: options.offsets))
+            } catch {
+                throw ToolError.invalid("Page \(index + 1): \(error.localizedDescription)")
+            }
         }
     }
 
