@@ -49,15 +49,13 @@ private struct ImageCompressionPreview: View {
 
     let request: Request
     @Environment(\.dismiss) private var dismiss
-    @State private var pair: ImageComparisonResult?
-    @State private var summary: String?
-    @State private var directory: URL?
+    @State private var sample: ImageCompressionSample?
     @State private var issue: String?
 
     var body: some View {
         Group {
-            if let pair {
-                ImageComparisonView(pair: pair, summary: summary)
+            if let sample {
+                ImageComparisonView(pair: sample.comparison, summary: sample.summary)
             } else {
                 VStack(alignment: .leading, spacing: 14) {
                     if let issue {
@@ -73,30 +71,15 @@ private struct ImageCompressionPreview: View {
             }
         }
         .task { await prepare() }
-        .onDisappear {
-            if let directory { try? FileManager.default.removeItem(at: directory) }
-            directory = nil
-        }
+        .onDisappear { sample = nil }
     }
 
     private func prepare() async {
-        let folder = FileManager.default.temporaryDirectory.appending(path: "MacUtilityKit-ImagePreview-\(UUID())")
         do {
-            try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
-                                                    attributes: [.posixPermissions: 0o700])
-            var options = ToolOptions()
-            options.imageCompression = request.options
-            let report = try await ToolRunner.run(.compressImages, inputs: [request.input], destination: folder,
-                                                  imageSize: 0, options: options) { _ in }
+            let rendered = try await ImageCompressionSample.make(request.input, options: request.options)
             try Task.checkCancellation()
-            guard let comparison = report.imageComparisons.first else {
-                throw ToolError.invalid(report.failures.first ?? "Could not create the compression preview.")
-            }
-            directory = folder
-            summary = report.summaries.first
-            pair = comparison
+            sample = rendered
         } catch {
-            try? FileManager.default.removeItem(at: folder)
             if !Task.isCancelled { issue = error.localizedDescription }
         }
     }

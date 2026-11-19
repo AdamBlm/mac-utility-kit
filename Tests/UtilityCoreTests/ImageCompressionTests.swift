@@ -5,6 +5,30 @@ import Testing
 import UniformTypeIdentifiers
 import UtilityCore
 
+@Test func imageCompressionPreviewMatchesExportAndCleansUpWhenReleased() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appending(path: "camera.jpg")
+    try writeCompressionFixture(to: source, format: .jpeg, withAlpha: false)
+    let original = try Data(contentsOf: source)
+
+    var options = ImageCompressionOptions()
+    options.format = .jpg
+    options.quality = 0.18
+    var sample: ImageCompressionSample? = try await ImageCompressionSample.make(source, options: options)
+    let preview = try #require(sample?.comparison)
+    #expect(preview.source == source)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path) == ["camera.jpg"])
+
+    let output = directory.appending(path: "export.jpg")
+    let summary = try await ImageCompression.compress(source, to: output, options: options)
+    #expect(sample?.summary == summary)
+    #expect(try Data(contentsOf: preview.output) == Data(contentsOf: output))
+    #expect(try Data(contentsOf: source) == original)
+    sample = nil
+    #expect(!FileManager.default.fileExists(atPath: preview.output.path))
+}
+
 @Test func imageCompressionMeetsMeasuredGoalAndLeavesSourceUntouched() async throws {
     let directory = try compressionDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
