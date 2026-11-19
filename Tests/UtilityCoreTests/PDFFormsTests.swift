@@ -108,11 +108,11 @@ struct PDFFormsTests {
             textBounds = try #require(detected.first { $0.kind == .text && abs($0.bounds.midX - 144) < 5 }).bounds
             boxBounds = try #require(detected.first { $0.kind == .checkbox && abs($0.bounds.midX - 42) < 5 }).bounds
         }
-        let offBounds = boxBounds.offsetBy(dx: 45, dy: 0)
+        let offBounds = boxBounds.offsetBy(dx: 33, dy: 0)
         let textID = try subject.add(.text, on: 0, bounds: textBounds, name: "Applicant")
         let boxID = try subject.add(.checkbox, on: 0, bounds: boxBounds, name: "Accepted")
         _ = try subject.add(.checkbox, on: 0, bounds: offBounds, name: "Declined")
-        let noteBounds = CGRect(x: 30, y: 65, width: 155, height: 28)
+        let noteBounds = try #require(subject.placementBounds(for: .freeText, on: 0, near: CGPoint(x: 218, y: 72)))
         let noteID = try subject.add(.freeText, on: 0, bounds: noteBounds, name: "Note")
         try subject.update(textID, name: "Applicant", value: "Mélanie", checked: false, bounds: textBounds)
         try subject.update(boxID, name: "Accepted", value: "", checked: true, bounds: boxBounds)
@@ -136,8 +136,7 @@ struct PDFFormsTests {
         #expect(flattenedPage.rotation == rotation)
         #expect(flattenedPage.annotations.isEmpty)
         #expect(flattenedPage.string?.contains("Mélanie") == true)
-        // PDFKit can insert line breaks while extracting text from rotated appearances.
-        #expect(flattenedPage.string?.filter { !$0.isWhitespace }.contains("Reviewed") == true)
+        #expect(flattenedPage.string?.contains("Reviewed") == true)
         #expect(subject.fields(on: 0).count == 4)
 
         let existingURL = directory.appendingPathComponent("existing.pdf")
@@ -150,10 +149,11 @@ struct PDFFormsTests {
             $0.fieldName == "Applicant"
         }?.widgetStringValue == "Lucie")
 
-        if rotation == 0, let outputPath = environment["MAC_UTILITY_FORMS_FIXTURE_DIR"] {
+        if let outputPath = environment["MAC_UTILITY_FORMS_FIXTURE_DIR"] {
             let output = URL(fileURLWithPath: outputPath, isDirectory: true)
-            try editable.write(to: output.appendingPathComponent("editable.pdf"))
-            try flattened.write(to: output.appendingPathComponent("flattened.pdf"))
+            let suffix = rotation == 0 ? "" : "-rotated"
+            try editable.write(to: output.appendingPathComponent("editable\(suffix).pdf"))
+            try flattened.write(to: output.appendingPathComponent("flattened\(suffix).pdf"))
         }
     }
 

@@ -251,8 +251,6 @@ struct PDFFormsView: View {
         originalEdit = edit
     }
 
-    private func detectedPage() -> PDFPage? { session?.document.page(at: page) }
-
     private func picked(_ location: CGPoint) {
         guard !exporting else { return }
         guard edit == originalEdit else { return }
@@ -260,13 +258,8 @@ struct PDFFormsView: View {
             if let field = fields.last(where: { $0.bounds.contains(location) }) { select(field) }
             return
         }
-        guard let pageBounds = detectedPage()?.bounds(for: .cropBox) else { return }
-        let size = kind == .checkbox ? CGSize(width: 17, height: 17) : CGSize(width: 112, height: 24)
-        let width = min(size.width, pageBounds.width)
-        let height = min(size.height, pageBounds.height)
-        let x = min(max(location.x - width / 2, pageBounds.minX), pageBounds.maxX - width)
-        let y = min(max(location.y - height / 2, pageBounds.minY), pageBounds.maxY - height)
-        add(kind, bounds: CGRect(x: x, y: y, width: width, height: height))
+        guard let bounds = session?.placementBounds(for: kind, on: page, near: location) else { return }
+        add(kind, bounds: bounds)
         placing = false
     }
 

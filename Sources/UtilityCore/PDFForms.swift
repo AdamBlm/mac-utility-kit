@@ -83,6 +83,22 @@ public final class PDFForms {
         }
     }
 
+    public func placementBounds(for kind: Kind, on pageIndex: Int, near location: CGPoint) -> CGRect? {
+        guard let page = document.page(at: pageIndex) else { return nil }
+        let pageBounds = page.bounds(for: .cropBox)
+        let size: CGSize
+        switch kind {
+        case .checkbox: size = CGSize(width: 17, height: 17)
+        case .freeText where abs(page.rotation % 180) == 90: size = CGSize(width: 24, height: 112)
+        default: size = CGSize(width: 112, height: 24)
+        }
+        let width = min(size.width, pageBounds.width)
+        let height = min(size.height, pageBounds.height)
+        let x = min(max(location.x - width / 2, pageBounds.minX), pageBounds.maxX - width)
+        let y = min(max(location.y - height / 2, pageBounds.minY), pageBounds.maxY - height)
+        return CGRect(x: x, y: y, width: width, height: height)
+    }
+
     public func add(_ kind: Kind, on pageIndex: Int, bounds: CGRect, name: String) throws -> UUID {
         guard Kind.addable.contains(kind), let page = document.page(at: pageIndex) else {
             throw ToolError.invalid("Select a page and a supported field type.")
