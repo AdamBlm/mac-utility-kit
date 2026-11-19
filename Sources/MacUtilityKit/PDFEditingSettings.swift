@@ -176,17 +176,16 @@ private struct PDFSplitSettings: View {
     private var groupPreview: some View {
         switch preview {
         case .success(let groups):
-            let repeated = Dictionary(grouping: groups.flatMap { $0.group.pageNumbers }, by: { $0 })
-                .filter { $0.value.count > 1 }.keys.sorted()
+            let repeated = repeatedPages(in: groups.map(\.group))
             DisclosureGroup("\(groups.count) files to export") {
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 6) {
                         ForEach(groups, id: \.group.number) { item in
-                            HStack {
+                            VStack(alignment: .leading, spacing: 2) {
                                 Text(item.filename).lineLimit(1).help(item.filename)
-                                Spacer()
                                 Text("Pages " + pageDescription(item.group.pageNumbers))
                                     .foregroundStyle(.secondary)
+                                    .textSelection(.enabled)
                             }
                             .font(.callout)
                         }
@@ -196,8 +195,15 @@ private struct PDFSplitSettings: View {
                 .frame(maxHeight: 180)
             }
             if !repeated.isEmpty {
-                Text("Pages repeated across files: \(pageDescription(repeated))")
-                    .font(.caption).foregroundStyle(.secondary)
+                DisclosureGroup("Pages repeated across files · \(repeated.count)") {
+                    ScrollView {
+                        Text(pageDescription(repeated))
+                            .font(.caption).foregroundStyle(.secondary)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 100)
+                }
             }
         case .failure(let error):
             Text(error.localizedDescription).font(.caption).foregroundStyle(.secondary)
@@ -213,8 +219,18 @@ private struct PDFSplitSettings: View {
     }
 
     private func pageDescription(_ pages: [Int]) -> String {
-        let shown = pages.prefix(12).map(String.init).joined(separator: ", ")
-        return pages.count <= 12 ? shown : shown + " …"
+        PageSelection.expression(for: pages.map { $0 - 1 })
+    }
+
+    private func repeatedPages(in groups: [PDFSplitGroup]) -> [Int] {
+        var seen: Set<Int> = []
+        var repeated: Set<Int> = []
+        for group in groups {
+            for page in group.pageNumbers where !seen.insert(page).inserted {
+                repeated.insert(page)
+            }
+        }
+        return repeated.sorted()
     }
 }
 
