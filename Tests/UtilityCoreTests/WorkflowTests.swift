@@ -27,6 +27,34 @@ import UtilityCore
     #expect(try Data(contentsOf: valid) == original)
 }
 
+@Test(arguments: [0.5, 1.0])
+func cancelingResizeBatchDiscardsStagedOutputs(cancelAt: Double) async throws {
+    let folder = try temporaryFolder()
+    let manager = FileManager.default
+    defer { try? manager.removeItem(at: folder) }
+    let first = try imageFixture(in: folder)
+    let second = folder.appendingPathComponent("second.png")
+    try manager.copyItem(at: first, to: second)
+    let original = try Data(contentsOf: first)
+
+    let job = Task {
+        try await ToolRunner.run(.resizeImages, inputs: [first, second], destination: folder, imageSize: 40) { progress in
+            guard progress >= cancelAt else { return }
+            let manager = FileManager.default
+            let entries = try? manager.contentsOfDirectory(at: folder, includingPropertiesForKeys: nil)
+            let stage = entries?.first { $0.lastPathComponent.hasPrefix(".MacUtilityKit-") }
+            let stagedFiles = stage.flatMap { try? manager.contentsOfDirectory(atPath: $0.path) }
+            #expect(stagedFiles?.count == Int(cancelAt * 2))
+            withUnsafeCurrentTask { $0?.cancel() }
+        }
+    }
+
+    await #expect(throws: CancellationError.self) { try await job.value }
+    #expect(Set(try manager.contentsOfDirectory(atPath: folder.path)) == [first.lastPathComponent, second.lastPathComponent])
+    #expect(try Data(contentsOf: first) == original)
+    #expect(try Data(contentsOf: second) == original)
+}
+
 @Test func mergeWritesReadablePDF() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
