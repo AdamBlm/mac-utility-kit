@@ -23,4 +23,20 @@ struct CaseConverterTests {
         let text = "HELLO! «WORLD?»  NEXT."
         #expect(try CaseConverter.convert(text, to: .sentence, locale: Locale(identifier: "en")) == "Hello! «World?»  Next.")
     }
+
+    @Test func convertsHighlightedLinesWithoutIncludingTheEndBoundary() throws {
+        let input = "👋 first\r\nkeep\riş\u{2028}last\n"
+        let keep = try #require(input.range(of: "keep"))
+        let regional = try #require(input.range(of: "ş"))
+        let last = try #require(input.range(of: "last"))
+        let firstLine = input.startIndex..<keep.lowerBound
+        let identifier = try CaseConverter.lineSelection(
+            in: input, for: [regional, firstLine, last.upperBound..<last.upperBound]
+        )
+        #expect(identifier == "1, 3")
+        #expect(try CaseConverter.convert(input, to: .uppercase, locale: Locale(identifier: "tr"), selectedLines: identifier)
+                == "👋 FİRST\r\nkeep\rİŞ\u{2028}last\n")
+        #expect(try CaseConverter.lineSelection(in: input, for: [keep.lowerBound..<last.lowerBound]) == "2–3")
+        #expect(try CaseConverter.lineSelection(in: input, for: [last.upperBound..<last.upperBound]).isEmpty)
+    }
 }

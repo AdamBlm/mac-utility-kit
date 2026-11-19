@@ -13,14 +13,25 @@ struct CaseConverterView: View {
     @Binding var draft: CaseConverterDraft
     @State private var output = ""
     @State private var issue: String?
+    @State private var selection: TextSelection?
+
+    private var highlightedRanges: [Range<String.Index>] {
+        guard let selection else { return [] }
+        switch selection.indices {
+        case .selection(let range): return range.isEmpty ? [] : [range]
+        case .multiSelection(let ranges): return Array(ranges.ranges.filter { !$0.isEmpty })
+        @unknown default: return []
+        }
+    }
 
     var body: some View {
         InteractiveToolLayout(tool: .caseConverter) { palette in
             WorkspaceSection("Text", palette: palette) {
                 TextEditor(text: Binding(get: { draft.input }, set: {
                     draft.input = $0
+                    selection = nil
                     clear()
-                }))
+                }), selection: $selection)
                     .font(.body.monospaced())
                     .frame(minHeight: 100)
                     .scrollContentBackground(.hidden)
@@ -48,11 +59,15 @@ struct CaseConverterView: View {
                 }
                 Toggle("Convert selected lines", isOn: $draft.useLineSelection)
                 if draft.useLineSelection {
-                    TextField("Lines, e.g. 1, 3–5", text: $draft.lines)
+                    HStack {
+                        TextField("Lines, e.g. 1, 3–5", text: $draft.lines)
+                        Button("Use Highlighted Lines", action: useHighlightedLines)
+                            .disabled(highlightedRanges.isEmpty)
+                    }
                 }
                 Button("Convert", systemImage: "textformat", action: convert)
                     .buttonStyle(.borderedProminent)
-                    .disabled(draft.input.isEmpty)
+                    .disabled(draft.input.isEmpty || (draft.useLineSelection && draft.lines.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty))
                 if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             }
             if !output.isEmpty {
@@ -80,6 +95,17 @@ struct CaseConverterView: View {
     private func clear() {
         output = ""
         issue = nil
+    }
+
+    private func useHighlightedLines() {
+        do {
+            let lines = try CaseConverter.lineSelection(in: draft.input, for: highlightedRanges)
+            guard !lines.isEmpty else { return }
+            draft.lines = lines
+            clear()
+        } catch {
+            issue = error.localizedDescription
+        }
     }
 
     private func convert() {

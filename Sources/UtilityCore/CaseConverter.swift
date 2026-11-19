@@ -13,6 +13,38 @@ public enum TextCase: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum CaseConverter {
+    public static func lineSelection(in text: String, for ranges: [Range<String.Index>]) throws -> String {
+        guard text.utf8.count <= 2_097_152 else { throw ToolError.invalid("Enter up to 2 MB of text.") }
+        var lineStarts = [text.startIndex]
+        for index in text.indices where text[index].isNewline {
+            lineStarts.append(text.index(after: index))
+        }
+
+        func line(at index: String.Index, includingBoundary: Bool) -> Int {
+            var lower = 0
+            var upper = lineStarts.count
+            while lower < upper {
+                let mid = lower + (upper - lower) / 2
+                if lineStarts[mid] < index || (includingBoundary && lineStarts[mid] == index) {
+                    lower = mid + 1
+                } else {
+                    upper = mid
+                }
+            }
+            return lower
+        }
+
+        var lines = IndexSet()
+        for range in ranges where !range.isEmpty && range.lowerBound >= text.startIndex && range.upperBound <= text.endIndex {
+            let first = line(at: range.lowerBound, includingBoundary: true)
+            let last = line(at: range.upperBound, includingBoundary: false)
+            lines.insert(integersIn: first..<(last + 1))
+        }
+        return lines.rangeView.map { range in
+            range.count == 1 ? String(range.lowerBound) : "\(range.lowerBound)–\(range.upperBound - 1)"
+        }.joined(separator: ", ")
+    }
+
     public static func convert(
         _ text: String, to style: TextCase, locale: Locale = .current, selectedLines: String? = nil
     ) throws -> String {
