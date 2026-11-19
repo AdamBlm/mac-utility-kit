@@ -76,6 +76,9 @@ struct AskDocumentView: View {
                 }
             }
             .disabled(job != nil)
+            if draft.index == nil {
+                modelStatus
+            }
             if isPDF {
                 VStack(alignment: .leading, spacing: 8) {
                     SettingRow("Pages") {
@@ -117,13 +120,17 @@ struct AskDocumentView: View {
         }
     }
 
+    private var modelStatus: some View {
+        HStack(alignment: .firstTextBaseline) {
+            Text(modelMessage).font(.callout).foregroundStyle(.secondary)
+            Spacer()
+            if !modelReady { Button("Check Again", action: refreshModel) }
+        }
+    }
+
     private func questionControls(_ index: AskDocument.Index) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .firstTextBaseline) {
-                Text(modelMessage).font(.callout).foregroundStyle(.secondary)
-                Spacer()
-                if !modelReady { Button("Check Again", action: refreshModel) }
-            }
+            modelStatus
             if !draft.turns.isEmpty {
                 Picker("Question mode", selection: $draft.questionMode) {
                     ForEach(AskDocument.QuestionMode.allCases) { mode in

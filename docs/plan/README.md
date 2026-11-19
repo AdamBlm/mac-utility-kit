@@ -36,7 +36,7 @@ Each row specifies user controls, results, and acceptance checks. Use the [featu
 | Foundation | Extend Resize Images, Merge PDFs, and Compress Video to the linked specifications. Validate the shared file flow, previews, and background jobs with these tools. |
 | v0.1 · 24 tools | Compress Video, Convert Video, Media Info, Extract Audio, Convert Images, Compress Images, Resize Images, Remove Metadata, Merge PDFs, Split PDF, Organize PDF, Delete Pages, Extract Pages, Images to PDF, PDF to Images, Sign PDF, Extract Text, Word Counter, QR Code, Batch Rename, Keep Awake, JSON Formatter, Base64, and Hash Generator. Add the PDF reader with search, thumbnails, printing, and tool handoffs. |
 | v0.2 · 52 tools | Finish video, audio, and images. Add Transcribe, Capture Text, and Text to Speech. |
-| v0.3 · 71 tools | Finish documents and text/speech. Choose the production inference provider before shipping Summarize and Ask a Document. |
+| v0.3 · 71 tools | Finish documents and text/speech. Verify Summarize and Ask a Document against the on-device Apple Intelligence model. |
 | v0.4 · 85 tools | Finish files and developer tools. Add CLI and opt-in local MCP for approved, non-interactive operations. |
 | v1.0 · 102 tools | Finish Mac utilities, menu bar mode, global shortcut, launch at login, and optional draft retention. Prototype OS-sensitive behaviors early. |
 
@@ -44,7 +44,7 @@ Each row specifies user controls, results, and acceptance checks. Use the [featu
 
 A tool ships when its planned controls work from the normal app entry point, its result passes the row's checks, and unsupported modes have a clear explanation. Cover clean macOS 15 and current macOS installs, keyboard workflows, large or malformed inputs, mixed-success batches, cancellation, name conflicts, and denied permissions.
 
-Use Apache-2.0 as the provisional license for original code. Confirm it before source publication and review the pinned licenses of bundled dependencies, executables, and models. Release signed and notarized DMGs through GitHub after signing credentials and publication are approved. The AI provider remains open and does not affect v0.1.
+Use Apache-2.0 as the provisional license for original code. Confirm it before source publication and review the pinned licenses of bundled dependencies, executables, and models. Release signed and notarized DMGs through GitHub after signing credentials and publication are approved. Summarize and Ask a Document use Apple Intelligence through Foundation Models. Generated output requires an eligible Mac with macOS 26 or later and a ready system model. The app bundles no inference model and uses no remote fallback.
 
 ## Code boundaries
 
