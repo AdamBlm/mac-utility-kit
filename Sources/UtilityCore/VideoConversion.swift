@@ -1,6 +1,11 @@
 import AVFoundation
 
 public enum VideoConversion {
+    public static func checkWebMPassthrough(_ input: URL, audio: VideoConversionAudio, executable: URL) async throws {
+        guard input.isFileURL else { throw ToolError.invalid("Choose a local video file.") }
+        try await FFmpegVideoConversion.checkWebMPassthrough(input, audio: audio, executable: executable)
+    }
+
     public static func convert(
         _ input: URL, to output: URL, options: VideoConversionOptions,
         progress: @escaping @Sendable (Double) async -> Void

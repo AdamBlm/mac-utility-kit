@@ -21,10 +21,29 @@ struct ToolWorkspace: View {
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
     @State private var compressionReview: CompressionReview?
+    @State private var webMReview: WebMPassthroughReview?
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
 
     private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
+
+    private struct WebMPassthroughRequest: Equatable {
+        let inputs: [URL]
+        let audio: VideoConversionAudio
+        let executable: URL
+    }
+
+    private struct WebMPassthroughReview {
+        let request: WebMPassthroughRequest
+        let failures: [String]
+    }
+
+    private var webMRequest: WebMPassthroughRequest? {
+        let options = draft.options.conversion
+        guard tool == .convertVideo, options.format == .webm, options.mode == .passthrough,
+              !draft.inputs.isEmpty, let executable = options.ffmpegExecutable else { return nil }
+        return .init(inputs: draft.inputs, audio: options.audio, executable: executable)
+    }
 
     var body: some View {
         Group {
@@ -36,6 +55,21 @@ struct ToolWorkspace: View {
             } else {
                 editor(for: tool)
             }
+        }
+        .task(id: webMRequest) { [request = webMRequest] in
+            guard let request else { return }
+            webMReview = nil
+            var failures: [String] = []
+            for input in request.inputs {
+                do {
+                    try await VideoConversion.checkWebMPassthrough(input, audio: request.audio, executable: request.executable)
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    failures.append("\(input.lastPathComponent) · \(error.localizedDescription)")
+                }
+            }
+            guard !Task.isCancelled else { return }
+            webMReview = .init(request: request, failures: failures)
         }
         .sheet(isPresented: Binding(get: { comparison != nil }, set: { if !$0 { comparison = nil } })) {
             if let comparison { ImageComparisonView(pair: comparison) }
@@ -113,7 +147,8 @@ struct ToolWorkspace: View {
     private var exportSettingsIncomplete: Bool {
         switch tool {
         case .convertVideo:
-            draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil
+            (draft.options.conversion.requiresFFmpeg && draft.options.conversion.ffmpegExecutable == nil)
+                || (webMRequest.map { webMReview?.request != $0 || webMReview?.failures.count == $0.inputs.count } ?? false)
         case .trimVideo:
             trimReview?.inputs != draft.inputs || trimReview?.options != draft.options.trim
                 || trimReview?.permitsExport != true
@@ -211,6 +246,19 @@ struct ToolWorkspace: View {
                             }
                         case .convertVideo:
                             conversionControls()
+                            if let request = webMRequest {
+                                if let review = webMReview, review.request == request {
+                                    if !review.failures.isEmpty {
+                                        Text("Compatible files can still be exported. Remove the files listed below or try Transcode or different audio settings.")
+                                            .font(.callout).foregroundStyle(.secondary)
+                                        ForEach(Array(review.failures.enumerated()), id: \.offset) { _, failure in
+                                            Text(failure).font(.caption).textSelection(.enabled)
+                                        }
+                                    }
+                                } else {
+                                    ProgressView("Checking WebM compatibility…").controlSize(.small)
+                                }
+                            }
                         case .changeSpeed:
                             ChangeSpeedControls(inputs: draft.inputs, options: $draft.options.speed)
                         case .extractFrames:

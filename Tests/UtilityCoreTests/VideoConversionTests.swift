@@ -143,11 +143,25 @@ func videoConversionReportsObservedWebMCodecsAndDroppedStreams() async throws {
     options.ffmpegExecutable = executable
     options.format = .webm
     options.mode = .passthrough
+    let incompatible = try fixture(["-c:v", "libx264", "-c:a", "aac"], named: "H264.mp4")
+    await #expect(throws: ToolError.self) {
+        try await VideoConversion.checkWebMPassthrough(incompatible, audio: .keep, executable: executable)
+    }
+    let mixedAudio = try fixture(["-c:v", "libvpx-vp9", "-c:a", "aac"], named: "VP9 AAC.mkv")
+    await #expect(throws: ToolError.self) {
+        try await VideoConversion.checkWebMPassthrough(mixedAudio, audio: .keep, executable: executable)
+    }
+    try await VideoConversion.checkWebMPassthrough(mixedAudio, audio: .remove, executable: executable)
+    let audioOnly = try fixture(["-map", "1:a", "-c:a", "libopus"], named: "Audio only.webm")
+    await #expect(throws: ToolError.self) {
+        try await VideoConversion.checkWebMPassthrough(audioOnly, audio: .keep, executable: executable)
+    }
     for (encoder, audioEncoder, video, audio) in [
         ("libvpx", "libvorbis", "VP8", "Vorbis"),
         ("libvpx-vp9", "libopus", "VP9", "Opus")
     ] {
         let input = try fixture(["-c:v", encoder, "-c:a", audioEncoder], named: "\(video).webm")
+        try await VideoConversion.checkWebMPassthrough(input, audio: .keep, executable: executable)
         let output = folder.appending(path: "\(video) copy.webm")
         let summary = try await VideoConversion.convert(input, to: output, options: options) { _ in }
         #expect(summary.contains("Video: \(video) · Audio: \(audio)"))

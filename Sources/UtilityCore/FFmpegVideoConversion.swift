@@ -1,6 +1,26 @@
 import Foundation
 
 enum FFmpegVideoConversion {
+    static func checkWebMPassthrough(_ input: URL, audio: VideoConversionAudio, executable: URL) async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: ".webm-check-\(UUID())", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false,
+                                                attributes: [.posixPermissions: 0o700])
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let arguments = ["-nostdin", "-hide_banner", "-loglevel", "error", "-n",
+                         "-protocol_whitelist", "file", "-i", input.path]
+            // Require normal video, then check the exact set of streams used by export.
+            + ["-map", "0:V:0", "-map", "-0:V:0"]
+            + passthroughArguments(audio: audio)
+            + ["-t", "0", "-f", "webm", folder.appending(path: "Check.webm").path]
+        try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: folder)
+    }
+
+    private static func passthroughArguments(audio: VideoConversionAudio) -> [String] {
+        var arguments = ["-map", "0"]
+        if audio == .remove { arguments += ["-map", "-0:a?"] }
+        return arguments + ["-c", "copy"]
+    }
+
     static func export(
         _ input: URL, to output: URL, options: VideoConversionOptions, executable: URL
     ) async throws -> String? {
@@ -14,9 +34,7 @@ enum FFmpegVideoConversion {
         switch options.mode {
         case .passthrough:
             // Keep all container-compatible streams and fail if the muxer cannot write them.
-            arguments += ["-map", "0"]
-            if options.audio == .remove { arguments += ["-map", "-0:a?"] }
-            arguments += ["-c", "copy"]
+            arguments += passthroughArguments(audio: options.audio)
         case .transcode:
             arguments += ["-map", "0:V:0"]
             if options.audio == .keep { arguments += ["-map", "0:a?"] }
