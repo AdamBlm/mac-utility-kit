@@ -228,7 +228,12 @@ private func writeVideoFixture(
     #expect(try PageSelection.indices(expression, pageCount: 5) == selected)
     #expect(PageSelection.expression(for: []) == "none")
     #expect(try PageSelection.indices("5, 1, 3–4, 1", pageCount: 5) == [4, 0, 2, 3])
+    #expect(try PageSelection.indices("5,\n1–3", pageCount: 5) == [4, 0, 1, 2])
     #expect(try PageSelection.indices("none", pageCount: 5).isEmpty)
+    #expect(try PageSelection.indices("all", pageCount: 0).isEmpty)
+    #expect(throws: ToolError.self) { try PageSelection.indices("all", pageCount: -1) }
+    let emptyDocument = #expect(throws: ToolError.self) { try PageSelection.indices("1", pageCount: 0) }
+    #expect(emptyDocument?.localizedDescription == "The document has no pages.")
     #expect(throws: ToolError.self) { try PageSelection.indices("6", pageCount: 5) }
     #expect(throws: ToolError.self) { try PageSelection.indices("4-2", pageCount: 5) }
 }

@@ -139,16 +139,17 @@ public enum PageSelection {
         return ranges.joined(separator: ", ")
     }
 
-
     public static func indices(_ expression: String, pageCount: Int) throws -> [Int] {
+        guard pageCount >= 0 else { throw ToolError.invalid("The source page count is invalid.") }
         let value = expression.trimmingCharacters(in: .whitespacesAndNewlines)
         if value.isEmpty || value.lowercased() == "all" { return Array(0..<pageCount) }
         if value.lowercased() == "none" { return [] }
+        guard pageCount > 0 else { throw ToolError.invalid("The document has no pages.") }
         var pages: [Int] = []
         var seen: Set<Int> = []
-        for token in value.replacingOccurrences(of: "–", with: "-").split(separator: ",", omittingEmptySubsequences: false) {
-            let bounds = token.split(separator: "-", omittingEmptySubsequences: false)
-            let numbers = bounds.compactMap { Int($0.trimmingCharacters(in: .whitespaces)) }
+        for token in value.split(separator: ",", omittingEmptySubsequences: false) {
+            let bounds = token.split(omittingEmptySubsequences: false) { $0 == "-" || $0 == "–" }
+            let numbers = bounds.compactMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
             guard numbers.count == bounds.count, (1...2).contains(numbers.count),
                   let start = numbers.first, let end = numbers.last,
                   start >= 1, end <= pageCount, end >= start else {
