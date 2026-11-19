@@ -470,6 +470,29 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(!names.contains { $0.hasPrefix(".MacUtilityKit-") })
 }
 
+@Test func trimVideoUsesEachPreviewedRangeInAMixedDurationBatch() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let long = folder.appending(path: "long.mov")
+    let short = folder.appending(path: "short.mov")
+    try await writeVideoFixture(to: long, width: 160, height: 120, frames: 30)
+    try await writeVideoFixture(to: short, width: 160, height: 120, frames: 18)
+    let inputs = [long, short]
+    var options = ToolOptions()
+    options.trim.start = 0.2
+    let longRange = try await TrimVideo.plannedRange(long, options: options.trim)
+    let shortRange = try await TrimVideo.plannedRange(short, options: options.trim)
+    #expect(longRange.end > shortRange.end)
+    let report = try await ToolRunner.run(.trimVideo, inputs: inputs, destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.failures.isEmpty)
+    #expect(report.outputs.count == 2)
+    for (output, planned) in zip(report.outputs, [longRange, shortRange]) {
+        let asset = AVURLAsset(url: output)
+        #expect(try await asset.load(.isPlayable))
+        #expect(abs(try await asset.load(.duration).seconds - planned.duration) < 0.075)
+    }
+}
+
 @Test func resizeVideoPublishesAlignedMP4ThroughSharedRunner() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

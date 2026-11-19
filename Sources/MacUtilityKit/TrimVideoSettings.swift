@@ -1,4 +1,5 @@
 import AVKit
+import Combine
 import SwiftUI
 import UtilityCore
 
@@ -13,13 +14,21 @@ struct TrimVideoReview {
 struct TrimVideoSettings: View {
     let inputs: [URL]
     @Binding var review: TrimVideoReview?
-    private var input: URL? { inputs.first }
+    private var input: URL? {
+        if let previewInput, inputs.contains(previewInput) { return previewInput }
+        return inputs.first
+    }
     @Binding var options: TrimVideoOptions
     @State private var player = AVPlayer()
+    @State private var previewInput: URL?
     @State private var scrubTime = 0.0
+    @State private var timeObserver: Any?
+    @State private var pendingSeek: UUID?
     @State private var startText: String?
     @State private var endText: String?
     @State private var loadedDuration: Double?
+    @State private var loadedInput: URL?
+    @State private var previewReady = false
     @State private var playbackError: String?
 
     private struct Request: Equatable {
@@ -31,6 +40,10 @@ struct TrimVideoSettings: View {
         .number.grouping(.never).precision(.fractionLength(0...3))
     }
 
+    private var activeDuration: Double? {
+        loadedInput == input ? loadedDuration : nil
+    }
+
     var body: some View {
         let request = Request(inputs: inputs, options: options)
         SettingRow("Method") {
@@ -40,32 +53,44 @@ struct TrimVideoSettings: View {
             .labelsHidden()
         }
         .task(id: input) { await load(input) }
-        if let duration = loadedDuration {
-            VideoPlayer(player: player)
-                .frame(maxWidth: .infinity, minHeight: 180, idealHeight: 240)
-            Slider(value: $scrubTime, in: 0...duration)
-                .accessibilityLabel("Scrub video")
-                .onChange(of: scrubTime) {
-                    player.pause()
-                    if let item = player.currentItem {
-                        item.forwardPlaybackEndTime = .invalid
-                        item.cancelPendingSeeks()
-                        player.seek(to: CMTime(seconds: scrubTime, preferredTimescale: 600),
-                                    toleranceBefore: .zero, toleranceAfter: .zero)
+        if inputs.count > 1 {
+            SettingRow("Preview file") {
+                Picker("Preview file", selection: Binding(get: { input }, set: { previewInput = $0 })) {
+                    ForEach(Array(inputs.enumerated()), id: \.offset) { index, file in
+                        Text("\(index + 1). \(file.lastPathComponent)").tag(Optional(file))
                     }
                 }
+                .labelsHidden()
+            }
+        }
+        if let duration = activeDuration, let item = player.currentItem, playbackError == nil {
+            VideoPlayer(player: player)
+                .frame(maxWidth: .infinity, minHeight: 180, idealHeight: 240)
+                .onReceive(item.publisher(for: \.status).receive(on: DispatchQueue.main)) { status in
+                    guard item === player.currentItem else { return }
+                    previewReady = status == .readyToPlay
+                    if status == .failed { playbackFailed(item.error, item: item) }
+                }
+                .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.failedToPlayToEndTimeNotification,
+                                                                 object: item).receive(on: DispatchQueue.main)) { note in
+                    playbackFailed(note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error, item: item)
+                }
+            Slider(value: Binding(get: { scrubTime }, set: { seek(to: $0) }), in: 0...duration)
+                .accessibilityLabel("Scrub video")
+                .disabled(!previewReady)
             HStack {
                 Text("\(scrubTime.formatted(format)) s").monospacedDigit()
                 Spacer()
                 Button("Set In") {
                     startText = nil
-                    options.start = scrubTime
+                    options.start = markTime()
                 }
                 Button("Set Out") {
                     endText = nil
-                    options.end = scrubTime
+                    options.end = markTime()
                 }
             }
+            .disabled(!previewReady)
         }
         SettingRow("In point") {
             TextField("In point timecode", text: Binding(
@@ -95,7 +120,7 @@ struct TrimVideoSettings: View {
                 }
             } else {
                 Text("End of video").foregroundStyle(.secondary)
-                Button("Set Time") { options.end = loadedDuration ?? options.start + 1 }
+                Button("Set Time") { options.end = activeDuration ?? options.start + 1 }
             }
         }
         if options.start < 0 || (options.end ?? 0) < 0 {
@@ -113,15 +138,15 @@ struct TrimVideoSettings: View {
             ForEach(Array(zip(inputs, review.ranges).enumerated()), id: \.offset) { index, entry in
                 let (source, result) = entry
                 if inputs.count > 1 {
-                    Text(source.lastPathComponent).font(.callout.weight(.medium)).lineLimit(1)
+                    Text("\(index + 1). \(source.lastPathComponent)").font(.callout.weight(.medium)).lineLimit(1)
                 }
                 switch result {
                 case .success(let planned):
                     Text("\(label): \(planned.start.formatted(format))–\(planned.end.formatted(format)) s")
                         .font(.callout).monospacedDigit()
-                    if index == 0 {
-                        Button("Preview Selection", systemImage: "play.fill") { preview(planned) }
-                            .disabled(loadedDuration == nil)
+                    if source == input {
+                        Button("Preview Selection", systemImage: "play.fill") { seek(to: planned.start, playTo: planned.end) }
+                            .disabled(activeDuration == nil || !previewReady)
                     }
                 case .failure(let issue):
                     Text(issue.localizedDescription).font(.callout).foregroundStyle(.red)
@@ -133,9 +158,19 @@ struct TrimVideoSettings: View {
         if let playbackError { Text(playbackError).font(.callout).foregroundStyle(.secondary) }
         Divider()
             .task(id: request) { await plan(request) }
+            .onAppear { observePlayhead() }
+            .onReceive(NotificationCenter.default.publisher(for: AVPlayerItem.didPlayToEndTimeNotification)
+                .receive(on: DispatchQueue.main)) { notification in
+                guard let item = notification.object as? AVPlayerItem,
+                      item === player.currentItem, pendingSeek == nil, player.rate == 0,
+                      item.forwardPlaybackEndTime.isNumeric,
+                      abs(player.currentTime().seconds - item.forwardPlaybackEndTime.seconds) < 0.001 else { return }
+                item.forwardPlaybackEndTime = .invalid
+            }
             .onDisappear {
-                player.pause()
-                player.currentItem?.cancelPendingSeeks()
+                pauseAndCancelSeek()
+                if let timeObserver { player.removeTimeObserver(timeObserver) }
+                timeObserver = nil
             }
     }
 
@@ -165,10 +200,13 @@ struct TrimVideoSettings: View {
     }
 
     private func load(_ url: URL?) async {
-        player.pause()
+        guard !Task.isCancelled else { return }
+        pauseAndCancelSeek()
         player.replaceCurrentItem(with: nil)
         scrubTime = 0
         loadedDuration = nil
+        loadedInput = nil
+        previewReady = false
         playbackError = nil
         guard let url else { return }
         do {
@@ -179,14 +217,15 @@ struct TrimVideoSettings: View {
             ])
             player.replaceCurrentItem(with: AVPlayerItem(asset: asset))
             loadedDuration = duration
+            loadedInput = url
         } catch {
             if !Task.isCancelled { playbackError = "Preview is unavailable for this video." }
         }
     }
 
     private func plan(_ request: Request) async {
-        player.pause()
-        player.currentItem?.cancelPendingSeeks()
+        guard !Task.isCancelled else { return }
+        pauseAndCancelSeek()
         guard !request.inputs.isEmpty else { return }
         do {
             try await Task.sleep(for: .milliseconds(250))
@@ -206,16 +245,51 @@ struct TrimVideoSettings: View {
         }
     }
 
-    private func preview(_ range: VideoTrimRange) {
-        guard let item = player.currentItem else { return }
+    private func pauseAndCancelSeek() {
+        pendingSeek = nil
         player.pause()
-        item.cancelPendingSeeks()
-        item.forwardPlaybackEndTime = CMTime(seconds: range.end, preferredTimescale: 1_000_000)
-        player.seek(to: CMTime(seconds: range.start, preferredTimescale: 1_000_000),
+        player.currentItem?.cancelPendingSeeks()
+        player.currentItem?.forwardPlaybackEndTime = .invalid
+    }
+
+    private func playbackFailed(_ error: Error?, item: AVPlayerItem) {
+        guard item === player.currentItem else { return }
+        pauseAndCancelSeek()
+        previewReady = false
+        playbackError = error?.localizedDescription ?? "Preview is unavailable for this video."
+    }
+
+    private func observePlayhead() {
+        guard timeObserver == nil else { return }
+        timeObserver = player.addPeriodicTimeObserver(forInterval: CMTime(value: 1, timescale: 20), queue: .main) { _ in
+            MainActor.assumeIsolated {
+                let seconds = player.currentTime().seconds
+                if pendingSeek == nil, let duration = loadedDuration, seconds.isFinite {
+                    scrubTime = min(duration, max(0, seconds))
+                }
+            }
+        }
+    }
+
+    private func markTime() -> Double {
+        guard let duration = activeDuration else { return 0 }
+        let current = player.currentTime().seconds
+        return pendingSeek == nil && current.isFinite ? min(duration, max(0, current)) : scrubTime
+    }
+
+    private func seek(to seconds: Double, playTo end: Double? = nil) {
+        guard previewReady, let item = player.currentItem, let duration = activeDuration else { return }
+        pauseAndCancelSeek()
+        let request = UUID()
+        pendingSeek = request
+        scrubTime = min(duration, max(0, seconds))
+        if let end { item.forwardPlaybackEndTime = CMTime(seconds: end, preferredTimescale: 1_000_000) }
+        player.seek(to: CMTime(seconds: scrubTime, preferredTimescale: 1_000_000),
                     toleranceBefore: .zero, toleranceAfter: .zero) { finished in
-            guard finished else { return }
             Task { @MainActor in
-                if player.currentItem === item { player.play() }
+                guard pendingSeek == request, player.currentItem === item else { return }
+                pendingSeek = nil
+                if finished, end != nil { player.play() }
             }
         }
     }
