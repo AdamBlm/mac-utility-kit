@@ -45,6 +45,7 @@ enum FFmpegVideoConversion {
             }
             if options.audio == .keep {
                 arguments += ["-c:a", options.format == .webm ? "libopus" : "aac"]
+                if let rate = options.audioKbps { arguments += ["-b:a", "\(rate)k"] }
             }
             var filters: [String] = []
             if let height = options.maximumHeight {
@@ -75,6 +76,6 @@ enum FFmpegVideoConversion {
         validation += ["-i", output.path, "-map", "0:V:0", "-frames:v", "1", "-f", "null", "-"]
         try await ExternalTool.run(executable, name: "FFmpeg", arguments: validation, directory: directory,
                                    diagnostics: outputLog)
-        return try FFmpegStreamInventory.webMSummary(input: inputLog, output: outputLog)
+        return try FFmpegStreamInventory.webMSummary(input: inputLog, output: outputLog, audioKbps: options.audioKbps)
     }
 }

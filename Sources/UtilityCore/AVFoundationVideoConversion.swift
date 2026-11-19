@@ -93,6 +93,23 @@ enum AVFoundationVideoConversion {
             }
             details.append(audioCodecs.isEmpty ? "\(audio.count) audio track(s)" : audioCodecs.joined(separator: ", "))
         }
+        if let audioKbps = options.audioKbps {
+            if audio.isEmpty {
+                details.append("No audio")
+            } else {
+                details.append("Audio target: \(audioKbps) kb/s per track")
+                var estimates: [String] = []
+                for track in audio {
+                    let rate = try? await track.load(.estimatedDataRate)
+                    if let rate, rate.isFinite, rate > 0 {
+                        estimates.append((Double(rate) / 1_000).formatted(.number.precision(.fractionLength(0))))
+                    }
+                }
+                if estimates.count == audio.count {
+                    details.append("Estimated audio: \(estimates.joined(separator: ", ")) kb/s")
+                }
+            }
+        }
         if !sourceTracks.isEmpty {
             for type in Set(sourceTracks.map(\.mediaType)).sorted(by: { $0.rawValue < $1.rawValue }) {
                 let name: String

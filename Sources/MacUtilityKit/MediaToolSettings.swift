@@ -15,6 +15,9 @@ extension ToolWorkspace {
                        let codec = format.supportedCodecs.first {
                         draft.options.conversion.codec = codec
                     }
+                    if let bitrate = draft.options.conversion.audioKbps, !format.audioBitrateRange.contains(bitrate) {
+                        draft.options.conversion.audioKbps = nil
+                    }
                 }
             )) {
                 ForEach(VideoConversionFormat.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -30,6 +33,7 @@ extension ToolWorkspace {
                     if mode == .passthrough {
                         draft.options.conversion.maximumHeight = nil
                         draft.options.conversion.frameRate = nil
+                        draft.options.conversion.audioKbps = nil
                     }
                 }
             )) {
@@ -70,11 +74,30 @@ extension ToolWorkspace {
                     }
                 }
                 SettingRow("Audio") {
-                    Picker("Audio", selection: $draft.options.conversion.audio) {
+                    Picker("Audio", selection: Binding(
+                        get: { draft.options.conversion.audio },
+                        set: { audio in
+                            draft.options.conversion.audio = audio
+                            if audio == .remove { draft.options.conversion.audioKbps = nil }
+                        }
+                    )) {
                         ForEach(VideoConversionAudio.allCases, id: \.self) { Text($0.title).tag($0) }
                     }
                     .labelsHidden()
                     .pickerStyle(.segmented)
+                }
+                if conversion.mode == .transcode, conversion.audio == .keep {
+                    SettingRow("Audio bitrate") {
+                        Picker("Audio bitrate per track", selection: $draft.options.conversion.audioKbps) {
+                            Text("Automatic").tag(Int?.none)
+                            let bitrates = [32, 48, 64, 96, 128, 160, 192, 256, 320]
+                            ForEach(bitrates.filter(conversion.format.audioBitrateRange.contains), id: \.self) { kbps in
+                                Text("\(kbps) kb/s per track").tag(Optional(kbps))
+                            }
+                        }
+                        .labelsHidden()
+                        .help("Custom bitrate requires FFmpeg. \(conversion.format.title) targets range from \(conversion.format.audioBitrateRange.lowerBound) to \(conversion.format.audioBitrateRange.upperBound) kb/s per track. The achieved rate depends on the source audio.")
+                    }
                 }
                 if !conversion.requiresFFmpeg || conversion.ffmpegExecutable != nil {
                     executablePicker("FFmpeg", selection: $draft.options.conversion.ffmpegExecutable)

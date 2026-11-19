@@ -12,6 +12,11 @@ public enum VideoConversionFormat: String, CaseIterable, Sendable {
         self == .webm ? [.vp9] : [.h264, .hevc]
     }
 
+    public var audioBitrateRange: ClosedRange<Int> {
+        // libopus caps mono streams at 256 kb/s. A batch target must also work for mono.
+        self == .webm ? 32...256 : VideoCompressionOptions.audioBitrateRange
+    }
+
     var nativeFileType: AVFileType? {
         switch self {
         case .mp4: .mp4
@@ -57,12 +62,13 @@ public struct VideoConversionOptions: Equatable, Sendable {
     public var maximumHeight: Int?
     public var frameRate: Int?
     public var audio: VideoConversionAudio = .keep
+    public var audioKbps: Int?
     public var ffmpegExecutable: URL?
 
     public init() {}
 
     public var requiresFFmpeg: Bool {
-        format == .webm || maximumHeight != nil || frameRate != nil
+        format == .webm || maximumHeight != nil || frameRate != nil || audioKbps != nil
     }
 
     package var validationIssue: String? {
@@ -86,6 +92,18 @@ public struct VideoConversionOptions: Equatable, Sendable {
         }
         if let frameRate, !(1...240).contains(frameRate) {
             throw ToolError.invalid("Enter a frame rate between 1 and 240 fps.")
+        }
+        if let audioKbps {
+            guard mode == .transcode, audio == .keep else {
+                throw ToolError.invalid("Audio bitrate requires transcoding with audio kept.")
+            }
+            guard format.audioBitrateRange.contains(audioKbps) else {
+                let range = format.audioBitrateRange
+                throw ToolError.invalid("Audio bitrate for \(format.title) must be \(range.lowerBound)–\(range.upperBound) kb/s per track.")
+            }
+            guard ffmpegExecutable != nil else {
+                throw ToolError.invalid("Select an FFmpeg executable to set the audio bitrate, or choose Automatic.")
+            }
         }
         if let ffmpegExecutable, !ExternalTool.isExecutable(ffmpegExecutable) {
             throw ToolError.invalid("Choose an executable FFmpeg binary or clear the custom selection.")

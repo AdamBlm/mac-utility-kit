@@ -14,6 +14,70 @@ import Testing
     #expect(options.validationIssue == nil)
 }
 
+@Test func videoConversionRequiresAnEncoderAndKeptAudioForCustomBitrate() throws {
+    var options = VideoConversionOptions()
+    options.audioKbps = 128
+    #expect(options.requiresFFmpeg)
+    #expect(options.validationIssue?.contains("FFmpeg") == true)
+    options.ffmpegExecutable = URL(fileURLWithPath: "/usr/bin/true")
+    #expect(options.validationIssue == nil)
+    options.audio = .remove
+    #expect(options.validationIssue?.contains("audio kept") == true)
+    options.audio = .keep
+    options.mode = .passthrough
+    #expect(options.validationIssue?.contains("transcoding") == true)
+    options.mode = .transcode
+    options.audioKbps = 321
+    #expect(options.validationIssue?.contains("32–320") == true)
+    options.format = .webm
+    options.codec = .vp9
+    options.audioKbps = 320
+    #expect(options.validationIssue?.contains("32–256") == true)
+    options.audioKbps = 256
+    #expect(options.validationIssue == nil)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil),
+      arguments: [VideoConversionFormat.mp4, .webm])
+func videoConversionHonorsDistinctTargetsForEncodedAudio(format: VideoConversionFormat) async throws {
+    let executable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appending(path: "source.mkv")
+    let base = ["-nostdin", "-v", "error", "-n"]
+    try await ExternalTool.run(executable, name: "FFmpeg", arguments: base + [
+        "-f", "lavfi", "-i", "color=c=blue:s=128x72:r=12:d=4",
+        "-f", "lavfi", "-i", "anoisesrc=color=white:sample_rate=48000:d=4:seed=42",
+        "-c:v", "libx264", "-c:a", "pcm_s16le", source.path
+    ], directory: folder)
+
+    var options = VideoConversionOptions()
+    options.ffmpegExecutable = executable
+    options.format = format
+    options.codec = format == .webm ? .vp9 : .h264
+    var audioSizes: [Int] = []
+    for rate in [48, 160] {
+        options.audioKbps = rate
+        let output = folder.appending(path: "video-\(rate).\(format.rawValue)")
+        let summary = try await VideoConversion.convert(source, to: output, options: options) { _ in }
+        #expect(summary.contains("Audio target: \(rate) kb/s per track"))
+        let suffix = format == .webm ? "opus" : "m4a"
+        let audio = folder.appending(path: "stream-\(rate).\(suffix)")
+        try await ExternalTool.run(executable, name: "FFmpeg", arguments: base + [
+            "-i", output.path, "-map", "0:a:0", "-c:a", "copy", audio.path
+        ], directory: folder)
+        audioSizes.append(try #require(audio.resourceValues(forKeys: [.fileSizeKey]).fileSize))
+    }
+    #expect(audioSizes[0] > 0)
+    #expect(audioSizes[1] > audioSizes[0] * 2)
+    if format == .webm {
+        options.audioKbps = 256
+        let output = folder.appending(path: "mono-at-limit.webm")
+        let summary = try await VideoConversion.convert(source, to: output, options: options) { _ in }
+        #expect(summary.contains("Audio target: 256 kb/s per track"))
+    }
+}
+
 @Test func videoConversionExportsPlayableH264() async throws {
     let folder = try conversionFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

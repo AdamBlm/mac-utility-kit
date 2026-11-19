@@ -7,7 +7,7 @@ enum FFmpegStreamInventory {
         let codec: String
     }
 
-    static func webMSummary(input: URL, output: URL) throws -> String {
+    static func webMSummary(input: URL, output: URL, audioKbps: Int? = nil) throws -> String {
         let original = try streams(input)
         let converted = try streams(output)
         guard converted.contains(where: { $0.kind == "video" }) else {
@@ -15,8 +15,12 @@ enum FFmpegStreamInventory {
         }
 
         let video = converted.filter { $0.kind == "video" }.map(\.codec).joined(separator: ", ")
-        let audio = converted.filter { $0.kind == "audio" }.map(\.codec).joined(separator: ", ")
+        let audioStreams = converted.filter { $0.kind == "audio" }
+        let audio = audioStreams.map(\.codec).joined(separator: ", ")
         var details = ["WebM", "Video: " + video, audio.isEmpty ? "No audio" : "Audio: " + audio]
+        if let audioKbps, !audioStreams.isEmpty {
+            details.append("Audio target: \(audioKbps) kb/s per track")
+        }
         let additional = Dictionary(grouping: converted.filter { $0.kind != "video" && $0.kind != "audio" }, by: \.kind)
         for kind in additional.keys.sorted() {
             let codecs = additional[kind]?.map(\.codec).joined(separator: ", ") ?? ""
