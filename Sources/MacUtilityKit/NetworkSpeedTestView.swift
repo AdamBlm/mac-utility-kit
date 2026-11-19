@@ -69,7 +69,10 @@ struct NetworkSpeedTestView: View {
             fields.append(("Responsiveness", responsiveness(result.responsiveness)))
         }
         fields.append(("Interface", result.interface ?? "Unavailable"))
-        fields.append(("Completed", result.timestamp.formatted(date: .abbreviated, time: .shortened)))
+        if let elapsed = result.elapsedSeconds {
+            fields.append(("Elapsed", "\(elapsed.formatted(.number.precision(.fractionLength(1)))) seconds"))
+        }
+        fields.append(("Completed", result.timestamp.formatted(date: .abbreviated, time: .standard)))
         return fields
     }
 

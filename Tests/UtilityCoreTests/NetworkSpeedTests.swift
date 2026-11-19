@@ -57,6 +57,39 @@ struct NetworkSpeedTests {
         #expect(try NetworkSpeedTest.decode(Data("{}".utf8), interface: nil).idleLatencyMilliseconds == nil)
     }
 
+    @Test func usesNativeCompletionAndElapsedTimeWithFallbackForMalformedReports() throws {
+        let utc = try #require(TimeZone(secondsFromGMT: 0))
+        let receipt = Date(timeIntervalSince1970: 90)
+        let result = try NetworkSpeedTest.decode(
+            Data(#"{"start_date":"1970-01-01 00:01:20.250","end_date":"1970-01-01 00:01:26.750"}"#.utf8),
+            interface: nil, timestamp: receipt, timeZone: utc
+        )
+        #expect(result.timestamp == Date(timeIntervalSince1970: 86.75))
+        #expect(result.elapsedSeconds == 6.5)
+        let local = try #require(TimeZone(secondsFromGMT: 7_200))
+        let localReport = try NetworkSpeedTest.decode(
+            Data(#"{"start_date":"1970-01-01 02:01:20.250","end_date":"1970-01-01 02:01:26.750"}"#.utf8),
+            interface: nil, timestamp: receipt, timeZone: local
+        )
+        #expect(localReport.timestamp == result.timestamp)
+        #expect(localReport.elapsedSeconds == result.elapsedSeconds)
+        let backward = try NetworkSpeedTest.decode(
+            Data(#"{"start_date":"1970-01-01 00:01:28.000","end_date":"1970-01-01 00:01:26.750"}"#.utf8),
+            interface: nil, timestamp: receipt, timeZone: utc
+        )
+        #expect(backward.timestamp == result.timestamp)
+        #expect(backward.elapsedSeconds == nil)
+        let malformed = try NetworkSpeedTest.decode(
+            Data(#"{"end_date":"unavailable"}"#.utf8), interface: nil, timestamp: receipt, timeZone: utc
+        )
+        #expect(malformed.timestamp == receipt)
+        #expect(malformed.elapsedSeconds == nil)
+        let offClock = try NetworkSpeedTest.decode(
+            Data(#"{"end_date":"1970-01-01 01:01:26.750"}"#.utf8), interface: nil, timestamp: receipt, timeZone: utc
+        )
+        #expect(offClock.timestamp == receipt)
+    }
+
     @Test func rejectsOfflineAndCancelsOnInterfaceChange() async throws {
         let (paths, changes) = AsyncStream<NetworkSpeedTest.Path>.makeStream()
         defer { changes.finish() }

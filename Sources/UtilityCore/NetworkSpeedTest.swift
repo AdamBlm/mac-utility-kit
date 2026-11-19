@@ -11,6 +11,7 @@ public struct NetworkSpeedResult: Sendable {
     public let downloadResponsiveness: Double?
     public let interface: String?
     public let timestamp: Date
+    public let elapsedSeconds: TimeInterval?
 }
 
 public enum NetworkSpeedTest {
@@ -96,11 +97,12 @@ public enum NetworkSpeedTest {
     }
 
     static func decode(_ data: Data, interface: String?, timestamp: Date = .now,
-                       mode: Mode = .combined) throws -> NetworkSpeedResult {
+                       mode: Mode = .combined, timeZone: TimeZone = .current) throws -> NetworkSpeedResult {
         guard let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
             throw ToolError.invalid("Network Quality did not return a readable report.")
         }
         let reportedInterface = interfaceName(object["interface_name"]) ?? interfaceName(object["interface"])
+        let timing = reportTiming(object, received: timestamp, timeZone: timeZone)
         return NetworkSpeedResult(
             mode: mode,
             downloadBitsPerSecond: metric(object["dl_throughput"]),
@@ -110,8 +112,33 @@ public enum NetworkSpeedTest {
             uploadResponsiveness: metric(object["ul_responsiveness"]),
             downloadResponsiveness: metric(object["dl_responsiveness"]),
             interface: reportedInterface ?? interface,
-            timestamp: timestamp
+            timestamp: timing.completed,
+            elapsedSeconds: timing.elapsed
         )
+    }
+
+    private static func reportTiming(
+        _ object: [String: Any], received: Date, timeZone: TimeZone
+    ) -> (completed: Date, elapsed: TimeInterval?) {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        formatter.dateFormat = "yyyy-MM-dd HH:mm:ss.SSS"
+        formatter.isLenient = false
+        func date(_ value: Any?) -> Date? {
+            guard let text = value as? String, let parsed = formatter.date(from: text),
+                  formatter.string(from: parsed) == text else { return nil }
+            return parsed
+        }
+        // The native tool reports local wall-clock times without a UTC offset.
+        // Avoid a misleading native timestamp if an ambiguous hour or clock change puts it far from receipt.
+        guard let completed = date(object["end_date"]), abs(completed.timeIntervalSince(received)) <= 60 else {
+            return (received, nil)
+        }
+        let elapsed = date(object["start_date"]).map { completed.timeIntervalSince($0) }
+            .flatMap { (0...60).contains($0) ? $0 : nil }
+        return (completed, elapsed)
     }
 
     private static func interfaceName(_ value: Any?) -> String? {
