@@ -12,12 +12,13 @@ final class ExportActivityCenter {
     struct Status {
         let id: UUID
         let title: String
-        let progress: Double
+        let progress: Double?
     }
 
     private struct Job {
         let tool: Tool
-        var progress: Double = 0
+        var progress: Double? = 0
+        var phase: String?
         let activity: NSObjectProtocol
         let cancel: () -> Void
     }
@@ -29,7 +30,7 @@ final class ExportActivityCenter {
 
     var active: Status? {
         jobs.min(by: { $0.key.uuidString < $1.key.uuidString }).map {
-            Status(id: $0.key, title: $0.value.tool.title, progress: $0.value.progress)
+            Status(id: $0.key, title: $0.value.phase ?? $0.value.tool.title, progress: $0.value.progress)
         }
     }
 
@@ -48,9 +49,10 @@ final class ExportActivityCenter {
         return id
     }
 
-    func update(_ id: UUID, fraction: Double) {
-        guard fraction.isFinite, jobs[id] != nil else { return }
-        jobs[id]?.progress = min(1, max(0, fraction))
+    func update(_ id: UUID, fraction: Double?, phase: String? = nil) {
+        guard fraction?.isFinite != false, jobs[id] != nil else { return }
+        jobs[id]?.progress = fraction.map { min(1, max(0, $0)) }
+        jobs[id]?.phase = phase
         refreshDock()
     }
 
@@ -91,7 +93,7 @@ final class ExportActivityCenter {
             tile.display()
             return
         }
-        let progress = jobs.values.reduce(0) { $0 + $1.progress } / Double(jobs.count)
+        let fractions = jobs.values.compactMap(\.progress)
         let view: ExportDockProgressView
         if let dockView {
             view = dockView
@@ -101,7 +103,18 @@ final class ExportActivityCenter {
             tile.contentView = view
         }
         view.icon.image = NSApp.applicationIconImage
-        view.progress.doubleValue = progress
+        let indeterminate = fractions.count != jobs.count
+        if view.progress.isIndeterminate != indeterminate {
+            view.progress.isIndeterminate = indeterminate
+            if indeterminate {
+                view.progress.startAnimation(nil)
+            } else {
+                view.progress.stopAnimation(nil)
+            }
+        }
+        if !indeterminate {
+            view.progress.doubleValue = fractions.reduce(0, +) / Double(jobs.count)
+        }
         tile.display()
     }
 }

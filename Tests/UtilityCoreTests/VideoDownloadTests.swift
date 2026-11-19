@@ -66,6 +66,44 @@ struct VideoDownloadTests {
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == before)
     }
 
+    @Test func reportsVideoAudioAndPostProcessingBeforePublishing() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let executable = folder.appending(path: "mock-phases")
+        let script = #"""
+        #!/bin/sh
+        printf 'MUK:download\tavc1\tnone\t100%%\n'
+        printf 'MUK:download\tnone\taac\t0%%\n'
+        printf 'MUK:download\tnone\taac\t50%%\n'
+        printf 'MUK:download\tnone\taac\t100%%\n'
+        printf 'MUK:processing\n'
+        printf 'merged video' > media/mock.mp4
+        """#
+        try Data(script.utf8).write(to: executable)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+
+        actor Events {
+            var values: [VideoDownloadProgress] = []
+            func add(_ value: VideoDownloadProgress) { values.append(value) }
+        }
+        let events = Events()
+        let source = try VideoDownload.sourceURL("https://example.test/video")
+        let info = try JSONDecoder().decode(VideoDownloadInfo.self, from: Data(Self.fixture.utf8))
+        var selection = VideoDownloadSelection()
+        selection.videoID = "video"
+        selection.audioID = "audio"
+        selection.ffmpeg = URL(fileURLWithPath: "/usr/bin/true")
+        let output = try await VideoDownload.downloadWithProgress(
+            source, info: info, executable: executable, selection: selection, destination: folder
+        ) { await events.add($0) }
+        #expect(await events.values == [
+            .transfer(.video, 1), .transfer(.audio, 0), .transfer(.audio, 0.5), .transfer(.audio, 1),
+            .processing, .complete
+        ])
+        #expect(try Data(contentsOf: output) == Data("merged video".utf8))
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_YTDLP_TEST"] != nil
         && ProcessInfo.processInfo.environment["MAC_UTILITY_YTDLP_URL_TEST"] != nil))
     func realDownloaderPublishesPlayableMedia() async throws {

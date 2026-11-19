@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 
 public struct VideoDownloadFormat: Decodable, Identifiable, Sendable {
     public let id: String
@@ -60,6 +61,16 @@ public struct VideoDownloadSelection: Sendable {
     public init() {}
 }
 
+package enum VideoDownloadProgress: Equatable, Sendable {
+    case transfer(Kind, Double?)
+    case processing
+    case complete
+
+    package enum Kind: Equatable, Sendable {
+        case video, audio, combined
+    }
+}
+
 public enum VideoDownload {
     private static let baseline = ["--ignore-config", "--no-playlist", "--no-warnings", "--no-colors"]
 
@@ -96,6 +107,17 @@ public enum VideoDownload {
         _ source: URL, info: VideoDownloadInfo, executable: URL, selection: VideoDownloadSelection,
         destination: URL, progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> URL {
+        try await downloadWithProgress(source, info: info, executable: executable, selection: selection,
+                                       destination: destination) { update in
+            if case let .transfer(_, fraction?) = update { await progress(min(0.95, fraction)) }
+            if update == .complete { await progress(1) }
+        }
+    }
+
+    package static func downloadWithProgress(
+        _ source: URL, info: VideoDownloadInfo, executable: URL, selection: VideoDownloadSelection,
+        destination: URL, progress: @escaping @Sendable (VideoDownloadProgress) async -> Void
+    ) async throws -> URL {
         let url = try sourceURL(source.absoluteString)
         let manager = FileManager.default
         guard destination.isFileURL else { throw ToolError.invalid("Choose a local output folder.") }
@@ -109,21 +131,25 @@ public enum VideoDownload {
         let output = try FileHandle(forWritingTo: log)
         defer { try? output.close() }
 
+        let processExited = Mutex(false)
         let monitor = Task {
             guard let reader = try? FileHandle(forReadingFrom: log) else { return }
             defer { try? reader.close() }
             var pending = Data()
             while !Task.isCancelled {
+                let finished = processExited.withLock { $0 }
                 if let data = try? reader.read(upToCount: 16_384), !data.isEmpty {
                     pending.append(data)
                     while let end = pending.firstIndex(of: 10) {
-                        if let fraction = progressFraction(String(decoding: pending[..<end], as: UTF8.self)) {
-                            await progress(min(0.95, fraction))
+                        if let update = progressUpdate(String(decoding: pending[..<end], as: UTF8.self)) {
+                            await progress(update)
                         }
                         pending.removeSubrange(...end)
                     }
                     if pending.count > 16_384 { pending.removeAll() }
+                    continue
                 }
+                if finished { return }
                 do { try await Task.sleep(for: .milliseconds(100)) } catch { return }
             }
         }
@@ -131,10 +157,12 @@ public enum VideoDownload {
 
         let template = media.appendingPathComponent("%(title)s [%(id)s].%(ext)s").path
         try await ExternalTool.run(executable, name: "yt-dlp", arguments: baseline + options + [
-            "--newline", "--progress", "--progress-template", "download:MUK:%(progress._percent_str)s",
+            "--newline", "--progress",
+            "--progress-template", "download:MUK:download\t%(info.vcodec)s\t%(info.acodec)s\t%(progress._percent_str)s",
+            "--progress-template", "postprocess:MUK:processing",
             "--restrict-filenames", "--trim-filenames", "100", "--output", template, "--", url.absoluteString
         ], directory: staging, standardOutput: output)
-        monitor.cancel()
+        processExited.withLock { $0 = true }
         await monitor.value
         try Task.checkCancellation()
 
@@ -149,7 +177,7 @@ public enum VideoDownload {
         let namedOutput = destination.appendingPathComponent("Download - " + UUID().uuidString, isDirectory: true)
         try Task.checkCancellation()
         try manager.moveItem(at: media, to: namedOutput)
-        await progress(1)
+        await progress(.complete)
         return namedOutput.appendingPathComponent(candidate.lastPathComponent)
     }
 
@@ -204,6 +232,22 @@ public enum VideoDownload {
             arguments += selection.output.audioOnly ? ["--extract-audio", "--audio-format", ext] : ["--remux-video", ext]
         }
         return arguments
+    }
+
+    static func progressUpdate(_ line: String) -> VideoDownloadProgress? {
+        if line == "MUK:processing" { return .processing }
+        let fields = line.split(separator: "\t", omittingEmptySubsequences: false)
+        if fields.count == 4, fields[0] == "MUK:download" {
+            let kind: VideoDownloadProgress.Kind = if fields[1] == "none", fields[2] != "none" {
+                .audio
+            } else if fields[2] == "none", fields[1] != "none" {
+                .video
+            } else {
+                .combined
+            }
+            return .transfer(kind, progressFraction("MUK:" + fields[3]))
+        }
+        return progressFraction(line).map { .transfer(.combined, $0) }
     }
 
     static func progressFraction(_ line: String) -> Double? {

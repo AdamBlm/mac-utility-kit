@@ -171,11 +171,11 @@ struct Workspace: View {
         }
     }
 
-    private func jobBanner(_ title: String, progress: Double, cancel: @escaping () -> Void) -> some View {
+    private func jobBanner(_ title: String, progress: Double?, cancel: @escaping () -> Void) -> some View {
         HStack(spacing: 12) {
             Text(title).lineLimit(1)
             Spacer(minLength: 8)
-            if progress > 0 {
+            if let progress, progress > 0 {
                 ProgressView(value: progress).frame(width: 88)
             } else {
                 ProgressView().controlSize(.small)

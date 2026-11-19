@@ -12,7 +12,7 @@ struct VideoDownloadDraft {
     var task: Task<Void, Never>?
     var downloading = false
     var activeDownload: UUID?
-    var fraction = 0.0
+    var progress: VideoDownloadProgress?
     var error: String?
 }
 
@@ -49,11 +49,10 @@ struct VideoDownloadView: View {
             }
             if draft.task != nil {
                 HStack {
-                    if draft.downloading, draft.fraction > 0 {
-                        ProgressView("Downloading…", value: draft.fraction)
+                    if draft.downloading {
+                        downloadProgress
                     } else {
-                        ProgressView(draft.downloading ? "Starting download…" : "Inspecting link…")
-                            .controlSize(.small)
+                        ProgressView("Inspecting link…").controlSize(.small)
                     }
                     Spacer()
                     Button("Cancel") { draft.task?.cancel() }
@@ -153,6 +152,31 @@ struct VideoDownloadView: View {
         }
     }
 
+    @ViewBuilder
+    private var downloadProgress: some View {
+        switch draft.progress {
+        case let .transfer(kind, fraction):
+            let title = transferTitle(kind)
+            if let fraction {
+                ProgressView(title, value: fraction)
+            } else {
+                ProgressView(title).controlSize(.small)
+            }
+        case .processing, .complete:
+            ProgressView("Finishing download…").controlSize(.small)
+        case nil:
+            ProgressView("Starting download…").controlSize(.small)
+        }
+    }
+
+    private func transferTitle(_ kind: VideoDownloadProgress.Kind) -> String {
+        switch kind {
+        case .video: "Downloading video…"
+        case .audio: "Downloading audio…"
+        case .combined: "Downloading media…"
+        }
+    }
+
     private func download(_ inspected: InspectedVideo) {
         guard draft.task == nil else { return }
         var selection = draft.selection
@@ -163,9 +187,10 @@ struct VideoDownloadView: View {
         let destination = draft.destination
         draft.error = nil
         draft.downloading = true
-        draft.fraction = 0
+        draft.progress = nil
         let center = ExportActivityCenter.shared
         let job = center.start(.downloadVideo) { draft.task?.cancel() }
+        center.update(job, fraction: nil, phase: "Starting download…")
         draft.activeDownload = job
         draft.task = Task {
             defer {
@@ -175,14 +200,24 @@ struct VideoDownloadView: View {
                 draft.activeDownload = nil
             }
             do {
-                draft.result = try await VideoDownload.download(
+                draft.result = try await VideoDownload.downloadWithProgress(
                     inspected.source, info: inspected.info, executable: inspected.executable,
                     selection: selection, destination: destination
                 ) { value in
                     await MainActor.run {
                         guard draft.activeDownload == job else { return }
-                        draft.fraction = max(draft.fraction, value)
-                        center.update(job, fraction: value)
+                        var update = value
+                        if case let .transfer(kind, fraction?) = value,
+                           case let .transfer(previousKind, previous?) = draft.progress, kind == previousKind {
+                            update = .transfer(kind, max(previous, fraction))
+                        }
+                        guard draft.progress != update else { return }
+                        draft.progress = update
+                        switch update {
+                        case let .transfer(kind, fraction): center.update(job, fraction: fraction, phase: transferTitle(kind))
+                        case .processing: center.update(job, fraction: nil, phase: "Finishing download…")
+                        case .complete: center.update(job, fraction: 1)
+                        }
                     }
                 }
                 center.postCompletion(.downloadVideo, outputs: 1)

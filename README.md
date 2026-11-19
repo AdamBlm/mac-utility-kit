@@ -24,7 +24,7 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 ### Media tools
 
 - **Record Screen** records a display, window, or single-display region with optional system and microphone audio. Set resolution and frame rate, then pause, resume, or stop from the menu bar.
-- **Download Video** inspects a URL using a selected yt-dlp executable. Choose a stream and output format, then download with progress and cancellation. Stream merging and conversion require FFmpeg.
+- **Download Video** inspects a URL using a selected yt-dlp executable. Choose a stream and output format, then download with separate video, audio, and finishing progress and cancellation. Stream merging and conversion require FFmpeg.
 
 - **Convert Video** converts to MP4, MOV, and M4V with AVFoundation. A user-selected FFmpeg adds WebM export and resolution and frame rate options. Passthrough requires streams compatible with the destination container. WebM results identify observed codecs and report dropped tracks.
 - **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections, while the optional user-selected ffprobe exports its detailed stream metadata. Frame-timing results describe observed samples only.
