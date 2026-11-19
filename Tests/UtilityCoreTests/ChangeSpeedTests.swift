@@ -65,6 +65,23 @@ struct ChangeSpeedTests {
     }
 
     @Test
+    func previewStartsAtVisibleVideoWhenTheTrackIsDelayed() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await Self.makeVideo(in: directory, audio: true, audioOffset: 6.25, videoOffset: 6)
+        let output = directory.appending(path: "delayed-preview.mp4")
+        var options = ChangeSpeedOptions()
+        options.multiplier = 2
+        #expect(try await ChangeSpeed.sourceDuration(source) > 7.9)
+        try await ChangeSpeed.preview(source, to: output, options: options)
+        let duration = try await ChangeSpeed.sourceDuration(output)
+        #expect(abs(duration - 1) < 0.1)
+        let samples = try await Self.audioSamples(output)
+        let firstTone = try #require(samples.firstIndex { abs(Int($0)) > 2_000 })
+        #expect(abs(Double(firstTone) / 48_000 - 0.125) < 0.06)
+    }
+
+    @Test
     func preservesPitch() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -75,6 +92,30 @@ struct ChangeSpeedTests {
         _ = try await ChangeSpeed.export(source, to: output, options: options) { _ in }
         let pitch = try await Self.audioFrequency(output)
         #expect(abs(pitch - 440) < 35)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil), arguments: [0.0, 6.25])
+    func ffmpegPreviewSeeksToDelayedVideo(audioOffset: Double) async throws {
+        let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await Self.makeVideo(in: directory, audio: true, audioOffset: audioOffset, videoOffset: 6)
+        let output = directory.appending(path: "delayed-ffmpeg-preview.mp4")
+        var options = ChangeSpeedOptions()
+        options.multiplier = 2
+        options.preservesPitch = false
+        options.ffmpegExecutable = URL(fileURLWithPath: executable)
+        try await ChangeSpeed.preview(source, to: output, options: options)
+        let duration = try await ChangeSpeed.sourceDuration(output)
+        #expect(abs(duration - 1) < 0.1)
+        if audioOffset == 0 {
+            let audio = try await AVURLAsset(url: output).loadTracks(withMediaType: .audio)
+            #expect(audio.isEmpty)
+            return
+        }
+        let samples = try await Self.audioSamples(output)
+        let firstTone = try #require(samples.firstIndex { abs(Int($0)) > 2_000 })
+        #expect(abs(Double(firstTone) / 48_000 - 0.125) < 0.06)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
@@ -121,7 +162,8 @@ struct ChangeSpeedTests {
         return directory
     }
 
-    private static func makeVideo(in directory: URL, audio: Bool, audioOffset: Double = 0, videoSeconds: Int = 2) async throws -> URL {
+    private static func makeVideo(in directory: URL, audio: Bool, audioOffset: Double = 0,
+                                  videoSeconds: Int = 2, videoOffset: Double = 0) async throws -> URL {
         let url = directory.appending(path: "fixture.mov")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -159,7 +201,7 @@ struct ChangeSpeedTests {
             let asset = AVURLAsset(url: file)
             let source = try #require(try await asset.loadTracks(withMediaType: type).first)
             let track = try #require(composition.addMutableTrack(withMediaType: type, preferredTrackID: kCMPersistentTrackID_Invalid))
-            let offset = type == .audio ? CMTime(seconds: audioOffset, preferredTimescale: 48_000) : .zero
+            let offset = CMTime(seconds: type == .audio ? audioOffset : videoOffset, preferredTimescale: 48_000)
             try await track.insertTimeRange(source.load(.timeRange), of: source, at: offset)
         }
         let combined = directory.appending(path: "combined.mov")

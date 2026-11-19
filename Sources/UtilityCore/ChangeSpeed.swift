@@ -51,9 +51,23 @@ public enum ChangeSpeed {
         guard let video = try await primaryTrack(.video, in: asset) else {
             throw ToolError.invalid("Choose a readable file with a video track.")
         }
-        let fullLength = try await videoDuration(video)
+        let videoRange = try await video.load(.timeRange)
+        let fullLength = videoRange.end
+        guard fullLength.seconds.isFinite, fullLength.seconds > 0 else {
+            throw ToolError.invalid("The video has no finite duration.")
+        }
         let previewLimit = CMTime(seconds: min(5, 8 * options.multiplier), preferredTimescale: 90_000)
-        let videoLength = preview ? CMTimeMinimum(fullLength, previewLimit) : fullLength
+        let segments = preview ? try? await video.load(.segments) : nil
+        let firstMedia = segments?.first { !$0.isEmpty }?.timeMapping.target.start
+        let lastMedia = segments?.last { !$0.isEmpty }?.timeMapping.target.end
+        let start = preview ? CMTimeMaximum(.zero, firstMedia ?? videoRange.start) : .zero
+        let available = fullLength - start
+        let visible = (lastMedia ?? fullLength) - start
+        let duration = preview ? CMTimeMinimum(visible, previewLimit) : fullLength
+        let editRange = CMTimeRange(start: start, duration: duration)
+        guard editRange.duration.seconds.isFinite, editRange.duration.seconds > 0 else {
+            throw ToolError.invalid("The selected video has no frames to preview.")
+        }
         let audio = try await primaryTrack(.audio, in: asset)
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appending(path: ".speed-\(UUID().uuidString)")
@@ -61,18 +75,21 @@ public enum ChangeSpeed {
         defer { try? manager.removeItem(at: staging) }
         let candidate = staging.appending(path: "Adjust Speed.mp4")
         let expectsAudio: Bool
-        if audio != nil, !options.preservesPitch, options.multiplier != 1 {
+        if let audio, !options.preservesPitch, options.multiplier != 1 {
             // AVAssetExportSession can stall while encoding scaled PCM with
             // Varispeed. Use FFmpeg's explicit rate conversion for this mode.
             guard let executable = options.ffmpegExecutable else {
                 throw ToolError.invalid("Choose an FFmpeg executable to change both audio speed and pitch.")
             }
+            let includeAudio = preview ? !(try await audio.load(.timeRange)).intersection(editRange).isEmpty : true
             try await FFmpegChangeSpeed.export(input, to: candidate, multiplier: options.multiplier,
                                                executable: executable,
-                                               durationLimit: videoLength < fullLength ? videoLength.seconds / options.multiplier : nil)
-            expectsAudio = true
+                                               start: start.seconds,
+                                               durationLimit: duration < available ? duration.seconds / options.multiplier : nil,
+                                               includeAudio: includeAudio)
+            expectsAudio = includeAudio
         } else {
-            expectsAudio = try await nativeExport(video: video, audio: audio, duration: videoLength,
+            expectsAudio = try await nativeExport(video: video, audio: audio, editRange: editRange,
                                                   to: candidate, multiplier: options.multiplier, progress: progress)
         }
         try Task.checkCancellation()
@@ -84,7 +101,7 @@ public enum ChangeSpeed {
             throw ToolError.invalid("The export did not contain all expected playable media.")
         }
         let (resultRange, resultRate) = try await resultVideo.load(.timeRange, .nominalFrameRate)
-        let expectedEnd = videoLength.seconds / options.multiplier
+        let expectedEnd = duration.seconds / options.multiplier
         let tolerance = resultRate.isFinite && resultRate > 0 ? max(0.065, 2 / Double(resultRate)) : 0.1
         guard resultRange.end.seconds.isFinite, abs(resultRange.end.seconds - expectedEnd) <= tolerance else {
             throw ToolError.invalid("The exported video did not match the selected playback speed.")
@@ -103,11 +120,10 @@ public enum ChangeSpeed {
     }
 
     private static func nativeExport(
-        video: AVAssetTrack, audio: AVAssetTrack?, duration: CMTime,
+        video: AVAssetTrack, audio: AVAssetTrack?, editRange: CMTimeRange,
         to output: URL, multiplier: Double, progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> Bool {
         let composition = AVMutableComposition()
-        let editRange = CMTimeRange(start: .zero, duration: duration)
 
         let videoTrack = try await insert(video, within: editRange, into: composition)
         guard let videoTrack else { throw ToolError.invalid("The video track has no editable frames.") }
@@ -118,8 +134,8 @@ public enum ChangeSpeed {
         } else {
             audioTrack = nil
         }
-        let scaledDuration = CMTimeMultiplyByFloat64(duration, multiplier: 1 / multiplier)
-        composition.scaleTimeRange(editRange, toDuration: scaledDuration)
+        let scaledDuration = CMTimeMultiplyByFloat64(editRange.duration, multiplier: 1 / multiplier)
+        composition.scaleTimeRange(CMTimeRange(start: .zero, duration: editRange.duration), toDuration: scaledDuration)
 
         try Task.checkCancellation()
         guard let export = AVAssetExportSession(asset: composition, presetName: AVAssetExportPresetHighestQuality),
@@ -175,7 +191,7 @@ public enum ChangeSpeed {
                                                       preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw ToolError.invalid("Could not create the adjusted media track.")
         }
-        try track.insertTimeRange(range, of: source, at: range.start)
+        try track.insertTimeRange(range, of: source, at: range.start - editRange.start)
         return track
     }
 }
