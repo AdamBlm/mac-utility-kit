@@ -27,11 +27,15 @@ struct WiFiPasswordView: View {
         InteractiveToolLayout(tool: .wifiPasswordQR) { palette in
             WorkspaceSection("Network", palette: palette) {
                 HStack {
-                    Picker("Source", selection: Binding(get: { selectedID }, set: select)) {
+                    Picker("Source", selection: $selectedID) {
                         Text("Enter manually").tag(WiFiPassword.SavedNetwork.ID?.none)
                         ForEach(networks) { network in
                             Text(networkLabel(network)).tag(Optional(network.id))
                         }
+                    }
+                    .onChange(of: selectedID) {
+                        clearCredentials()
+                        hidden = false
                     }
                     Button("Refresh saved networks", systemImage: "arrow.clockwise", action: refresh)
                         .disabled(inventory != nil || lookup != nil)
@@ -129,19 +133,13 @@ struct WiFiPasswordView: View {
         }
     }
 
-    private func select(_ id: WiFiPassword.SavedNetwork.ID?) {
-        clearCredentials()
-        selectedID = id
-        hidden = false
-    }
-
     private func refresh() {
         guard inventory == nil else { return }
         inventory = Task {
             let available = await WiFiPassword.savedNetworks()
             guard !Task.isCancelled else { return }
             networks = available
-            if let selectedID, !networks.contains(where: { $0.id == selectedID }) { select(nil) }
+            if let selectedID, !networks.contains(where: { $0.id == selectedID }) { self.selectedID = nil }
             inventory = nil
         }
     }
