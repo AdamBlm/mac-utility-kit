@@ -1,3 +1,5 @@
+import AVKit
+import Combine
 import SwiftUI
 import UtilityCore
 
@@ -7,6 +9,7 @@ struct VideoMergeControls: View {
     @State private var selection = 1
     @State private var analysis: Analysis?
     @State private var preview: Preview?
+    @State private var playbackRequest: BoundaryRequest?
 
     private struct Request: Equatable {
         let inputs: [URL]
@@ -75,6 +78,7 @@ struct VideoMergeControls: View {
         }
         .task(id: request) { await analyze(request) }
         .task(id: boundary) { await loadBoundary(boundary) }
+        .onChange(of: boundary) { playbackRequest = nil }
     }
 
     private func clipOrder(plan: VideoMergePlan?) -> some View {
@@ -114,6 +118,13 @@ struct VideoMergeControls: View {
                 }
             }
             .labelsHidden()
+        }
+        if playbackRequest == request {
+            Button("Hide Playback") { playbackRequest = nil }
+            BoundaryPlayer(inputs: request.request.inputs, index: request.index, options: request.request.options)
+                .id(request.index)
+        } else {
+            Button("Preview Playback", systemImage: "play.rectangle") { playbackRequest = request }
         }
         if preview?.request == request, let result = preview?.result {
             switch result {
@@ -175,6 +186,45 @@ struct VideoMergeControls: View {
             if !Task.isCancelled { preview = Preview(request: request, result: .success(images)) }
         } catch {
             if !Task.isCancelled { preview = Preview(request: request, result: .failure(error)) }
+        }
+    }
+}
+
+private struct BoundaryPlayer: View {
+    let inputs: [URL]
+    let index: Int
+    let options: VideoMergeOptions
+    @State private var player: AVPlayer?
+    @State private var issue: String?
+
+    var body: some View {
+        Group {
+            if let issue {
+                Text(issue).font(.callout).foregroundStyle(.secondary)
+            } else if let player, let item = player.currentItem {
+                VideoPlayer(player: player)
+                    .frame(minHeight: 160, idealHeight: 210, maxHeight: 260)
+                    .accessibilityLabel("Playback across the selected cut")
+                    .onReceive(item.publisher(for: \.status).receive(on: DispatchQueue.main)) { status in
+                        guard status == .failed else { return }
+                        issue = item.error?.localizedDescription ?? "Could not play this transition."
+                    }
+            } else {
+                ProgressView("Preparing playback…").controlSize(.small)
+            }
+        }
+        .task {
+            do {
+                let item = try await VideoMerge.boundaryPlayback(inputs, before: index, options: options)
+                try Task.checkCancellation()
+                player = AVPlayer(playerItem: item)
+            } catch {
+                if !Task.isCancelled { issue = error.localizedDescription }
+            }
+        }
+        .onDisappear {
+            player?.pause()
+            player = nil
         }
     }
 }

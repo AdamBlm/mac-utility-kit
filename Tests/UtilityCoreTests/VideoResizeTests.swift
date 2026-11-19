@@ -98,7 +98,7 @@ struct VideoResizeTests {
         #expect(upper[0] > 100 && lower[1] > 100 || upper[1] > 100 && lower[0] > 100)
     }
 
-    static func makePortraitVideo(in directory: URL) async throws -> URL {
+    static func makePortraitVideo(in directory: URL, frameCount: Int = 24) async throws -> URL {
         let url = directory.appending(path: "rotated.mov")
         let writer = try AVAssetWriter(outputURL: url, fileType: .mov)
         let input = AVAssetWriterInput(mediaType: .video, outputSettings: [
@@ -125,7 +125,7 @@ struct VideoResizeTests {
             }
         }
         CVPixelBufferUnlockBaseAddress(frame, [])
-        for index in 0..<24 {
+        for index in 0..<frameCount {
             for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
                 try await Task.sleep(for: .milliseconds(2))
             }

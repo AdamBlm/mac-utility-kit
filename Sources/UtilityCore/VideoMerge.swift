@@ -34,6 +34,27 @@ public enum VideoMerge {
         return VideoMergeBoundaryPreview(before: left, after: right)
     }
 
+    @MainActor
+    package static func boundaryPlayback(
+        _ inputs: [URL], before index: Int, options: VideoMergeOptions
+    ) async throws -> AVPlayerItem {
+        let prepared = try await prepare(inputs, options: options)
+        guard index > 0, index < prepared.clips.count else {
+            throw ToolError.invalid("Choose a boundary between two clips.")
+        }
+        if options.mode == .passthrough, let issue = prepared.plan.passthroughIssue {
+            throw ToolError.invalid(issue)
+        }
+        let boundary = prepared.starts[index]
+        let lead = min(prepared.clips[index - 1].range.duration, CMTime(value: 2, timescale: 1))
+        let tail = min(prepared.clips[index].range.duration, CMTime(value: 2, timescale: 1))
+        let window = CMTimeRange(start: boundary - lead, duration: lead + tail)
+        let timeline = try build(prepared, options: options, window: window)
+        let item = AVPlayerItem(asset: timeline.composition)
+        item.videoComposition = timeline.videoComposition
+        return item
+    }
+
     public static func export(
         _ inputs: [URL], to output: URL, options: VideoMergeOptions,
         progress: @escaping @Sendable (Double) async -> Void
@@ -97,7 +118,7 @@ public enum VideoMerge {
         let plan: VideoMergePlan
     }
 
-    private static func prepare(_ inputs: [URL], options: VideoMergeOptions) async throws -> Prepared {
+    private static func prepare(_ inputs: [URL], options: VideoMergeOptions) async throws -> sending Prepared {
         guard inputs.count >= 2 else { throw ToolError.invalid("Add two or more clips to merge.") }
         var clips: [Clip] = []
         var starts: [CMTime] = []
@@ -169,27 +190,38 @@ public enum VideoMerge {
     }
 
     private static func build(
-        _ prepared: Prepared, options: VideoMergeOptions
+        _ prepared: Prepared, options: VideoMergeOptions, window: CMTimeRange? = nil
     ) throws -> (composition: AVMutableComposition, videoComposition: AVMutableVideoComposition?) {
         let composition = AVMutableComposition()
         guard let video = composition.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
             throw ToolError.invalid("Could not create the merged video track.")
         }
         let first = prepared.clips[0]
-        let usesAudio = prepared.clips.contains { $0.audio != nil }
-        let audio = usesAudio ? composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) : nil
-        guard !usesAudio || audio != nil else { throw ToolError.invalid("Could not create the merged audio track.") }
+        var audio: AVMutableCompositionTrack?
 
         let canvas = prepared.plan.size
         var instructions: [AVMutableVideoCompositionInstruction] = []
         for (clip, start) in zip(prepared.clips, prepared.starts) {
             try Task.checkCancellation()
-            try video.insertTimeRange(clip.range, of: clip.video, at: start)
-            if let source = clip.audio, let range = clip.audioRange {
-                try audio?.insertTimeRange(range, of: source, at: start + (range.start - clip.range.start))
+            let position = CMTimeRange(start: start, duration: clip.range.duration)
+            let visible = window.map { position.intersection($0) } ?? position
+            guard !visible.isEmpty else { continue }
+            let destination = visible.start - (window?.start ?? .zero)
+            let sourceRange = CMTimeRange(start: clip.range.start + (visible.start - start), duration: visible.duration)
+            try video.insertTimeRange(sourceRange, of: clip.video, at: destination)
+            if let source = clip.audio, let original = clip.audioRange {
+                let range = original.intersection(sourceRange)
+                if !range.isEmpty {
+                    if audio == nil {
+                        audio = composition.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid)
+                    }
+                    guard let audio else { throw ToolError.invalid("Could not create the merged audio track.") }
+                    try audio.insertTimeRange(range, of: source, at: destination + (range.start - sourceRange.start))
+                }
             }
             if options.mode == .normalize {
-                instructions.append(instruction(for: clip, canvas: canvas, video: video, start: start))
+                let range = CMTimeRange(start: destination, duration: visible.duration)
+                instructions.append(instruction(for: clip, canvas: canvas, video: video, range: range))
             }
         }
         if options.mode == .passthrough {
@@ -205,7 +237,7 @@ public enum VideoMerge {
     }
 
     private static func instruction(
-        for clip: Clip, canvas: CGSize, video: AVMutableCompositionTrack, start: CMTime
+        for clip: Clip, canvas: CGSize, video: AVMutableCompositionTrack, range: CMTimeRange
     ) -> AVMutableVideoCompositionInstruction {
         let fit = min(canvas.width / clip.bounds.width, canvas.height / clip.bounds.height)
         let x = (canvas.width - clip.bounds.width * fit) / 2
@@ -215,9 +247,9 @@ public enum VideoMerge {
             .concatenating(CGAffineTransform(scaleX: fit, y: fit))
             .concatenating(CGAffineTransform(translationX: x, y: y))
         let layer = AVMutableVideoCompositionLayerInstruction(assetTrack: video)
-        layer.setTransform(transform, at: start)
+        layer.setTransform(transform, at: range.start)
         let instruction = AVMutableVideoCompositionInstruction()
-        instruction.timeRange = CMTimeRange(start: start, duration: clip.range.duration)
+        instruction.timeRange = range
         instruction.backgroundColor = CGColor(gray: 0, alpha: 1)
         instruction.layerInstructions = [layer]
         return instruction

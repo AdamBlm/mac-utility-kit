@@ -4,7 +4,7 @@ import UtilityCore
 
 @Suite(.serialized)
 struct VideoMergeTests {
-    @Test
+    @MainActor @Test
     func normalizesMixedClipsWithSilenceAndKeepsBoundaryOrder() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -40,6 +40,14 @@ struct VideoMergeTests {
         #expect(try Self.edgeHasColor(images.before))
         #expect(try !Self.edgeHasColor(images.after))
 
+        let playback = try await VideoMerge.boundaryPlayback([portrait] + sources + [portrait], before: 2, options: options)
+        let playbackDuration = try await playback.asset.load(.duration)
+        #expect(abs(playbackDuration.seconds - plan.duration) < 0.05)
+        let expectedRanges = [0.0, plan.clips[1].start]
+        #expect(playback.videoComposition?.instructions.map { $0.timeRange.start.seconds } == expectedRanges)
+        #expect(try await Self.audioPeak(playback.asset, startingAt: 0.2) < 100)
+        #expect(try await Self.audioPeak(playback.asset, startingAt: plan.clips[1].start + 0.2) > 1_000)
+
         _ = try await VideoMerge.export(sources, to: output, options: options) { _ in }
         let result = AVURLAsset(url: output)
         let actual = try await result.load(.duration).seconds
@@ -73,6 +81,23 @@ struct VideoMergeTests {
         let track = try #require(try await asset.loadTracks(withMediaType: .video).first)
         let formats = try await track.load(.formatDescriptions)
         #expect(CMFormatDescriptionGetMediaSubType(try #require(formats.first)) == kCMVideoCodecType_H264)
+    }
+
+    @MainActor @Test
+    func playbackTrimsBothSidesOfLongClips() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try await VideoResizeTests.makePortraitVideo(in: directory, frameCount: 96)
+        var options = VideoMergeOptions()
+        options.mode = .passthrough
+        options.keepsAudio = false
+        let playback = try await VideoMerge.boundaryPlayback([source, source], before: 1, options: options)
+        let track = try #require(try await playback.asset.loadTracks(withMediaType: .video).first)
+        let segments = try await track.load(.segments).filter { !$0.isEmpty }
+        #expect(segments.map { $0.timeMapping.source.start.seconds } == [2, 0])
+        #expect(segments.map { $0.timeMapping.target.start.seconds } == [0, 2])
+        #expect(segments.map { $0.timeMapping.target.duration.seconds } == [2, 2])
+        #expect(try await playback.asset.loadTracks(withMediaType: .audio).isEmpty)
     }
 
     private static func makeDirectory() throws -> URL {
