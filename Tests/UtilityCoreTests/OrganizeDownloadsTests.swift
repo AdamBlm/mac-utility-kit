@@ -4,6 +4,22 @@ import Testing
 @testable import UtilityCore
 
 struct OrganizeDownloadsTests {
+    @Test func fileTypeUsesImageContentsInsteadOfFilenameSuffix() throws {
+        let manager = FileManager.default
+        let folder = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: folder) }
+        let misleading = folder.appending(path: "Downloaded.jpg")
+        let invalid = folder.appending(path: "Invalid.png")
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
+        try bytes.write(to: misleading)
+        try Data("Not an image".utf8).write(to: invalid)
+        let images = try OrganizeDownloads.scan(folder)
+        #expect(images.map(\.relativePath) == ["Downloaded.jpg"])
+        #expect(images.map(\.fileType) == ["PNG"])
+        #expect(try Data(contentsOf: misleading) == bytes)
+    }
+
     @Test func subfolderScanIsOptInAndLabelsDuplicateNamesWithoutFollowingLinks() throws {
         let manager = FileManager.default
         let root = manager.temporaryDirectory.appending(path: UUID().uuidString)

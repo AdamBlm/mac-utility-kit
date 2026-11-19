@@ -130,6 +130,7 @@ struct OrganizeDownloadsView: View {
                         ))
                         .disabled(draft.busy)
                         Spacer()
+                        Text(item.fileType).font(.caption).foregroundStyle(.secondary)
                         Button("Preview", systemImage: "eye") { preview = item.file }
                             .labelStyle(.iconOnly)
                     }

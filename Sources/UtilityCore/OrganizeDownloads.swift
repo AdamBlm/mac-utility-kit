@@ -61,10 +61,13 @@ public enum OrganizeDownloads {
             guard canonical.pathComponents.starts(with: rootComponents),
                   (try? DuplicateFileIO.inspect(canonical)) == stamp,
                   let image = CGImageSourceCreateWithURL(canonical as CFURL, nil),
-                  CGImageSourceGetCount(image) > 0 else { continue }
+                  CGImageSourceGetCount(image) > 0,
+                  let identifier = CGImageSourceGetType(image),
+                  let detectedType = UTType(identifier as String), detectedType.conforms(to: .image) else { continue }
             let path = canonical.pathComponents.dropFirst(rootComponents.count).joined(separator: "/")
             images.append(DownloadImage(file: canonical, relativePath: path, origin: sourceOrigin(canonical),
-                                        fileType: file.pathExtension.uppercased(), stamp: stamp))
+                                        fileType: detectedType.preferredFilenameExtension?.uppercased() ?? detectedType.localizedDescription
+                                            ?? detectedType.identifier, stamp: stamp))
         }
         try Task.checkCancellation()
         if let scanError { throw scanError }
