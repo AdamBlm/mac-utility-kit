@@ -11,8 +11,19 @@ struct ChangeSpeedControls: View {
     @State private var originalDuration: Double?
     @State private var previewError: String?
     @State private var showsPlayback = false
+    @State private var previewInput: URL?
 
     private static let presets = [0.25, 0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0, 4.0]
+
+    private var activeInput: URL? {
+        if let previewInput, inputs.contains(previewInput) { return previewInput }
+        return inputs.first
+    }
+
+    private var previewSources: [URL] {
+        var seen = Set<URL>()
+        return inputs.filter { seen.insert($0).inserted }
+    }
 
     private var selectedPreset: Binding<Double?> {
         Binding {
@@ -64,13 +75,19 @@ struct ChangeSpeedControls: View {
                     .font(.callout).foregroundStyle(.secondary)
                 executablePicker("FFmpeg", selection: $options.ffmpegExecutable)
             }
-            if let source = inputs.first, source == loadedSource {
+            if previewSources.count > 1 {
+                SettingRow("Preview file") {
+                    Picker("Preview file", selection: Binding(get: { activeInput }, set: { previewInput = $0 })) {
+                        ForEach(Array(previewSources.enumerated()), id: \.element) { index, input in
+                            Text("\(index + 1). \(input.lastPathComponent)").tag(Optional(input))
+                        }
+                    }
+                    .labelsHidden()
+                }
+            }
+            if let source = activeInput, source == loadedSource {
                 if let originalDuration, options.isValid {
                     VStack(alignment: .leading, spacing: 5) {
-                        if inputs.count > 1 {
-                            Text(source.lastPathComponent)
-                                .lineLimit(1).truncationMode(.middle)
-                        }
                         LabeledContent("Original duration", value: durationLabel(originalDuration))
                         LabeledContent("Adjusted duration", value: durationLabel(originalDuration / options.multiplier))
                     }
@@ -89,8 +106,8 @@ struct ChangeSpeedControls: View {
             Text("Exports the primary video and audio tracks as MP4.")
                 .font(.callout).foregroundStyle(.secondary)
         }
-        .task(id: inputs.first) { await loadDuration(inputs.first) }
-        .onChange(of: inputs.first) { showsPlayback = false }
+        .task(id: activeInput) { await loadDuration(activeInput) }
+        .onChange(of: activeInput) { showsPlayback = false }
         .onChange(of: options) { showsPlayback = false }
     }
 
