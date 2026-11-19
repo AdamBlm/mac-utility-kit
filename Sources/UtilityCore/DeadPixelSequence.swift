@@ -21,3 +21,12 @@ public struct DeadPixelSequence: Sendable {
         index = (index + direction % count + count) % count
     }
 }
+
+package enum DeadPixelTargetStatus: Equatable, Sendable {
+    case available, disconnected, mirrored
+
+    package init(connected: Bool, mirrored: Bool) {
+        if !connected { self = .disconnected }
+        else { self = mirrored ? .mirrored : .available }
+    }
+}

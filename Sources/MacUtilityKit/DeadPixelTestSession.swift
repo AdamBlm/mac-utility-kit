@@ -1,4 +1,5 @@
 import AppKit
+import CoreGraphics
 import Observation
 import UtilityCore
 
@@ -10,11 +11,13 @@ final class DeadPixelTestSession {
     struct Display: Identifiable, Sendable {
         let id: UInt32
         let name: String
+        let status: DeadPixelTargetStatus
 
         init?(_ screen: NSScreen) {
             guard let number = screen.deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else { return nil }
             id = number.uint32Value
             name = screen.localizedName
+            status = DeadPixelTargetStatus(connected: true, mirrored: CGDisplayIsInMirrorSet(id) != 0)
         }
     }
 
@@ -34,11 +37,17 @@ final class DeadPixelTestSession {
     func refreshDisplays() {
         displays = NSScreen.screens.compactMap(Display.init)
         guard active, let displayID else { return }
-        if let screen = screen(for: displayID) {
-            window?.setFrame(screen.frame, display: true)
-            window?.colorSpace = screen.colorSpace
-        } else {
+        let screen = screen(for: displayID)
+        switch targetStatus(displayID, connected: screen != nil) {
+        case .available:
+            if let screen {
+                window?.setFrame(screen.frame, display: true)
+                window?.colorSpace = screen.colorSpace
+            }
+        case .disconnected:
             finish(message: "The selected display disconnected. The test ended.")
+        case .mirrored:
+            finish(message: "Display mirroring was enabled. The test ended.")
         }
     }
 
@@ -50,6 +59,11 @@ final class DeadPixelTestSession {
         }
         guard let screen = screen(for: displayID) else {
             issue = "Choose a connected display."
+            refreshDisplays()
+            return
+        }
+        guard targetStatus(displayID, connected: true) == .available else {
+            issue = "Turn off display mirroring to test this display on its own."
             refreshDisplays()
             return
         }
@@ -148,6 +162,10 @@ final class DeadPixelTestSession {
     private func advance(_ direction: Int) {
         sequence.step(direction)
         canvas?.color = color(sequence.color)
+    }
+
+    private func targetStatus(_ displayID: UInt32, connected: Bool) -> DeadPixelTargetStatus {
+        DeadPixelTargetStatus(connected: connected, mirrored: connected && CGDisplayIsInMirrorSet(displayID) != 0)
     }
 
     private func color(_ shade: DeadPixelColor) -> NSColor {

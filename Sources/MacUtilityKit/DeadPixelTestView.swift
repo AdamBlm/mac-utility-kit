@@ -9,13 +9,20 @@ struct DeadPixelTestView: View {
     @State private var interval = 3
     @State private var startingColor = DeadPixelColor.black
 
+    private var selectedDisplay: DeadPixelTestSession.Display? {
+        session.displays.first { $0.id == displayID }
+    }
+
     var body: some View {
         InteractiveToolLayout(tool: .deadPixelTest) { palette in
             WorkspaceSection("Display test", palette: palette) {
                 SettingRow("Display") {
                     Picker("Display", selection: $displayID) {
                         if displayID == nil { Text("No display selected").tag(UInt32?.none) }
-                        ForEach(session.displays) { Text($0.name).tag(Optional($0.id)) }
+                        ForEach(session.displays) { display in
+                            Text(display.status == .mirrored ? display.name + " (Mirrored)" : display.name)
+                                .tag(Optional(display.id))
+                        }
                     }
                     .labelsHidden()
                 }
@@ -47,8 +54,13 @@ struct DeadPixelTestView: View {
                     }
                 }
                 .buttonStyle(.borderedProminent)
-                .disabled(displayID == nil || session.active)
-                if let issue = session.issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
+                .disabled(selectedDisplay?.status != .available || session.active)
+                if let issue = session.issue {
+                    Text(issue).font(.callout).foregroundStyle(.secondary)
+                } else if selectedDisplay?.status == .mirrored {
+                    Text("Turn off display mirroring to test this display on its own.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             }
         }
         .task { refresh() }
@@ -63,6 +75,8 @@ struct DeadPixelTestView: View {
 
     private func refresh() {
         session.refreshDisplays()
-        if !session.displays.contains(where: { $0.id == displayID }) { displayID = session.displays.first?.id }
+        if selectedDisplay == nil {
+            displayID = session.displays.first { $0.status == .available }?.id ?? session.displays.first?.id
+        }
     }
 }

@@ -31,3 +31,10 @@ import UtilityCore
     #expect(!selectedAboveRange)
     #expect(sequence.color == .white)
 }
+
+@Test func deadPixelTargetRequiresAnIndependentlyDrawableDisplay() {
+    #expect(DeadPixelTargetStatus(connected: true, mirrored: false) == .available)
+    #expect(DeadPixelTargetStatus(connected: true, mirrored: true) == .mirrored)
+    #expect(DeadPixelTargetStatus(connected: false, mirrored: false) == .disconnected)
+    #expect(DeadPixelTargetStatus(connected: false, mirrored: true) == .disconnected)
+}
