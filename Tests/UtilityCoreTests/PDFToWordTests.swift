@@ -144,7 +144,12 @@ struct PDFToWordTests {
         try fixture(source)
         let output = stage.appending(path: "miss.docx")
         var options = PDFToWordOptions()
-        #expect(PDFToWord.optionIssue(source, options: options) != nil)
+        #expect(PDFToWord.inputIssue(source) == nil)
+        #expect(PDFToWord.optionIssue(source, options: options)?.contains("LibreOffice") == true)
+        let directory = stage.appending(path: "Folder.pdf", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        #expect(PDFToWord.optionIssue(directory, options: options) == "Choose a readable local PDF up to 256 MB.")
+        await #expect(throws: ToolError.self) { _ = try await PDFToWord.preview(directory, options: options) }
         await #expect(throws: ToolError.self) { _ = try await PDFToWord.export(source, to: output, options: options) { _ in } }
         options.pages = "99"
         await #expect(throws: ToolError.self) { _ = try await PDFToWord.preview(source, options: options) }

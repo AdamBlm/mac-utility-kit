@@ -77,7 +77,7 @@ struct PDFToWordControls: View {
             }
             HStack {
                 Button("Preview Text…", systemImage: "doc.viewfinder", action: makePreview)
-                    .disabled(job != nil || source == nil)
+                    .disabled(job != nil || source.map { PDFToWord.inputIssue($0) != nil } != false)
                 if job != nil {
                     if let progress {
                         ProgressView(value: progress).frame(width: 130).accessibilityLabel("Reading pages")

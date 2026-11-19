@@ -37,12 +37,31 @@ public enum PDFToWord {
     }
 
     public static func optionIssue(_ input: URL, options: PDFToWordOptions) -> String? {
-        guard input.isFileURL, input.pathExtension.lowercased() == "pdf" else { return "Choose a local PDF." }
+        if let issue = inputIssue(input) { return issue }
         guard let selection = options.libreOfficeExecutable, selection.isFileURL,
               FileManager.default.isExecutableFile(atPath: LibreOfficeHeadless.binary(for: selection).path) else {
             return "Choose LibreOffice or its soffice executable to export."
         }
         return nil
+    }
+
+    package static func inputIssue(_ input: URL) -> String? {
+        do {
+            _ = try inputStamp(input)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
+    private static func inputStamp(_ input: URL) throws -> DuplicateFileStamp {
+        guard input.isFileURL, input.pathExtension.lowercased() == "pdf" else {
+            throw ToolError.invalid("Choose a local PDF.")
+        }
+        guard let stamp = try? DuplicateFileIO.inspect(input), stamp.bytes <= 256 * 1024 * 1024 else {
+            throw ToolError.invalid("Choose a readable local PDF up to 256 MB.")
+        }
+        return stamp
     }
 
     public static func preview(
@@ -138,9 +157,10 @@ public enum PDFToWord {
 
     private static func open(_ input: URL, _ options: PDFToWordOptions) throws -> Source {
         try Task.checkCancellation()
-        guard input.isFileURL, input.pathExtension.lowercased() == "pdf",
-              let stamp = try DuplicateFileIO.inspect(input), stamp.bytes <= 256 * 1024 * 1024,
-              let pdf = PDFDocument(url: input) else { throw ToolError.invalid("Choose a readable local PDF up to 256 MB.") }
+        let stamp = try inputStamp(input)
+        guard let pdf = PDFDocument(url: input) else {
+            throw ToolError.invalid("Choose a readable local PDF up to 256 MB.")
+        }
         if pdf.isLocked || (pdf.isEncrypted && !options.password.isEmpty), !pdf.unlock(withPassword: options.password) {
             throw ToolError.invalid("Could not open this PDF. Check the password.")
         }
