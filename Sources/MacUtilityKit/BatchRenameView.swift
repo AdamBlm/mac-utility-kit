@@ -164,6 +164,8 @@ struct BatchRenameView: View {
     private func previewSection(_ palette: WorkspacePalette, plan: Result<BatchRenamePlan, any Error>?) -> some View {
         let changes = (try? plan?.get().changes) ?? []
         let destinations = Dictionary(changes.map { ($0.source, $0.destination) }, uniquingKeysWith: { first, _ in first })
+        let canOrderQueue = draft.files.count > 1 && draft.options.numberingOrder == .queue
+            && draft.options.rules.contains { $0.kind == .number }
         let hasChanges = changes.contains { $0.source.path.utf8.elementsEqual($0.destination.path.utf8) == false }
         return WorkspaceSection("File Preview", palette: palette) {
             HStack {
@@ -194,6 +196,8 @@ struct BatchRenameView: View {
                     .font(.callout)
             }
             ForEach($draft.files) { $entry in
+                let id = entry.id
+                let name = entry.url.lastPathComponent
                 Divider()
                 HStack {
                     Toggle("Include \(entry.url.lastPathComponent)", isOn: $entry.isIncluded).labelsHidden()
@@ -207,8 +211,16 @@ struct BatchRenameView: View {
                         .lineLimit(1)
                         .truncationMode(.middle)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                    if canOrderQueue {
+                        Button("Move \(name) Up", systemImage: "chevron.up") { moveFile(id, by: -1) }
+                            .labelStyle(.iconOnly).buttonStyle(.borderless)
+                            .disabled(id == draft.files.first?.id)
+                        Button("Move \(name) Down", systemImage: "chevron.down") { moveFile(id, by: 1) }
+                            .labelStyle(.iconOnly).buttonStyle(.borderless)
+                            .disabled(id == draft.files.last?.id)
+                    }
                     Button("Remove file", systemImage: "xmark") {
-                        draft.files.removeAll { $0.id == entry.id }
+                        draft.files.removeAll { $0.id == id }
                     }
                     .labelStyle(.iconOnly)
                     .buttonStyle(.borderless)
@@ -231,6 +243,12 @@ struct BatchRenameView: View {
         guard let index = draft.options.rules.firstIndex(where: { $0.id == id }),
               draft.options.rules.indices.contains(index + distance) else { return }
         draft.options.rules.swapAt(index, index + distance)
+    }
+
+    private func moveFile(_ id: UUID, by distance: Int) {
+        guard !busy, let index = draft.files.firstIndex(where: { $0.id == id }),
+              draft.files.indices.contains(index + distance) else { return }
+        draft.files.swapAt(index, index + distance)
     }
 
     @discardableResult

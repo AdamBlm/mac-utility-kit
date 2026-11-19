@@ -18,6 +18,12 @@ import UtilityCore
 
             let queue = try BatchRename.plan(files: files, options: options)
             #expect(queue.changes.map { $0.destination.lastPathComponent } == ["File 10-03.txt", "File 1-05.txt", "File 2-07.txt"])
+
+            let manuallyOrderedIncludedFiles = [two, ten]
+            let manual = try BatchRename.plan(files: manuallyOrderedIncludedFiles, options: options)
+            #expect(manual.changes.map { $0.source.lastPathComponent } == ["File 2.txt", "File 10.txt"])
+            #expect(manual.changes.map { $0.destination.lastPathComponent } == ["File 2-03.txt", "File 10-05.txt"])
+
             options.numberingOrder = .nameAscending
             let ascending = try BatchRename.plan(files: files, options: options)
             #expect(ascending.changes.map { $0.destination.lastPathComponent } == ["File 1-03.txt", "File 2-05.txt", "File 10-07.txt"])
