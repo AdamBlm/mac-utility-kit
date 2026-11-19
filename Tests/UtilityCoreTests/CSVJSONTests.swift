@@ -3,6 +3,25 @@ import Testing
 import UtilityCore
 
 struct CSVJSONTests {
+    @Test func preservesLeadingBOMCharacterInDataAndHeaders() throws {
+        let name = "\u{FEFF}name"
+        let cases = [
+            (#"[["\uFEFFname","value"]]"#, false, [name, "value"]),
+            (#"[{"\uFEFFname":"value"}]"#, true, [name])
+        ]
+        for (input, includesHeader, expectedFirstRow) in cases {
+            let csv = try CSVJSON.convert(input, direction: .jsonToCSV, includesHeader: includesHeader)
+            #expect(csv.output.utf8.first == 34)
+            for prefix in ["", "\u{FEFF}"] {
+                let imported = try CSVJSON.convert(
+                    prefix + csv.output, direction: .csvToJSON, includesHeader: includesHeader
+                )
+                let firstRow = includesHeader ? imported.columns : imported.rows.first
+                #expect(firstRow == expectedFirstRow)
+            }
+        }
+    }
+
     @Test func csvDecodesAndRoundTripsQuotedUnicodeAndEmptyFields() throws {
         let input = "\u{FEFF}code,note,tail\r\n001,\"é,\"\"🙂\"\"\r\npart\","
         let json = try CSVJSON.convert(input, direction: .csvToJSON)

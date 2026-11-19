@@ -186,8 +186,11 @@ public enum CSVJSON {
         var output = ""
         for row in rows {
             try Task.checkCancellation()
-            output += row.map { value in
-                let needsQuotes = value.isEmpty || value.utf8.contains {
+            let isFirstRow = output.isEmpty
+            output += row.enumerated().map { column, value in
+                // A literal U+FEFF at byte zero would be read as the file BOM.
+                let startsWithBOM = isFirstRow && column == 0 && value.unicodeScalars.first == "\u{FEFF}"
+                let needsQuotes = startsWithBOM || value.isEmpty || value.utf8.contains {
                     $0 == 34 || $0 == 10 || $0 == 13 || $0 == delimiter.byte
                 }
                 if !needsQuotes { return value }
