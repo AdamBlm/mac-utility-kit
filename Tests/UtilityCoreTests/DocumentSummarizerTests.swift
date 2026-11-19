@@ -67,6 +67,15 @@ struct DocumentSummarizerTests {
         #expect(partial.omittedPages == [3])
     }
 
+    @Test func validatesSelectedPageCountBeforeSummarizing() throws {
+        try DocumentSummarizer.validatePDFSelection("1–40", pageCount: 41)
+        for range in ["all", "none", "42"] {
+            #expect(throws: ToolError.self) {
+                try DocumentSummarizer.validatePDFSelection(range, pageCount: 41)
+            }
+        }
+    }
+
     @Test func oversizedSourcesFailBeforeCallingProvider() async throws {
         let request = DocumentSummarizer.Request(source: .text(String(repeating: "a", count: 50_000)),
                                                  length: .brief, format: .paragraph)

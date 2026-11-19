@@ -1,3 +1,4 @@
+import PDFKit
 import SwiftUI
 import UniformTypeIdentifiers
 import UtilityCore
@@ -19,7 +20,25 @@ struct SummarizeView: View {
     @State private var progress: DocumentSummarizer.Progress?
     @State private var job: Task<Void, Never>?
     @State private var jobID: UUID?
+    @State private var pagePreview: PagePreview?
+    @State private var previewRevision = 0
     @Environment(\.scenePhase) private var scenePhase
+
+    private struct PreviewRequest: Equatable, Sendable {
+        let file: URL
+        let password: String
+        let revision: Int
+    }
+
+    private struct PreviewDocument {
+        let document: PDFDocument
+        let stamp: PDFSourceStamp
+    }
+
+    private struct PagePreview {
+        let request: PreviewRequest
+        let result: Result<PreviewDocument, any Error>
+    }
 
     private var isPDF: Bool {
         guard let file = draft.file else { return false }
@@ -28,6 +47,12 @@ struct SummarizeView: View {
     }
 
     var body: some View {
+        let request = isPDF ? draft.file.map { PreviewRequest(file: $0, password: password, revision: previewRevision) } : nil
+        let preview = pagePreview?.request == request ? pagePreview?.result : nil
+        let loaded = try? preview?.get()
+        let selection = loaded.map { pdf in
+            Result { try DocumentSummarizer.validatePDFSelection(draft.pages, pageCount: pdf.document.pageCount) }
+        }
         InteractiveToolLayout(tool: .summarize) { palette in
             WorkspaceSection("On-Device Model", palette: palette) {
                 HStack {
@@ -60,11 +85,19 @@ struct SummarizeView: View {
                     .frame(minHeight: 120, maxHeight: 200)
                     .accessibilityLabel("Text to summarize")
                 } else if isPDF {
-                    SettingRow("Pages") {
-                        TextField("All pages, or 1–3, 6", text: $draft.pages)
-                    }
                     SettingRow("PDF password") {
                         SecureField("If required", text: $password)
+                    }
+                    if let loaded {
+                        PDFExportPagePicker(document: loaded.document, range: $draft.pages, startsWithAll: true)
+                        if case .failure(let error) = selection,
+                           (try? PageSelection.indices(draft.pages, pageCount: loaded.document.pageCount)) != nil {
+                            Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                        }
+                    } else if case .failure(let error) = preview {
+                        Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        ProgressView("Reading PDF pages…").controlSize(.small)
                     }
                 }
             }
@@ -87,9 +120,10 @@ struct SummarizeView: View {
                     .disabled(job != nil)
                 }
                 HStack {
-                    Button("Summarize", systemImage: "text.page", action: start)
+                    Button("Summarize", systemImage: "text.page") { start(reviewedPDF: loaded?.stamp) }
                         .buttonStyle(.borderedProminent)
-                        .disabled(job != nil || !availability.isAvailable || (draft.file == nil && draft.text.isEmpty))
+                        .disabled(job != nil || !availability.isAvailable || (draft.file == nil && draft.text.isEmpty) ||
+                                  (request != nil && (try? selection?.get()) == nil))
                     if job != nil { Button("Cancel", action: cancel) }
                 }
                 if let progress {
@@ -115,6 +149,18 @@ struct SummarizeView: View {
                 }
             }
         }
+        .task(id: request) {
+            guard let request else { pagePreview = nil; return }
+            if pagePreview?.request != request { pagePreview = nil }
+            do {
+                let pdf = try await Self.loadPDF(request)
+                guard !Task.isCancelled else { return }
+                pagePreview = PagePreview(request: request, result: .success(pdf))
+            } catch {
+                guard !Task.isCancelled else { return }
+                pagePreview = PagePreview(request: request, result: .failure(error))
+            }
+        }
         .onChange(of: draft.pages) { clearResult() }
         .onChange(of: password) { clearResult() }
         .onChange(of: draft.length) { clearResult() }
@@ -122,6 +168,18 @@ struct SummarizeView: View {
         .onChange(of: scenePhase) { if scenePhase == .active { refreshAvailability() } }
         .onAppear(perform: refreshAvailability)
         .onDisappear(perform: cancel)
+    }
+
+    @concurrent
+    private static func loadPDF(_ request: PreviewRequest) async throws -> sending PreviewDocument {
+        try Task.checkCancellation()
+        let stamp = try PDFSourceStamp.read(request.file)
+        let pdf = try TextExtraction.openPDF(stamp.resolved, password: request.password)
+        guard try PDFSourceStamp.read(request.file) == stamp else {
+            throw ToolError.invalid("The PDF changed while opening. Reopen it to review the current pages.")
+        }
+        try Task.checkCancellation()
+        return PreviewDocument(document: pdf, stamp: stamp)
     }
 
     private func refreshAvailability() {
@@ -142,13 +200,16 @@ struct SummarizeView: View {
         draft.file = file
         draft.pages = ""
         password = ""
+        previewRevision += 1
         clearResult()
     }
 
-    private func start() {
+    private func start(reviewedPDF: PDFSourceStamp?) {
         refreshAvailability()
         guard availability.isAvailable, job == nil else { return }
         clearResult()
+        let file = draft.file
+        guard verifyReviewedPDF(reviewedPDF, file: file) else { return }
         let source = draft.file.map { DocumentSummarizer.Source.document($0, pages: draft.pages, password: password) }
             ?? .text(draft.text)
         let request = DocumentSummarizer.Request(source: source, length: draft.length, format: draft.format)
@@ -176,12 +237,20 @@ struct SummarizeView: View {
                 } onCancel: {
                     worker.cancel()
                 }
-                if !Task.isCancelled, jobID == id { result = summary }
+                if !Task.isCancelled, jobID == id, verifyReviewedPDF(reviewedPDF, file: file) { result = summary }
             } catch is CancellationError {
             } catch {
                 if !Task.isCancelled, jobID == id { issue = error.localizedDescription }
             }
         }
+    }
+
+    private func verifyReviewedPDF(_ expected: PDFSourceStamp?, file: URL?) -> Bool {
+        guard let expected, let file else { return true }
+        guard (try? PDFSourceStamp.read(file)) != expected else { return true }
+        previewRevision += 1
+        issue = "The PDF changed. Review the refreshed pages before summarizing."
+        return false
     }
 
     private func cancel() {

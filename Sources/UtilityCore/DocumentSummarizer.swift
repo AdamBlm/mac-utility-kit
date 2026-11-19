@@ -1,5 +1,4 @@
 import Foundation
-import PDFKit
 import UniformTypeIdentifiers
 
 public enum DocumentSummarizer {
@@ -119,14 +118,8 @@ public enum DocumentSummarizer {
                 throw ToolError.invalid("Choose a local PDF, text, or RTF file.")
             }
             if values.contentType?.conforms(to: .pdf) == true || url.pathExtension.lowercased() == "pdf" {
-                guard let pdf = PDFDocument(url: url) else { throw ToolError.invalid("Could not open this PDF.") }
-                if pdf.isLocked || (pdf.isEncrypted && !password.isEmpty), !pdf.unlock(withPassword: password) {
-                    throw ToolError.invalid("Could not open this PDF. Check the password.")
-                }
-                let indices = try PageSelection.indices(pages, pageCount: pdf.pageCount)
-                guard indices.count <= maximumPDFPages else {
-                    throw ToolError.invalid("Select up to \(maximumPDFPages) PDF pages per summary.")
-                }
+                let pdf = try TextExtraction.openPDF(url, password: password)
+                try validatePDFSelection(pages, pageCount: pdf.pageCount)
                 var options = TextExtractionOptions()
                 options.range = pages
                 options.password = password
@@ -140,6 +133,14 @@ public enum DocumentSummarizer {
                 return (result.text, omitted)
             }
             return (try await SpeechDocument.load(url), [])
+        }
+    }
+
+    package static func validatePDFSelection(_ pages: String, pageCount: Int) throws {
+        let indices = try PageSelection.indices(pages, pageCount: pageCount)
+        guard !indices.isEmpty else { throw ToolError.invalid("Select at least one PDF page.") }
+        guard indices.count <= maximumPDFPages else {
+            throw ToolError.invalid("Select up to \(maximumPDFPages) PDF pages per summary.")
         }
     }
 

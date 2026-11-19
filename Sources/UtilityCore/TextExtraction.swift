@@ -123,7 +123,7 @@ public enum TextExtraction {
         return selected.map { $0 + 1 }
     }
 
-    private static func openPDF(_ input: URL, password: String) throws -> PDFDocument {
+    package static func openPDF(_ input: URL, password: String) throws -> PDFDocument {
         guard let document = PDFDocument(url: input) else {
             throw ToolError.invalid("Could not open this PDF.")
         }
