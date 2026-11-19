@@ -49,7 +49,7 @@ public enum PDFToWord {
         _ input: URL, options: PDFToWordOptions, progress: @Sendable (Double) async -> Void = { _ in }
     ) async throws -> Preview {
         let source = try open(input, options)
-        let result = try await read(input, source: source, options: options, progress: progress)
+        let result = try await read(source: source, options: options, progress: progress)
         try verifySource(input, stamp: source.stamp)
         return result
     }
@@ -70,15 +70,18 @@ public enum PDFToWord {
 
         let candidate: URL
         var unreadable = 0
+        var ocrFailures = 0
+        let skipsFormOCR = options.recognizeScans && options.mode == .layout && hasFormWidgets(source)
         var expectsText = false
         if options.mode == .flowing {
-            let report = try await read(input, source: source, options: options) { await progress($0 * 0.65) }
+            let report = try await read(source: source, options: options) { await progress($0 * 0.65) }
             unreadable = report.pages.count { $0.text.isEmpty }
+            ocrFailures = report.pages.count { $0.issue != nil && !$0.text.isEmpty }
             expectsText = true
             let pages = report.pages.compactMap { page -> [PDFWordFlow.Block]? in
                 guard !page.text.isEmpty else { return nil }
-                let reference = page.usedOCR ? nil : source.pdf.page(at: page.id - 1)
-                return PDFWordFlow.blocks(from: page.text, reference: reference)
+                let reference = source.pdf.page(at: page.id - 1)
+                return PDFWordFlow.blocks(from: page.text, reference: reference, includesOCR: page.usedOCR)
             }
             guard !pages.isEmpty else {
                 throw ToolError.invalid("No editable text was found. Enable OCR for scanned PDF pages.")
@@ -95,13 +98,19 @@ public enum PDFToWord {
             expectsText = source.pages.count > 0 && !source.pages.allSatisfy {
                 source.pdf.page(at: $0)?.string?.nonemptyText == nil
             }
-            if options.recognizeScans && hasScans {
+            if options.recognizeScans && !skipsFormOCR {
                 let searchable = stage.appending(path: "Searchable.pdf")
-                let recognized = try await SearchablePDF.export(pdf, to: searchable, options: .init()) {
+                var recognition = SearchablePDFOptions()
+                recognition.skipsSearchablePages = false
+                let recognized = try await SearchablePDF.export(pdf, to: searchable, options: recognition) {
                     await progress($0 * 0.65)
                 }
-                unreadable = recognized.pages.count { $0.status == .failed || $0.status == .noText }
-                expectsText = recognized.pages.contains { $0.status == .addedText || $0.status == .alreadySearchable }
+                ocrFailures = recognized.pages.count { $0.status == .failed }
+                unreadable = recognized.pages.enumerated().count { offset, result in
+                    result.status == .noText || (result.status == .failed &&
+                        source.pdf.page(at: source.pages[offset])?.string?.nonemptyText == nil)
+                }
+                expectsText = expectsText || recognized.pages.contains { $0.status == .addedText || $0.status == .alreadySearchable }
                 selected = searchable
             } else if hasScans {
                 unreadable = source.pages.count { index in source.pdf.page(at: index)?.string?.nonemptyText == nil }
@@ -117,7 +126,9 @@ public enum PDFToWord {
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let skipped = unreadable == 0 ? "" : " · \(unreadable) without editable text"
-        return "\(source.pages.count) source pages · \(options.mode.rawValue) · DOCX" + skipped
+        let failedOCR = ocrFailures == 0 ? "" : " · OCR failed on \(ocrFailures) pages"
+        let formNotice = skipsFormOCR ? " · OCR skipped for interactive forms" : ""
+        return "\(source.pages.count) source pages · \(options.mode.rawValue) · DOCX" + skipped + failedOCR + formNotice
     }
 
     private static func consistentOutput(_ output: URL, input: URL) -> Bool {
@@ -139,20 +150,17 @@ public enum PDFToWord {
         return Source(pdf: pdf, pages: pages, stamp: stamp)
     }
 
+    private static func hasFormWidgets(_ source: Source) -> Bool {
+        source.pages.contains { source.pdf.page(at: $0)?.annotations.contains { $0.type == "Widget" } == true }
+    }
+
     private static func read(
-        _ input: URL, source: Source, options: PDFToWordOptions, progress: @Sendable (Double) async -> Void
+        source: Source, options: PDFToWordOptions, progress: @Sendable (Double) async -> Void
     ) async throws -> Preview {
-        var texts: [Int: TextExtractionPage] = [:]
-        if options.recognizeScans {
-            let scans = source.pages.filter { source.pdf.page(at: $0)?.string?.nonemptyText == nil }
-            if !scans.isEmpty {
-                var textOptions = TextExtractionOptions()
-                textOptions.range = scans.map { String($0 + 1) }.joined(separator: ",")
-                textOptions.password = options.password
-                let extracted = try await TextExtraction.extract(input, options: textOptions, progress: progress)
-                texts = Dictionary(uniqueKeysWithValues: extracted.pages.map { ($0.id, $0) })
-            }
-        }
+        var recognition = SearchablePDFOptions()
+        recognition.skipsSearchablePages = false
+        let skipsFormOCR = options.recognizeScans && options.mode == .layout && hasFormWidgets(source)
+        let recognizesScans = options.recognizeScans && !skipsFormOCR
         var totalBytes = 0
         var result: [Page] = []
         var warnings: [String] = [
@@ -160,20 +168,34 @@ public enum PDFToWord {
                 ? "Positioned Word text boxes and images approximate the PDF. Fonts, tables, and alignment may change."
                 : "Text reflows as Word paragraphs. Heading and list detection is approximate; pictures and complex layout are omitted."
         ]
+        if skipsFormOCR { warnings.append("OCR is skipped for interactive forms in Preserve Layout mode.") }
         var containsAnnotations = false
-        for index in source.pages {
+        for (offset, index) in source.pages.enumerated() {
             try Task.checkCancellation()
             guard let page = source.pdf.page(at: index) else { throw ToolError.invalid("Could not open PDF page \(index + 1).") }
             containsAnnotations = containsAnnotations || !page.annotations.isEmpty
             let number = index + 1
             let embedded = page.string?.nonemptyText
-            let ocr = texts[number]
-            let content = embedded ?? ocr?.text.nonemptyText ?? ""
+            var ocr: SearchablePDFPageResult?
+            var failure: String?
+            if recognizesScans {
+                do {
+                    ocr = try SearchablePDF.recognitionResult(for: page, index: index, options: recognition)
+                } catch {
+                    try Task.checkCancellation()
+                    failure = error.localizedDescription
+                }
+            }
+            let usedOCR = ocr?.status == .addedText
+            let recognizedText = usedOCR ? ocr?.text.nonemptyText : nil
+            let content = recognizedText ?? embedded ?? ""
+
             totalBytes += content.utf8.count
             guard totalBytes <= 4 * 1024 * 1024 else { throw ToolError.invalid("Select fewer pages, up to 4 MB of extracted text.") }
-            let issue = ocr?.error ?? (content.isEmpty
-                ? (options.recognizeScans ? "No text recognized." : "No embedded text. Enable OCR for scanned pages.") : nil)
-            result.append(Page(id: number, text: content, usedOCR: embedded == nil && !content.isEmpty, issue: issue))
+            let issue = failure ?? (content.isEmpty
+                ? (recognizesScans ? "No text recognized." : "No embedded text.") : nil)
+            result.append(Page(id: number, text: content, usedOCR: usedOCR, issue: issue))
+            await progress(Double(offset + 1) / Double(source.pages.count))
         }
         if containsAnnotations {
             warnings.append("Links, notes, signatures, and interactive form controls may be lost.")

@@ -69,6 +69,11 @@ public enum SearchablePDF {
         return SearchablePDFPreview(image: SearchablePDFTextLayer.thumbnail(raster.image), result: recognized.result)
     }
 
+    static func recognitionResult(for page: PDFPage, index: Int, options: SearchablePDFOptions) throws -> SearchablePDFPageResult {
+        let raster = try SearchablePDFTextLayer.rasterize(page, limit: 4_096)
+        return try recognize(page, raster: raster, index: index, options: options).result
+    }
+
     public static func export(
         _ input: URL, to output: URL, options: SearchablePDFOptions,
         progress: @escaping @Sendable (Double) async -> Void

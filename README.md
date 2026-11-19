@@ -149,7 +149,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Scan Document** imports photos or scans, corrects selectable corners, rotates or recolors pages, and saves the ordered pages as a PDF.
 - **Fix “App Is Damaged”** inspects signing integrity, quarantine status, and current macOS policy through read-only checks.
 - **Login & Background Items** reviews discoverable system entries and opens the native settings for managing them.
-- **PDF to Word** uses LibreOffice to export selected pages as flowing editable text or a layout with positioned text and images. Optional OCR handles scanned pages.
+- **PDF to Word** uses LibreOffice to export selected pages as flowing editable text or a layout with positioned text and images. Optional OCR handles scans, including pages that already contain some selectable text. Preserve Layout skips OCR for interactive forms.
 - **Fill & Flatten Forms** edits PDF form fields, adds text or checkboxes, proposes printed field locations, and saves interactive or flattened copies. Select a Python environment with pypdf for export verification.
 - **Hidden Settings** shows and edits a fixed set of Finder and Dock preferences, with reset to the macOS default.
 - **Clean Keyboard** briefly pauses software keyboard input after a permission check, while keeping the pointer available to stop the session.

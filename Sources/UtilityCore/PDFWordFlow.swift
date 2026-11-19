@@ -15,9 +15,18 @@ enum PDFWordFlow {
         let bold: Bool
     }
 
-    static func blocks(from extracted: String, reference: PDFPage?) -> [Block] {
-        let lines = reference?.attributedString.map(styledLines) ?? extracted
-            .components(separatedBy: .newlines).map { Line(text: $0, size: nil, bold: false) }
+    static func blocks(from extracted: String, reference: PDFPage?, includesOCR: Bool = false) -> [Block] {
+        let native = reference?.attributedString.map(styledLines) ?? []
+        let lines: [Line]
+        if !includesOCR, !native.isEmpty {
+            lines = native
+        } else {
+            let styles = Dictionary(grouping: native) { normalized($0.text) }
+            lines = extracted.components(separatedBy: .newlines).map { text in
+                let style = styles[normalized(text)]?.first
+                return Line(text: text, size: style?.size, bold: style?.bold ?? false)
+            }
+        }
         let sizes = lines.filter { $0.text.split(separator: " ").count > 3 }.compactMap(\.size).sorted()
         let baseline = sizes.isEmpty ? nil : sizes[sizes.count / 2]
         var result: [Block] = []
@@ -75,6 +84,10 @@ enum PDFWordFlow {
         }
         lines.append("</body></html>")
         return lines.joined(separator: "\n")
+    }
+
+    private static func normalized(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
     }
 
     private static func styledLines(_ text: NSAttributedString) -> [Line] {
