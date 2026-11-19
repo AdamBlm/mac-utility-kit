@@ -13,6 +13,7 @@ struct PDFRedactionDraft {
 
 struct RedactPDFView: View {
     @Binding var draft: PDFRedactionDraft
+    let stageClipboardPDF: (Data) throws -> URL
     @State private var preview = PDFRedactionPreviewSession()
     @State private var loaded: Loaded?
     @State private var mode = Mode.text
@@ -49,7 +50,9 @@ struct RedactPDFView: View {
                 WorkspaceSection("PDF", palette: palette) {
                     HStack {
                         Button(draft.input == nil ? "Choose PDF…" : "Replace PDF…", systemImage: "folder") { choose() }
-                        ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: setInput)
+                        ClipboardFileButton(allowedTypes: [.pdf], onPastePDF: { data in
+                            setInput(try stageClipboardPDF(data))
+                        }, onPasteFile: setInput)
                         if let input = draft.input { Text(input.lastPathComponent).lineLimit(1).foregroundStyle(.secondary) }
                     }
                     .disabled(work != nil)

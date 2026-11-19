@@ -15,6 +15,7 @@ struct PDFFormsDraft {
 
 struct PDFFormsView: View {
     @Binding var draft: PDFFormsDraft
+    let stageClipboardPDF: (Data) throws -> URL
     @State private var page = 0
     @State private var fields: [PDFForms.Field] = []
     @State private var candidates: [PDFForms.Candidate] = []
@@ -69,7 +70,9 @@ struct PDFFormsView: View {
                 HStack {
                     Button("Open PDF…", systemImage: "folder", action: open)
                         .disabled(exporting)
-                    ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: load)
+                    ClipboardFileButton(allowedTypes: [.pdf], onPastePDF: { data in
+                        load(try stageClipboardPDF(data))
+                    }, onPasteFile: load)
                         .disabled(exporting)
                     if let source = draft.source { Text(source.lastPathComponent).font(.callout).lineLimit(1) }
                 }

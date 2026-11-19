@@ -112,7 +112,7 @@ struct ToolWorkspace: View {
         case .appDamageDiagnosis: AppDamageDiagnosisView()
         case .loginBackgroundItems: LoginBackgroundItemsView()
         case .scanDocument: DocumentScannerView(draft: $draft.scanner)
-        case .fillFlattenForms: PDFFormsView(draft: $draft.pdfForms)
+        case .fillFlattenForms: PDFFormsView(draft: $draft.pdfForms, stageClipboardPDF: session.stageClipboardPDF)
         case .hiddenSettings: HiddenSettingsView()
         case .cleanKeyboard: CleanKeyboardView()
         case .wifiPasswordQR: WiFiPasswordView()
@@ -135,12 +135,12 @@ struct ToolWorkspace: View {
         case .colorPicker: ColorPickerToolView(draft: $draft.colorPicker)
         case .markdownToPDF: MarkdownPDFView(draft: $draft.markdownPDF)
         case .webPageToPDF: WebPagePDFView(draft: $draft.webPagePDF)
-        case .redactPDF: RedactPDFView(draft: $draft.pdfRedaction)
+        case .redactPDF: RedactPDFView(draft: $draft.pdfRedaction, stageClipboardPDF: session.stageClipboardPDF)
         case .addPassword, .removePassword:
             PDFProtectionView(tool: tool, input: Binding(
                 get: { draft.inputs.first },
                 set: { draft.inputs = $0.map { [$0] } ?? [] }
-            ))
+            ), stageClipboardPDF: session.stageClipboardPDF)
         default: EmptyView()
         }
     }

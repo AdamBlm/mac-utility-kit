@@ -7,6 +7,7 @@ import UniformTypeIdentifiers
 struct PDFProtectionView: View {
     let tool: Tool
     @Binding var input: URL?
+    let stageClipboardPDF: (Data) throws -> URL
     @State private var options = PDFProtectionOptions()
     @State private var verifiedPreview: PDFView?
     @State private var task: Task<Void, Never>?
@@ -27,7 +28,9 @@ struct PDFProtectionView: View {
                 HStack {
                     if let input { Text(input.lastPathComponent).lineLimit(1) }
                     Button(input == nil ? "Choose PDF…" : "Replace PDF…", systemImage: "folder", action: choosePDF)
-                    ClipboardFileButton(allowedTypes: [.pdf], onPasteFile: setInput)
+                    ClipboardFileButton(allowedTypes: [.pdf], onPastePDF: { data in
+                        setInput(try stageClipboardPDF(data))
+                    }, onPasteFile: setInput)
                 }
                 executablePicker("qpdf", selection: $options.executable)
             }
