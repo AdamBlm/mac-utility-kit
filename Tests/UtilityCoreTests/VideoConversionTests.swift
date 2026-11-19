@@ -64,7 +64,7 @@ import Testing
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
 func videoConversionUsingFFmpegSupportsWebMAndCustomVideoSettings() async throws {
-    guard let executable = ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] else { return }
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
     let folder = try conversionFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let source = try await conversionFixture(in: folder)

@@ -50,10 +50,15 @@ struct EjectDisksTests {
         #expect(retry.map(\.status) == [.ejected])
     }
 
-    @Test func nativeAppleInventoryAndDisposableImageWhenProvided() async throws {
+    @Test func nativeAppleInventoryExcludesTheStartupVolume() async throws {
         let groups = try await EjectDisks.inventory()
         #expect(groups.flatMap(\.volumes).allSatisfy { $0.mount.path != "/" })
-        guard let identifier = ProcessInfo.processInfo.environment["MAC_UTILITY_EJECT_TEST_DISK"] else { return }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_EJECT_TEST_DISK"] != nil))
+    func ejectsDisposableDiskImage() async throws {
+        let identifier = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_EJECT_TEST_DISK"])
+        let groups = try await EjectDisks.inventory()
         let group = try #require(groups.first {
             $0.id.device == identifier && $0.isDiskImage && $0.name == "fixture.dmg"
                 && $0.volumes.count == 1 && $0.volumes.first?.name == "MUK Eject Fixture"

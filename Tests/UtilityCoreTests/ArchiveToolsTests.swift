@@ -158,8 +158,9 @@ struct ArchiveToolsTests {
         await #expect(throws: CancellationError.self) { try await task.value }
     }
 
-    @Test func extractsUpstreamRAR5FixtureWhenAvailable() async throws {
-        guard let path = ProcessInfo.processInfo.environment["MAC_UTILITY_RAR_TEST"] else { return }
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_RAR_TEST"] != nil))
+    func extractsUpstreamRAR5FixtureWhenAvailable() async throws {
+        let path = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_RAR_TEST"])
         let stage = try staging()
         defer { try? FileManager.default.removeItem(at: stage) }
         let archive = URL(filePath: path)

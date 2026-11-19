@@ -6,8 +6,9 @@ import Testing
 @testable import UtilityCore
 
 struct PDFToWordTests {
-    @Test func flowingRecognizesNativeHeadingsListsAndScanTextWithLibreOffice() async throws {
-        guard let engine = ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] else { return }
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func flowingRecognizesNativeHeadingsListsAndScanTextWithLibreOffice() async throws {
+        let engine = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"])
         let stage = try makeStage()
         defer { try? FileManager.default.removeItem(at: stage) }
         let source = stage.appending(path: "input.pdf")
@@ -48,8 +49,9 @@ struct PDFToWordTests {
         }
     }
 
-    @Test func layoutRetainsEditableNativeAndOCRTextPlusFiguresWithLibreOffice() async throws {
-        guard let engine = ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] else { return }
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func layoutRetainsEditableNativeAndOCRTextPlusFiguresWithLibreOffice() async throws {
+        let engine = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"])
         let stage = try makeStage()
         defer { try? FileManager.default.removeItem(at: stage) }
         let source = stage.appending(path: "input.pdf")
@@ -72,8 +74,9 @@ struct PDFToWordTests {
         #expect(rerendered.pageCount >= 2)
     }
 
-    @Test func hybridPageKeepsNativeAndRasterTextInBothWordModes() async throws {
-        guard let engine = ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] else { return }
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func hybridPageKeepsNativeAndRasterTextInBothWordModes() async throws {
+        let engine = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"])
         let stage = try makeStage()
         defer { try? FileManager.default.removeItem(at: stage) }
         let source = stage.appending(path: "Hybrid.pdf")

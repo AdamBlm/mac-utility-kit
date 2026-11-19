@@ -211,8 +211,8 @@ struct AskDocumentTests {
         #expect(answer.citations.first?.quote == "Harbour permit code 7429")
     }
 
-    @Test func optionalAppleModelFindsEvidenceAndAbstainsForAnUnreportedProperty() async throws {
-        guard ProcessInfo.processInfo.environment["MAC_UTILITY_ASK_LIVE_MODEL"] == "1" else { return }
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_ASK_LIVE_MODEL"] == "1"))
+    func optionalAppleModelFindsEvidenceAndAbstainsForAnUnreportedProperty() async throws {
         try #require(AppleDocumentAnswerModel.isAvailable)
         let (folder, source) = try makeSource("project.txt")
         defer { try? FileManager.default.removeItem(at: folder) }
