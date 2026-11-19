@@ -6,7 +6,7 @@ enum VideoOperations {
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         let output = folder.appendingPathComponent("Preview." + options.videoFormat.rawValue)
         do {
-            _ = try await compress(input, output: output, options: options, sample: true) { _ in }
+            try await compress(input, output: output, options: options, sample: true) { _ in }
             let originalDuration = try await AVURLAsset(url: input).load(.duration).seconds
             let sampleDuration = if options.videoFormat == .webm {
                 min(originalDuration, 5)
@@ -27,7 +27,7 @@ enum VideoOperations {
 
     static func compress(
         _ input: URL, output: URL, options: ToolOptions, sample: Bool = false, progress: @escaping @Sendable (Double) async -> Void
-    ) async throws -> String {
+    ) async throws {
         let asset = AVURLAsset(url: input)
         try VideoCompression.validate(options)
         if let executable = options.ffmpegExecutable {
@@ -52,16 +52,5 @@ enum VideoOperations {
         } else {
             try await AVFoundationEncoding.export(asset, to: output, options: options, sample: sample, progress: progress)
         }
-        if sample { return output.lastPathComponent }
-        let sourceSize = try input.resourceValues(forKeys: [.fileSizeKey]).fileSize
-        let outputSize = try output.resourceValues(forKeys: [.fileSizeKey]).fileSize
-        if let sourceSize, let outputSize, outputSize >= sourceSize, !options.keepLargerVideos {
-            throw ToolError.invalid("The export is not smaller. Enable Keep exports that are not smaller to retain it.")
-        }
-        guard let sourceSize, let outputSize, sourceSize > 0 else { return input.lastPathComponent }
-        let change = Double(sourceSize - outputSize) / Double(sourceSize)
-        let description = abs(change).formatted(.percent.precision(.fractionLength(1)))
-            + (change >= 0 ? " saved" : " larger")
-        return "\(input.lastPathComponent) • \(ByteCountFormatter.string(fromByteCount: Int64(sourceSize), countStyle: .file)) → \(ByteCountFormatter.string(fromByteCount: Int64(outputSize), countStyle: .file)) • \(description)"
     }
 }

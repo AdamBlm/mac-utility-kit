@@ -65,16 +65,20 @@ final class ExportActivityCenter {
     }
 
     func postCompletion(_ tool: Tool, report: JobReport) {
-        postCompletion(tool, outputs: report.outputs.count, failures: report.failures.count)
+        postCompletion(tool, outputs: report.outputs.count, failures: report.failures.count, awaitingReview: report.videoReviews.count)
     }
 
-    func postCompletion(_ tool: Tool, outputs count: Int, failures: Int = 0) {
+    func postCompletion(_ tool: Tool, outputs count: Int, failures: Int = 0, awaitingReview: Int = 0) {
         guard !NSApp.isActive, UserDefaults.standard.bool(forKey: "exports.completionNotifications") else { return }
         let content = UNMutableNotificationContent()
         content.title = tool.title
-        content.body = failures == 0
-            ? "\(count) output\(count == 1 ? "" : "s") saved."
-            : "\(count) saved · \(failures) failed. Open Mac Utility Kit for details."
+        content.body = if awaitingReview > 0 {
+            "\(count) saved · \(awaitingReview) awaiting review · \(failures) failed. Open Mac Utility Kit for details."
+        } else if failures == 0 {
+            "\(count) output\(count == 1 ? "" : "s") saved."
+        } else {
+            "\(count) saved · \(failures) failed. Open Mac Utility Kit for details."
+        }
         let request = UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil)
         UNUserNotificationCenter.current().add(request, withCompletionHandler: nil)
     }

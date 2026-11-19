@@ -1,13 +1,14 @@
 import Foundation
 
 public struct JobReport: Sendable {
-    public let outputs: [URL]
+    public package(set) var outputs: [URL]
     public let failures: [String]
-    public let summaries: [String]
+    public package(set) var summaries: [String]
     public let textExtractions: [ExtractedTextFile]
     public let inspections: [MediaInspectionResult]
     public let imageComparisons: [ImageComparisonResult]
     public let metadataResults: [ImageMetadataResult]
+    package var videoReviews: [VideoCompressionReview] = []
 }
 
 public struct ExtractedTextFile: Sendable {
@@ -74,6 +75,7 @@ public enum ToolRunner {
         var inspections: [MediaInspectionResult] = []
         var comparisons: [ImageComparisonResult] = []
         var metadataResults: [ImageMetadataResult] = []
+        var videoReviews: [VideoCompressionReview] = []
 
         if tool == .mergePDFs {
             let name = options.pdfOutputName.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -160,10 +162,20 @@ public enum ToolRunner {
                     switch tool {
                     case .resizeImages: try await ImageResizing.resize(input, output: output, imageSize: imageSize, options: options)
                     case .compressVideo:
-                        let summary = try await VideoOperations.compress(input, output: output, options: options) { fraction in
+                        try await VideoOperations.compress(input, output: output, options: options) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
-                        summaries.append(summary)
+                        let sizes = try VideoCompressionSizes(input: input, output: output)
+                        if sizes.needsReview, !options.keepLargerVideos {
+                            guard options.reviewLargerVideos else {
+                                throw ToolError.invalid("The export is not smaller. Enable keeping larger exports to retain it.")
+                            }
+                            let review = try VideoCompressionReview(staged: output, destination: destination, summary: sizes.summary)
+                            videoReviews.append(review)
+                            await progress(Double(index + 1) / Double(inputs.count))
+                            continue
+                        }
+                        summaries.append(sizes.summary)
                     case .convertVideo:
                         let summary = try await VideoConversion.convert(input, to: output, options: options.conversion) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
@@ -330,8 +342,7 @@ public enum ToolRunner {
         }
 
         try Task.checkCancellation()
-        guard !outputs.isEmpty else { return JobReport(outputs: [], failures: failures, summaries: [], textExtractions: [], inspections: [], imageComparisons: [], metadataResults: []) }
-        try manager.moveItem(at: staging, to: result)
+        if !outputs.isEmpty { try manager.moveItem(at: staging, to: result) }
         return JobReport(
             outputs: outputs.map {
                 $0.pathComponents.dropFirst(staging.pathComponents.count).reduce(result) { directory, component in
@@ -339,7 +350,7 @@ public enum ToolRunner {
                 }
             },
             failures: failures, summaries: summaries, textExtractions: textExtractions, inspections: inspections,
-            imageComparisons: comparisons, metadataResults: metadataResults
+            imageComparisons: comparisons, metadataResults: metadataResults, videoReviews: videoReviews
         )
     }
 

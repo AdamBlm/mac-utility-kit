@@ -303,6 +303,16 @@ struct ToolWorkspace: View {
                             ForEach(Array(report.metadataResults.enumerated()), id: \.offset) { _, item in
                                 MetadataRemovalResultView(item: item)
                             }
+                            ForEach(report.videoReviews) { review in
+                                VStack(alignment: .leading, spacing: 6) {
+                                    Label("Export is not smaller", systemImage: "exclamationmark.circle")
+                                    Text(review.summary).font(.callout).textSelection(.enabled)
+                                    HStack {
+                                        Button("Keep") { session.resolveVideoReview(review, keep: true) }
+                                        Button("Discard") { session.resolveVideoReview(review, keep: false) }
+                                    }
+                                }
+                            }
                             ForEach(report.outputs, id: \.self) { output in
                                 HStack {
                                     Image(systemName: "checkmark.circle.fill")
@@ -351,7 +361,8 @@ struct ToolWorkspace: View {
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.inputs.isEmpty || session.isRunning || exportSettingsIncomplete
-                              || (tool.requiresSinglePDF && !pdfEditorReady))
+                              || (tool.requiresSinglePDF && !pdfEditorReady)
+                              || session.reports[tool]?.videoReviews.isEmpty == false)
             }
             .controlSize(.large)
             .frame(maxWidth: 660)

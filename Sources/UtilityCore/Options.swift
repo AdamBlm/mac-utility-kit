@@ -79,6 +79,7 @@ public struct ToolOptions: Sendable {
     public var videoQuality: VideoQuality = .balanced
     public var videoCompression = VideoCompressionOptions()
     public var keepLargerVideos = false
+    package var reviewLargerVideos = false
     public var conversion = VideoConversionOptions()
     public var speed = ChangeSpeedOptions()
     public var frames = FrameExtractionOptions()

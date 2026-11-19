@@ -226,8 +226,27 @@ final class WorkspaceSession {
         })
     }
 
+    func resolveVideoReview(_ review: VideoCompressionReview, keep: Bool) {
+        guard var report = reports[.compressVideo], report.videoReviews.contains(where: { $0.id == review.id }) else {
+            return
+        }
+        do {
+            if keep {
+                report.outputs.append(try review.keep())
+                report.summaries.append(review.summary)
+            } else {
+                try review.discard()
+            }
+            report.videoReviews.removeAll { $0.id == review.id }
+            reports[.compressVideo] = report
+            errors[.compressVideo] = nil
+        } catch {
+            errors[.compressVideo] = error.localizedDescription
+        }
+    }
+
     func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false) {
-        guard !isRunning else { return }
+        guard !isRunning, reports[tool]?.videoReviews.isEmpty != false else { return }
         runningTool = tool
         progress = 0
         previewURL = nil
@@ -243,6 +262,7 @@ final class WorkspaceSession {
             }
             do {
                 var options = draft.options
+                options.reviewLargerVideos = tool == .compressVideo && !preview
                 options.pageRanges = draft.inputs.indices.map { draft.ranges[$0, default: ""] }
                 options.pdfOutputName = draft.outputName
                 options.pdfPasswords = draft.inputs.indices.map { draft.passwords[$0, default: ""] }

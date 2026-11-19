@@ -141,7 +141,7 @@ struct VideoCompressionControls: View {
                     }
                     .labelsHidden()
                 }
-                Toggle("Keep exports that are not smaller", isOn: $options.keepLargerVideos)
+                Toggle("Automatically keep exports that are not smaller", isOn: $options.keepLargerVideos)
             }
             .padding(.top, 9)
         }
