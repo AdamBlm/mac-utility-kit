@@ -42,7 +42,7 @@ final class DeadPixelTestSession {
         }
     }
 
-    func start(displayID: UInt32, automatically: Bool, interval: Int) {
+    func start(displayID: UInt32, automatically: Bool, interval: Int, startingColor: DeadPixelColor = .black) {
         guard !active else { return }
         guard Self.running == nil else {
             issue = "End the current display test before starting another."
@@ -54,7 +54,7 @@ final class DeadPixelTestSession {
             return
         }
         issue = nil
-        sequence = DeadPixelSequence()
+        sequence = DeadPixelSequence(startingAt: startingColor)
         formerWindow = NSApp.keyWindow
         self.displayID = displayID
         automatic = automatically
@@ -130,6 +130,11 @@ final class DeadPixelTestSession {
         case .step(let direction):
             advance(direction)
             schedule()
+        case .select(let number):
+            if sequence.select(number: number) {
+                canvas?.color = color(sequence.color)
+                if cycling { schedule() }
+            }
         case .toggle:
             if automatic {
                 cycling.toggle()
@@ -162,7 +167,7 @@ private final class PixelTestWindow: NSWindow {
 }
 
 private final class PixelTestCanvas: NSView {
-    enum Action { case quit, step(Int), toggle }
+    enum Action { case quit, step(Int), select(Int), toggle }
 
     var perform: ((Action) -> Void)?
     var color = NSColor.black { didSet { needsDisplay = true } }
@@ -191,7 +196,13 @@ private final class PixelTestCanvas: NSView {
         case 123: perform?(.step(-1))
         case 124: perform?(.step(1))
         case 49: perform?(.toggle)
-        default: super.keyDown(with: event)
+        default:
+            if event.modifierFlags.intersection([.command, .control, .option]).isEmpty,
+               let key = event.characters, let number = Int(key), (1...DeadPixelColor.allCases.count).contains(number) {
+                perform?(.select(number))
+            } else {
+                super.keyDown(with: event)
+            }
         }
     }
 
