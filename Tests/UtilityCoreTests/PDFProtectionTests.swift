@@ -17,6 +17,14 @@ struct PDFProtectionTests {
         context.beginPDFPage(nil)
         context.fill(bounds.insetBy(dx: 20, dy: 20))
         context.endPDFPage()
+        let secondPageBounds = CGRect(x: 0, y: 0, width: 350, height: 180)
+        var mediaBox = secondPageBounds
+        let pageInfo = withUnsafeBytes(of: &mediaBox) {
+            [kCGPDFContextMediaBox: Data($0)] as CFDictionary
+        }
+        context.beginPDFPage(pageInfo)
+        context.fill(secondPageBounds.insetBy(dx: 15, dy: 15))
+        context.endPDFPage()
         context.closePDF()
         let original = try Data(contentsOf: source)
 
@@ -33,6 +41,9 @@ struct PDFProtectionTests {
         #expect(saved.isEncrypted && saved.isLocked)
         #expect(saved.unlock(withPassword: choices.password))
         #expect(!saved.allowsPrinting && !saved.allowsCopying)
+        #expect(saved.pageCount == 2)
+        #expect(saved.page(at: 1)?.bounds(for: .mediaBox) == secondPageBounds)
+        let protectedBytes = try Data(contentsOf: protected)
 
         let decrypted = folder.appendingPathComponent("decrypted.pdf")
         var wrong = choices
@@ -42,8 +53,10 @@ struct PDFProtectionTests {
         _ = try await PDFProtection.remove(protected, to: decrypted, options: choices)
         let finished = try #require(PDFDocument(url: decrypted))
         #expect(!finished.isEncrypted && !finished.isLocked)
-        #expect(finished.pageCount == 1)
+        #expect(finished.pageCount == 2)
         #expect(finished.page(at: 0)?.bounds(for: .mediaBox) == bounds)
+        #expect(finished.page(at: 1)?.bounds(for: .mediaBox) == secondPageBounds)
+        #expect(try Data(contentsOf: protected) == protectedBytes)
         #expect(try Data(contentsOf: source) == original)
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted()
             == ["decrypted.pdf", "original.pdf", "protected.pdf"])
