@@ -16,6 +16,31 @@ package final class DraftRetention {
         let updated: Date
     }
 
+    private struct StoredRecords: Decodable {
+        private struct ToolKey: CodingKey {
+            let stringValue: String
+            var intValue: Int? { nil }
+
+            init(stringValue: String) { self.stringValue = stringValue }
+            init?(intValue: Int) { return nil }
+        }
+
+        let records: [String: Record]
+        let count: Int
+
+        init(from decoder: any Decoder) throws {
+            let container = try decoder.container(keyedBy: ToolKey.self)
+            let keys = container.allKeys
+            count = keys.count
+            var decoded: [String: Record] = [:]
+            for key in keys where DraftRetention.supportedToolIDs.contains(key.stringValue) {
+                decoded[key.stringValue] = try? container.decode(Record.self, forKey: key)
+            }
+            records = decoded
+        }
+    }
+
+    nonisolated private static let supportedToolIDs = Set([Tool.wordCounter.id, Tool.caseConverter.id])
     private let maximumAge: TimeInterval = 7 * 24 * 60 * 60
     private static let storedFile = URL.applicationSupportDirectory
         .appending(path: "Mac Utility Kit", directoryHint: .isDirectory)
@@ -61,14 +86,14 @@ package final class DraftRetention {
     }
 
     package func retained(for tool: Tool) -> String? {
-        guard enabled, !pendingDeletion, supports(tool) else { return nil }
+        guard enabled, !pendingDeletion, Self.supportedToolIDs.contains(tool.id) else { return nil }
         load()
         guard let record = records?[tool.id], now().timeIntervalSince(record.updated) < maximumAge else { return nil }
         return record.text
     }
 
     package func record(_ text: String, for tool: Tool) {
-        guard enabled, !pendingDeletion, supports(tool) else { return }
+        guard enabled, !pendingDeletion, Self.supportedToolIDs.contains(tool.id) else { return }
         load()
         if text.isEmpty || text.utf8.count > 262_144 {
             records?[tool.id] = nil
@@ -140,9 +165,11 @@ package final class DraftRetention {
         let cutoff = now().addingTimeInterval(-maximumAge)
         let size = (try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
         let encoded = (1...4_194_304).contains(size) ? try? Data(contentsOf: file) : nil
-        let disk = encoded.flatMap { try? JSONDecoder().decode([String: Record].self, from: $0) } ?? [:]
-        records = disk.filter { $0.value.updated > cutoff && $0.value.text.utf8.count <= 262_144 }
-        if disk.count != records?.count { persist() }
+        let disk = encoded.flatMap { try? JSONDecoder().decode(StoredRecords.self, from: $0) }
+        records = (disk?.records ?? [:]).filter { _, record in
+            record.updated > cutoff && record.text.utf8.count <= 262_144
+        }
+        if let disk, disk.count != records?.count { persist() }
         else { scheduleExpiration() }
     }
 
@@ -170,9 +197,5 @@ package final class DraftRetention {
     private func removeStoredDrafts() throws {
         do { try removeFile(file) }
         catch let error as CocoaError where error.code == .fileNoSuchFile {}
-    }
-
-    private func supports(_ tool: Tool) -> Bool {
-        tool == .wordCounter || tool == .caseConverter
     }
 }

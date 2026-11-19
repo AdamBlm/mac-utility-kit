@@ -64,6 +64,28 @@ struct DraftRetentionTests {
         #expect(fixture.store().retained(for: .wordCounter) == "fresh text")
     }
 
+    @Test func loadingPrunesUnsupportedDraftsFromDisk() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let original = fixture.store()
+        original.setEnabled(true)
+        original.record("allowed draft", for: .wordCounter)
+        original.persist()
+
+        let saved = try Data(contentsOf: fixture.file)
+        var records = try #require(JSONSerialization.jsonObject(with: saved) as? [String: Any])
+        records["unsupported-tool"] = ["text": "Unsupported draft with no timestamp"]
+        records[Tool.caseConverter.id] = ["text": "Malformed supported draft"]
+        try JSONSerialization.data(withJSONObject: records).write(to: fixture.file)
+
+        let relaunched = fixture.store()
+        relaunched.start()
+        #expect(relaunched.retained(for: .wordCounter) == "allowed draft")
+        let rewritten = try Data(contentsOf: fixture.file)
+        let sanitized = try #require(JSONSerialization.jsonObject(with: rewritten) as? [String: Any])
+        #expect(Set(sanitized.keys) == [Tool.wordCounter.id])
+    }
+
     @Test func expiredDraftStaysUnavailableWhileDeletionIsRetried() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
