@@ -2,7 +2,17 @@ import AppKit
 import PDFKit
 import UniformTypeIdentifiers
 
-enum PDFOperations {
+package enum PDFOperations {
+    package enum SourceError: LocalizedError {
+        case passwordRequired(String)
+
+        package var errorDescription: String? {
+            switch self {
+            case .passwordRequired(let filename): "Enter the correct PDF password for \(filename)."
+            }
+        }
+    }
+
     static func merge(
         _ inputs: [URL], ranges: [String], passwords: [String], order: [PDFMergePageReference]? = nil,
         stamps: [Int: PDFMergeSourceStamp]? = nil, into output: URL, progress: @Sendable (Double) async -> Void
@@ -19,8 +29,11 @@ enum PDFOperations {
                 }
                 try validate(reviewed, input: input)
             }
-            let source = excluded ? nil : try open(input, password: password)
-            sources.append(source)
+            do {
+                sources.append(excluded ? nil : try open(input, password: password).document)
+            } catch let error as SourceError {
+                throw ToolError.invalid(error.localizedDescription)
+            }
             await progress(0.25 * Double(index + 1) / Double(inputs.count))
         }
         let counts = sources.map { $0?.pageCount ?? 0 }
@@ -60,21 +73,26 @@ enum PDFOperations {
         }
     }
 
-    static func open(_ input: URL, password: String) throws -> PDFDocument {
+    package static func open(_ input: URL, password: String) throws -> (document: PDFDocument, requiredPassword: Bool) {
         let type = try input.resourceValues(forKeys: [.contentTypeKey]).contentType
         if type?.conforms(to: .pdf) == true || input.pathExtension.lowercased() == "pdf" {
-            guard let document = PDFDocument(url: input),
-                  !document.isLocked || document.unlock(withPassword: password),
-                  document.pageCount > 0 else {
-                throw ToolError.invalid("Could not open \(input.lastPathComponent) as an unlocked PDF.")
+            guard let document = PDFDocument(url: input) else {
+                throw ToolError.invalid("Could not open \(input.lastPathComponent) as a PDF.")
             }
-            return document
+            let locked = document.isLocked
+            if locked && !document.unlock(withPassword: password) {
+                throw SourceError.passwordRequired(input.lastPathComponent)
+            }
+            guard document.pageCount > 0 else {
+                throw ToolError.invalid("\(input.lastPathComponent) has no pages.")
+            }
+            return (document, locked)
         }
         guard let image = NSImage(contentsOf: input), let page = PDFPage(image: image) else {
             throw ToolError.invalid("Could not read \(input.lastPathComponent). Check whether it is damaged or locked.")
         }
         let document = PDFDocument()
         document.insert(page, at: 0)
-        return document
+        return (document, false)
     }
 }

@@ -15,6 +15,8 @@ struct PDFMergePlanTests {
         let png = stage.appending(path: "Image.png")
         try pdf([110, 111, 112, 140, 150, 160], to: a)
         try pdf([210, 220], to: b, password: "secret")
+        #expect(throws: PDFOperations.SourceError.self) { try PDFOperations.open(b, password: "wrong") }
+        #expect(try PDFOperations.open(b, password: "secret").requiredPassword)
         try image(png)
 
         let inputs = [a, b, png]
@@ -38,7 +40,7 @@ struct PDFMergePlanTests {
         let document = try #require(PDFDocument(url: output))
         #expect(output.lastPathComponent == "Picked.pdf")
         #expect(document.pageCount == 6)
-        let imageWidth = try #require(PDFOperations.open(png, password: "").page(at: 0)).bounds(for: .mediaBox).width
+        let imageWidth = try #require(PDFOperations.open(png, password: "").document.page(at: 0)).bounds(for: .mediaBox).width
         let widths = (0..<document.pageCount).compactMap { document.page(at: $0)?.bounds(for: .mediaBox).width }
         #expect(widths == [110, imageWidth, 140, 220, 160, 150])
     }

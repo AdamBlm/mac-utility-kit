@@ -1,7 +1,6 @@
 import AppKit
 import PDFKit
 import SwiftUI
-import UniformTypeIdentifiers
 import UtilityCore
 
 struct PDFMergeInspection {
@@ -31,25 +30,18 @@ struct PDFMergeInspection {
     }
 
     private static func open(_ input: URL, password: String, stamp: PDFMergeSourceStamp) -> Self {
-        if (try? input.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: .pdf)) == true
-            || input.pathExtension.lowercased() == "pdf" {
-            guard let pdf = PDFDocument(url: input) else {
-                return Self(stamp: stamp, input: input, document: nil, requiresPassword: false, acceptedPassword: nil, issue: "This PDF could not be opened.")
-            }
-            let locked = pdf.isLocked
-            if locked && (password.isEmpty || !pdf.unlock(withPassword: password)) {
-                return Self(stamp: stamp, input: input, document: nil, requiresPassword: true, acceptedPassword: nil,
-                            issue: password.isEmpty ? nil : "Incorrect PDF password.")
-            }
-            return Self(stamp: stamp, input: input, document: pdf.pageCount > 0 ? pdf : nil, requiresPassword: locked,
-                        acceptedPassword: locked ? password : nil, issue: pdf.pageCount > 0 ? nil : "This PDF has no pages.")
+        do {
+            let source = try PDFOperations.open(input, password: password)
+            return Self(stamp: stamp, input: input, document: source.document,
+                        requiresPassword: source.requiredPassword,
+                        acceptedPassword: source.requiredPassword ? password : nil, issue: nil)
+        } catch PDFOperations.SourceError.passwordRequired {
+            return Self(stamp: stamp, input: input, document: nil, requiresPassword: true,
+                        acceptedPassword: nil, issue: password.isEmpty ? nil : "Incorrect PDF password.")
+        } catch {
+            return Self(stamp: stamp, input: input, document: nil, requiresPassword: false,
+                        acceptedPassword: nil, issue: error.localizedDescription)
         }
-        guard let image = NSImage(contentsOf: input), let page = PDFPage(image: image) else {
-            return Self(stamp: stamp, input: input, document: nil, requiresPassword: false, acceptedPassword: nil, issue: "This image could not be opened.")
-        }
-        let pdf = PDFDocument()
-        pdf.insert(page, at: 0)
-        return Self(stamp: stamp, input: input, document: pdf, requiresPassword: false, acceptedPassword: nil, issue: nil)
     }
 }
 
