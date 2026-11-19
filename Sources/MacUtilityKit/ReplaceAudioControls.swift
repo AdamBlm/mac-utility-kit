@@ -4,12 +4,31 @@ import SwiftUI
 import UniformTypeIdentifiers
 import UtilityCore
 
+struct ReplaceAudioReview {
+    var inputs: [URL] = []
+    var originals: [URL: Result<[AudioExtractionTrack], Error>] = [:]
+    var replacementInput: URL?
+    var replacementTracks: [AudioExtractionTrack]?
+
+    func hasReplacement(options: ReplaceAudioOptions) -> Bool {
+        guard let source = options.source, replacementInput == source else { return false }
+        return replacementTracks?.contains(where: { $0.index == options.sourceTrackIndex }) == true
+    }
+
+    func permitsExport(inputs: [URL], options: ReplaceAudioOptions) -> Bool {
+        guard hasReplacement(options: options) else { return false }
+        guard options.mode == .mix else { return true }
+        return self.inputs == inputs && inputs.contains { file in
+            (try? originals[file]?.get())?.contains(where: { $0.index == options.originalTracks[file, default: 0] }) == true
+        }
+    }
+}
+
 struct ReplaceAudioControls: View {
     let inputs: [URL]
     @Binding var options: ReplaceAudioOptions
+    @Binding var review: ReplaceAudioReview
 
-    @State private var originalTracks: [URL: [AudioExtractionTrack]] = [:]
-    @State private var replacementTracks: [AudioExtractionTrack]?
     @State private var replacementIssue: String?
     @State private var previewInput: URL?
     @State private var request: ListeningRequest?
@@ -17,6 +36,12 @@ struct ReplaceAudioControls: View {
     @State private var peak: ReplaceAudio.Sample?
     @State private var previewIssue: String?
     @State private var isDroppingAudio = false
+    @State private var trackRevision = 0
+
+    private struct TrackRequest<Source: Equatable>: Equatable {
+        let source: Source
+        let revision: Int
+    }
 
     private struct ListeningRequest: Equatable {
         let id = UUID()
@@ -30,20 +55,34 @@ struct ReplaceAudioControls: View {
         return inputs.first
     }
 
+    private var originalTracks: [URL: [AudioExtractionTrack]] {
+        review.inputs == inputs ? review.originals.compactMapValues { try? $0.get() } : [:]
+    }
+    private var replacementTracks: [AudioExtractionTrack]? {
+        review.replacementInput == options.source ? review.replacementTracks : nil
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 15) {
             sourceControls
             mixControls
             previewControls
         }
-        .task(id: options.source) { await inspectReplacement(options.source) }
-        .task(id: inputs) { await inspectOriginals() }
+        .task(id: TrackRequest(source: options.source, revision: trackRevision)) { [source = options.source, revision = trackRevision] in
+            await inspectReplacement(source, revision: revision)
+        }
+        .task(id: TrackRequest(source: inputs, revision: trackRevision)) { [revision = trackRevision] in
+            await inspectOriginals(revision: revision)
+        }
         .task(id: request) {
             if let request { await listen(to: request) }
         }
         .onChange(of: options) { clearPreview() }
         .onChange(of: activeInput) { clearPreview() }
-        .onDisappear { clearPreview() }
+        .onDisappear {
+            clearPreview()
+            review = ReplaceAudioReview()
+        }
     }
 
     private var sourceControls: some View {
@@ -60,6 +99,18 @@ struct ReplaceAudioControls: View {
                         .labelStyle(.iconOnly)
                         .buttonStyle(.borderless)
                 }
+                if options.source != nil || !inputs.isEmpty {
+                    Button("Recheck Audio Tracks", systemImage: "arrow.clockwise") {
+                        clearPreview()
+                        review = ReplaceAudioReview()
+                        replacementIssue = nil
+                        options.originalTracks = [:]
+                        options.sourceTrackIndex = 0
+                        trackRevision += 1
+                    }
+                    .labelStyle(.iconOnly)
+                    .help("Refresh audio tracks and reset track selections.")
+                }
             }
             if let replacementTracks, !replacementTracks.isEmpty {
                 SettingRow("New track") {
@@ -67,6 +118,9 @@ struct ReplaceAudioControls: View {
                         ForEach(replacementTracks) { Text($0.title).tag($0.index) }
                     }
                     .labelsHidden()
+                }
+                if !review.hasReplacement(options: options) {
+                    Text("Choose an available replacement audio track.").font(.callout).foregroundStyle(.secondary)
                 }
             } else if let replacementIssue {
                 Text(replacementIssue).font(.callout).foregroundStyle(.secondary)
@@ -115,6 +169,11 @@ struct ReplaceAudioControls: View {
                 ForEach(Array(inputs.enumerated()), id: \.offset) { _, input in
                     originalPicker(for: input)
                 }
+                if review.inputs == inputs, inputs.contains(where: { originalTracks[$0]?.isEmpty == true }),
+                   review.permitsExport(inputs: inputs, options: options) {
+                    Text("Mix requires original audio. Videos without it will be reported as failed.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
             } else if let activeInput, let tracks = originalTracks[activeInput], tracks.count > 1 {
                 originalPicker(for: activeInput)
             }
@@ -140,9 +199,7 @@ struct ReplaceAudioControls: View {
                            systemImage: isActive ? "stop.circle" : "play.circle") {
                         if isActive { stop() } else { start(variant) }
                     }
-                    .disabled(activeInput == nil || (variant == .original
-                              ? activeInput.flatMap { originalTracks[$0] }?.isEmpty != false
-                              : replacementTracks?.isEmpty != false))
+                    .disabled(!isActive && !canListen(variant))
                 }
                 if request != nil && player == nil {
                     ProgressView().controlSize(.small)
@@ -166,9 +223,19 @@ struct ReplaceAudioControls: View {
         }
     }
 
+    private func canListen(_ variant: ReplaceAudio.Preview) -> Bool {
+        guard let input = activeInput else { return false }
+        let selected = originalTracks[input]?.contains { $0.index == options.originalTracks[input, default: 0] } == true
+        if variant == .original { return selected }
+        return review.hasReplacement(options: options) && (options.mode != .mix || selected)
+    }
+
     @ViewBuilder
     private func originalPicker(for input: URL) -> some View {
-        if let tracks = originalTracks[input] {
+        if review.inputs == inputs, case .failure(let error) = review.originals[input] {
+            Text("\(input.lastPathComponent) · \(error.localizedDescription)")
+                .font(.callout).foregroundStyle(.secondary)
+        } else if let tracks = originalTracks[input] {
             if tracks.isEmpty {
                 Text("\(input.lastPathComponent) has no original audio to mix.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -181,6 +248,10 @@ struct ReplaceAudioControls: View {
                         ForEach(tracks) { Text($0.title).tag($0.index) }
                     }
                     .labelsHidden()
+                }
+                if !tracks.contains(where: { $0.index == options.originalTracks[input, default: 0] }) {
+                    Text("Choose an available original audio track for \(input.lastPathComponent).")
+                        .font(.callout).foregroundStyle(.secondary)
                 }
             }
         }
@@ -205,34 +276,44 @@ struct ReplaceAudioControls: View {
 
     private func setReplacement(_ url: URL?) {
         guard options.source != url else { return }
-        replacementTracks = nil
+        review.replacementInput = nil
+        review.replacementTracks = nil
         replacementIssue = nil
         options.sourceTrackIndex = 0
         options.source = url
     }
 
-    private func inspectReplacement(_ url: URL?) async {
-        replacementTracks = nil
+    private func inspectReplacement(_ url: URL?, revision: Int) async {
+        guard !Task.isCancelled, trackRevision == revision else { return }
+        review.replacementInput = url
+        review.replacementTracks = nil
         replacementIssue = nil
         guard let url else { return }
         do {
             let tracks = try await AudioExtraction.trackList(url)
             try Task.checkCancellation()
-            replacementTracks = tracks
+            guard options.source == url, review.replacementInput == url, trackRevision == revision else { return }
+            review.replacementTracks = tracks
             if tracks.isEmpty { replacementIssue = "This file has no readable audio tracks." }
         } catch {
-            if !Task.isCancelled { replacementIssue = error.localizedDescription }
+            if !Task.isCancelled, trackRevision == revision, options.source == url {
+                replacementIssue = error.localizedDescription
+            }
         }
     }
 
-    private func inspectOriginals() async {
-        var updated: [URL: [AudioExtractionTrack]] = [:]
+    private func inspectOriginals(revision: Int) async {
+        guard !Task.isCancelled, trackRevision == revision else { return }
+        review.inputs = []
+        review.originals = [:]
+        var updated: [URL: Result<[AudioExtractionTrack], Error>] = [:]
         for input in inputs {
-            let tracks = (try? await AudioExtraction.trackList(input)) ?? []
-            guard !Task.isCancelled else { return }
-            updated[input] = tracks
+            do { updated[input] = .success(try await AudioExtraction.trackList(input)) }
+            catch { updated[input] = .failure(error) }
+            guard !Task.isCancelled, trackRevision == revision else { return }
         }
-        originalTracks = updated
+        review.originals = updated
+        review.inputs = inputs
     }
 
     private func start(_ variant: ReplaceAudio.Preview) {

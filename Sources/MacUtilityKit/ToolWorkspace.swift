@@ -20,6 +20,7 @@ struct ToolWorkspace: View {
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
+    @State private var replaceAudioReview = ReplaceAudioReview()
     @State private var changeSpeedReview: ChangeSpeedReview?
     @State private var videoMergeReview: VideoMergeReview?
     @State private var muteReview: MuteVideoReview?
@@ -170,7 +171,7 @@ struct ToolWorkspace: View {
             videoMergeReview?.request.inputs != draft.inputs || videoMergeReview?.request.options != draft.options.videoMerge
                 || videoMergeReview?.permitsExport != true
         case .replaceAudio:
-            draft.options.replaceAudio.source == nil
+            !replaceAudioReview.permitsExport(inputs: draft.inputs, options: draft.options.replaceAudio)
         case .burnSubtitles:
             draft.options.burnSubtitles.engineIssue != nil || draft.options.burnSubtitles.subtitleIssue != nil
         case .convertAudio:
@@ -301,7 +302,8 @@ struct ToolWorkspace: View {
                         case .mergeVideos:
                             VideoMergeControls(inputs: $draft.inputs, options: $draft.options.videoMerge, review: $videoMergeReview)
                         case .replaceAudio:
-                            ReplaceAudioControls(inputs: draft.inputs, options: $draft.options.replaceAudio)
+                            ReplaceAudioControls(inputs: draft.inputs, options: $draft.options.replaceAudio,
+                                                 review: $replaceAudioReview)
                         case .burnSubtitles:
                             BurnSubtitlesSettings(input: draft.inputs.first, options: $draft.options.burnSubtitles, onTranscribe: openTranscription)
                         case .mediaInfo:

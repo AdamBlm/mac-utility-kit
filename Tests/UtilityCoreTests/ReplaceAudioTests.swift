@@ -3,6 +3,42 @@ import Testing
 import UtilityCore
 
 struct ReplaceAudioTests {
+    @Test func mixExportsAudibleClipAndSkipsSilentClipInSharedRunner() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let silent = try await VideoResizeTests.makePortraitVideo(in: directory)
+        let originals = try [440.0, 550].enumerated().map { index, frequency in
+            try Self.writeTone("original-\(index).wav", in: directory, length: 1, frequency: frequency)
+        }
+        let replacements = try [660.0, 770].enumerated().map { index, frequency in
+            try Self.writeTone("replacement-\(index).wav", in: directory, length: 1, frequency: frequency)
+        }
+        let replacementFolder = directory.appending(path: "replacement", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: replacementFolder, withIntermediateDirectories: false)
+        let audible = try await Self.attachAudio(originals, to: silent, in: directory)
+        let replacement = try await Self.attachAudio(replacements, to: silent, in: replacementFolder)
+        var options = ToolOptions()
+        options.replaceAudio.mode = .mix
+        options.replaceAudio.source = replacement
+        options.replaceAudio.sourceTrackIndex = 1
+        options.replaceAudio.originalTracks[audible] = 1
+        options.replaceAudio.newVolume = 0.5
+        let report = try await ToolRunner.run(.replaceAudio, inputs: [silent, audible], destination: directory,
+                                              imageSize: 0, options: options) { _ in }
+        #expect(report.outputs.count == 1)
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("no original audio track") == true)
+        let output = try #require(report.outputs.first)
+        let asset = AVURLAsset(url: output)
+        #expect(try await asset.load(.isPlayable))
+        #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
+        let audioOutput = directory.appending(path: "verification.m4a")
+        _ = try await AudioExtraction.extract(output, to: audioOutput, options: .init()) { _ in }
+        let mix = try Self.readSamples(audioOutput)
+        #expect(mix.magnitude(at: 550) > 0.2 && mix.magnitude(at: 770) > 0.2)
+        #expect(mix.magnitude(at: 440) < 0.05 && mix.magnitude(at: 660) < 0.05)
+    }
+
     @Test func preservesVideoDurationAndPlacesReplacementAtOffset() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -148,6 +184,10 @@ struct ReplaceAudioTests {
     private static func readSample(_ sample: ReplaceAudio.Sample, in directory: URL) throws -> Samples {
         let url = directory.appending(path: UUID().uuidString + ".m4a")
         try sample.data.write(to: url)
+        return try readSamples(url)
+    }
+
+    private static func readSamples(_ url: URL) throws -> Samples {
         let file = try AVAudioFile(forReading: url)
         let pcm = try #require(AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)))
         try file.read(into: pcm)
