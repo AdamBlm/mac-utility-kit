@@ -57,8 +57,7 @@ public enum OfficePDF {
         guard input.isFileURL, kind.extensions.contains(input.pathExtension.lowercased()) else {
             return "This file is unsupported for this conversion."
         }
-        guard let selection = options.libreOfficeExecutable, selection.isFileURL,
-              FileManager.default.isExecutableFile(atPath: LibreOfficeHeadless.binary(for: selection).path) else {
+        guard let selection = options.libreOfficeExecutable, LibreOfficeHeadless.hasExecutable(selection) else {
             return "Choose LibreOffice or its soffice executable."
         }
         guard let values = try? input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),

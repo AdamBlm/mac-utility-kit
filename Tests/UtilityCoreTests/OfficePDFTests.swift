@@ -155,6 +155,9 @@ struct OfficePDFTests {
         try handle.close()
 
         var options = OfficePDFOptions()
+        options.libreOfficeExecutable = folder
+        #expect(OfficePDF.optionIssue(oversized, kind: .word, options: options)
+                == "Choose LibreOffice or its soffice executable.")
         options.libreOfficeExecutable = URL(fileURLWithPath: "/usr/bin/true")
         for input in [directory, oversized] {
             let expected = "Choose a readable document up to 256 MB."

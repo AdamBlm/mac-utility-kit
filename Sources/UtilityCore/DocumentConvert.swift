@@ -91,8 +91,7 @@ public enum DocumentConvert {
                 }
             }
             if engine == .libreOffice || engine == .both {
-                guard let office = options.libreOfficeExecutable, office.isFileURL,
-                      FileManager.default.isExecutableFile(atPath: DocumentConversionEngines.officeBinary(office).path) else {
+                guard let office = options.libreOfficeExecutable, LibreOfficeHeadless.hasExecutable(office) else {
                     return "Choose LibreOffice or its soffice executable for this conversion."
                 }
             }

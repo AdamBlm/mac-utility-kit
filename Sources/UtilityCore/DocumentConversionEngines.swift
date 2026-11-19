@@ -68,10 +68,6 @@ enum DocumentConversionEngines {
         }
     }
 
-    static func officeBinary(_ executable: URL) -> URL {
-        LibreOfficeHeadless.binary(for: executable)
-    }
-
     static func libreOffice(
         _ input: URL, to output: URL, target: DocumentConvertOptions.Format, executable: URL, stage: URL
     ) async throws {

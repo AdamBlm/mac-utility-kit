@@ -38,8 +38,7 @@ public enum PDFToWord {
 
     public static func optionIssue(_ input: URL, options: PDFToWordOptions) -> String? {
         if let issue = inputIssue(input) { return issue }
-        guard let selection = options.libreOfficeExecutable, selection.isFileURL,
-              FileManager.default.isExecutableFile(atPath: LibreOfficeHeadless.binary(for: selection).path) else {
+        guard let selection = options.libreOfficeExecutable, LibreOfficeHeadless.hasExecutable(selection) else {
             return "Choose LibreOffice or its soffice executable to export."
         }
         return nil

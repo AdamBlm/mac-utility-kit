@@ -6,6 +6,13 @@ enum LibreOfficeHeadless {
             ? selection.appending(path: "Contents/MacOS/soffice") : selection
     }
 
+    static func hasExecutable(_ selection: URL) -> Bool {
+        guard selection.isFileURL else { return false }
+        let executable = binary(for: selection).resolvingSymlinksInPath()
+        return (try? executable.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
+            && FileManager.default.isExecutableFile(atPath: executable.path)
+    }
+
     static func convert(
         _ input: URL, filter: String, fileExtension: String, executable: URL, in staging: URL,
         inputFilter: String? = nil
