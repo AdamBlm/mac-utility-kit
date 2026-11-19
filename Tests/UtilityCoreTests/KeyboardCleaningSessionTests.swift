@@ -6,6 +6,7 @@ import Testing
 struct KeyboardCleaningSessionTests {
     private final class Input: KeyboardCleaningInput {
         var denied = false
+        var hasHeldKeys = false
         var installing = 0
         var removing = 0
         var interrupted: (@MainActor () -> Void)?
@@ -31,6 +32,24 @@ struct KeyboardCleaningSessionTests {
         #expect(input.installing == 0)
         #expect(input.removing == 1)
         #expect(session.status == "Denied")
+    }
+
+    @Test func heldKeysPreventActivationUntilReleased() {
+        let input = Input()
+        let session = KeyboardCleaningSession(input: input)
+        input.hasHeldKeys = true
+        session.start(seconds: 30)
+        #expect(!session.active)
+        #expect(input.installing == 0)
+        #expect(session.status == "Release all keys before starting the keyboard pause.")
+
+        input.hasHeldKeys = false
+        session.start(seconds: 30)
+        #expect(session.active)
+        #expect(input.installing == 1)
+        #expect(session.status == nil)
+        session.stop()
+        #expect(input.removing == 1)
     }
 
     @Test func manualStopAndInterruptionReleaseInputAndIgnoreOldCallbacks() throws {

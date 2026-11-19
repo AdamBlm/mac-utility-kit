@@ -1,5 +1,6 @@
 import AppKit
 import ApplicationServices
+import Carbon.HIToolbox
 import UtilityCore
 
 @MainActor
@@ -9,6 +10,17 @@ final class CleanKeyboardInput: KeyboardCleaningInput {
     private var interrupted: (@MainActor () -> Void)?
 
     var hasPermission: Bool { AXIsProcessTrusted() }
+
+    var hasHeldKeys: Bool {
+        guard hasPermission else { return false }
+        let state = CGEventSourceStateID.hidSystemState
+        let modifiers: CGEventFlags = [.maskShift, .maskControl, .maskAlternate, .maskCommand, .maskSecondaryFn]
+        if !CGEventSource.flagsState(state).intersection(modifiers).isEmpty { return true }
+        return (CGKeyCode(0)...CGKeyCode(255)).contains { key in
+            // Caps Lock is a toggle and does not need its release forwarded as a normal key-up.
+            key != CGKeyCode(kVK_CapsLock) && CGEventSource.keyState(state, key: key)
+        }
+    }
 
     func requestPermission() {
         let options = ["AXTrustedCheckOptionPrompt": true]
@@ -40,8 +52,6 @@ final class CleanKeyboardInput: KeyboardCleaningInput {
             throw ToolError.invalid("Could not start the keyboard pause.")
         }
 
-        self.deadline = deadline
-        self.interrupted = interrupted
         resources = EventTapResources(tap: tap, source: source)
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: tap, enable: true)
@@ -49,6 +59,13 @@ final class CleanKeyboardInput: KeyboardCleaningInput {
             remove()
             throw ToolError.invalid("macOS disabled the keyboard pause.")
         }
+        // A key may have been pressed while the tap was being installed.
+        guard !hasHeldKeys else {
+            remove()
+            throw ToolError.invalid("Release all keys before starting the keyboard pause.")
+        }
+        self.deadline = deadline
+        self.interrupted = interrupted
     }
 
     func remove() {

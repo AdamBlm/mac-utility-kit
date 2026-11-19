@@ -3,6 +3,7 @@ import Observation
 
 @MainActor
 package protocol KeyboardCleaningInput {
+    var hasHeldKeys: Bool { get }
     func install(until deadline: ContinuousClock.Instant, interrupted: @escaping @MainActor () -> Void) throws
     func remove()
 }
@@ -26,6 +27,10 @@ package final class KeyboardCleaningSession {
 
     package func start(seconds: Int) {
         guard !active else { return }
+        if input.hasHeldKeys {
+            status = "Release all keys before starting the keyboard pause."
+            return
+        }
         status = nil
         let seconds = min(120, max(1, seconds))
         let deadline = ContinuousClock.now + .seconds(seconds)
