@@ -1,3 +1,4 @@
+import CoreFoundation
 import Foundation
 import Testing
 @testable import UtilityCore
@@ -9,6 +10,25 @@ struct HiddenSettingsTests {
         #expect(stored == .enabled)
         try HiddenSettings.apply(.systemDefault, expecting: .enabled, read: { stored }) { stored = $0 }
         #expect(stored == .systemDefault)
+    }
+
+    @Test func filenameExtensionsUseTheGlobalDomainAndSupportReversibleValues() throws {
+        let setting = HiddenSetting.macOSFilenameExtensions
+        #expect(setting.application == .macOS)
+        #expect(CFEqual(setting.application.domain, kCFPreferencesAnyApplication))
+        #expect(CFEqual(setting.application.managementDomain, "com.apple.finder" as CFString))
+        #expect(setting.key == "AppleShowAllExtensions")
+
+        var stored = HiddenSettingValue.systemDefault
+        for next in [HiddenSettingValue.enabled, .disabled, .systemDefault] {
+            try HiddenSettings.apply(next, expecting: stored, read: { stored }) { stored = $0 }
+            #expect(stored == next)
+        }
+        stored = .managed
+        #expect(throws: ToolError.self) {
+            try HiddenSettings.apply(.enabled, expecting: .managed, read: { stored }) { stored = $0 }
+        }
+        #expect(stored == .managed)
     }
 
     @Test func refusesChangedManagedAndUnexpectedValues() {

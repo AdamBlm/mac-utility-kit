@@ -7,13 +7,24 @@ public enum HiddenSetting: String, CaseIterable, Identifiable, Sendable {
     case finderStatusBar
     case dockAutohide
     case dockRecentApps
+    case macOSFilenameExtensions
 
     public enum Application: String, CaseIterable, Identifiable, Sendable {
         case finder = "Finder"
         case dock = "Dock"
+        case macOS = "macOS"
 
         public var id: Self { self }
-        fileprivate var domain: String { self == .finder ? "com.apple.finder" : "com.apple.dock" }
+        var domain: CFString {
+            switch self {
+            case .finder: "com.apple.finder" as CFString
+            case .dock: "com.apple.dock" as CFString
+            case .macOS: kCFPreferencesAnyApplication
+            }
+        }
+
+        // The managed-value API requires a concrete application, even for global storage.
+        var managementDomain: CFString { self == .macOS ? Self.finder.domain : domain }
     }
 
     public var id: Self { self }
@@ -22,6 +33,7 @@ public enum HiddenSetting: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .finderHiddenFiles, .finderPathBar, .finderStatusBar: .finder
         case .dockAutohide, .dockRecentApps: .dock
+        case .macOSFilenameExtensions: .macOS
         }
     }
 
@@ -32,6 +44,7 @@ public enum HiddenSetting: String, CaseIterable, Identifiable, Sendable {
         case .finderStatusBar: "Show status bar"
         case .dockAutohide: "Automatically hide the Dock"
         case .dockRecentApps: "Show recent apps in the Dock"
+        case .macOSFilenameExtensions: "Show all filename extensions"
         }
     }
 
@@ -42,16 +55,18 @@ public enum HiddenSetting: String, CaseIterable, Identifiable, Sendable {
         case .finderStatusBar: "Show selection and item counts below Finder windows."
         case .dockAutohide: "Show the Dock when you move the pointer to its edge."
         case .dockRecentApps: "Show recently used apps alongside pinned apps."
+        case .macOSFilenameExtensions: "Show filename extensions in Finder even when individual files have Hide extension selected."
         }
     }
 
-    fileprivate var key: String {
+    var key: String {
         switch self {
         case .finderHiddenFiles: "AppleShowAllFiles"
         case .finderPathBar: "ShowPathbar"
         case .finderStatusBar: "ShowStatusBar"
         case .dockAutohide: "autohide"
         case .dockRecentApps: "show-recents"
+        case .macOSFilenameExtensions: "AppleShowAllExtensions"
         }
     }
 }
@@ -69,10 +84,10 @@ public enum HiddenSettingValue: String, CaseIterable, Identifiable, Sendable {
 
 public enum HiddenSettings {
     public static func read(_ setting: HiddenSetting) -> HiddenSettingValue {
-        let domain = setting.application.domain as CFString
+        let domain = setting.application.domain
         let key = setting.key as CFString
         guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else { return .unavailable }
-        guard !CFPreferencesAppValueIsForced(key, domain) else { return .managed }
+        guard !CFPreferencesAppValueIsForced(key, setting.application.managementDomain) else { return .managed }
         guard let stored = CFPreferencesCopyValue(key, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else {
             return .systemDefault
         }
@@ -82,7 +97,7 @@ public enum HiddenSettings {
     public static func apply(_ next: HiddenSettingValue, to setting: HiddenSetting, expecting prior: HiddenSettingValue) throws {
         try apply(next, expecting: prior, read: { read(setting) }) { value in
             let key = setting.key as CFString
-            let domain = setting.application.domain as CFString
+            let domain = setting.application.domain
             let stored: CFPropertyList? = switch value {
             case .enabled: kCFBooleanTrue
             case .disabled: kCFBooleanFalse
@@ -110,7 +125,7 @@ public enum HiddenSettings {
         if CFGetTypeID(stored) == CFBooleanGetTypeID(), let boolean = stored as? Bool {
             return boolean ? .enabled : .disabled
         }
-        // Finder accepts this key from older defaults recipes as a string.
+        // Some preferences saved by older defaults recipes are strings.
         if let string = stored as? String {
             switch string.lowercased() {
             case "yes", "true", "1": return .enabled

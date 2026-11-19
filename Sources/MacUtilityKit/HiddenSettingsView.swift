@@ -11,7 +11,7 @@ struct HiddenSettingsView: View {
         InteractiveToolLayout(tool: .hiddenSettings) { palette in
             WorkspaceSection("Preferences", palette: palette) {
                 Button("Refresh", systemImage: "arrow.clockwise", action: reload)
-                Text("Finder or Dock may need to relaunch before a saved setting changes the interface.")
+                Text("Finder, Dock, or an affected app may need to relaunch before a saved setting takes effect.")
                     .font(.callout).foregroundStyle(.secondary)
                 if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
             }
@@ -71,7 +71,8 @@ struct HiddenSettingsView: View {
             try HiddenSettings.apply(value, to: setting, expecting: existing)
             current[setting] = HiddenSettings.read(setting)
             proposed[setting] = nil
-            message = "Saved \(setting.title). Relaunch \(setting.application.rawValue) if the change does not appear."
+            let app = setting.application == .macOS ? "Finder" : setting.application.rawValue
+            message = "Saved \(setting.title). Relaunch \(app) if the change does not appear."
         } catch {
             current[setting] = HiddenSettings.read(setting)
             proposed[setting] = nil
