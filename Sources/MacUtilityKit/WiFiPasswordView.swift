@@ -8,6 +8,7 @@ struct WiFiPasswordView: View {
     @State private var manualName = ""
     @State private var manualSecurity: QRPayload.Security = .wpa
     @State private var password = ""
+    @State private var isRetrievedPassword = false
     @State private var hidden = false
     @State private var revealed = false
     @State private var qr: CGImage?
@@ -100,7 +101,10 @@ struct WiFiPasswordView: View {
 
     private var passwordControls: some View {
         VStack(alignment: .leading, spacing: 8) {
-            SecureField("Wi-Fi password", text: $password)
+            SecureField("Wi-Fi password", text: Binding(
+                get: { password },
+                set: { password = $0; isRetrievedPassword = false }
+            ))
                 .onChange(of: password) { qr = nil }
                 .disabled(lookup != nil)
             if selected != nil {
@@ -110,7 +114,7 @@ struct WiFiPasswordView: View {
             HStack {
                 if selected != nil {
                     Button("Look Up Saved Password", systemImage: "key.fill", action: lookUp)
-                        .disabled(lookup != nil)
+                        .disabled(lookup != nil || inventory != nil)
                 }
                 if lookup != nil {
                     ProgressView().controlSize(.small).accessibilityLabel("Looking up saved password")
@@ -138,6 +142,14 @@ struct WiFiPasswordView: View {
         inventory = Task {
             let available = await WiFiPassword.savedNetworks()
             guard !Task.isCancelled else { return }
+            if isRetrievedPassword, let selected {
+                do {
+                    _ = try WiFiPassword.credentialSSID(for: selected, in: available)
+                } catch {
+                    clearCredentials()
+                    message = error.localizedDescription
+                }
+            }
             networks = available
             if let selectedID, !networks.contains(where: { $0.id == selectedID }) { self.selectedID = nil }
             inventory = nil
@@ -145,7 +157,7 @@ struct WiFiPasswordView: View {
     }
 
     private func lookUp() {
-        guard let selected, lookup == nil else { return }
+        guard let selected, lookup == nil, inventory == nil else { return }
         message = nil
         revealed = false
         lookup = Task {
@@ -154,6 +166,7 @@ struct WiFiPasswordView: View {
                 try Task.checkCancellation()
                 guard selectedID == selected.id else { return }
                 password = value
+                isRetrievedPassword = true
                 qr = nil
             } catch is CancellationError {
                 return
@@ -173,6 +186,7 @@ struct WiFiPasswordView: View {
     private func clearCredentials() {
         cancelLookup()
         password = ""
+        isRetrievedPassword = false
         revealed = false
         qr = nil
         message = nil

@@ -27,6 +27,25 @@ struct WiFiPasswordTests {
         #expect(domains == [.user, .system])
     }
 
+    @Test func refusesAmbiguousOrStaleSavedProfilesBeforeLookup() throws {
+        let ssid = Data("Example".utf8)
+        let personal = WiFiPassword.SavedNetwork(
+            id: .init(ssidData: ssid, securityType: CWSecurity.wpa2Personal.rawValue),
+            name: "Example", security: .shareable(.wpa)
+        )
+        let enterprise = WiFiPassword.SavedNetwork(
+            id: .init(ssidData: ssid, securityType: CWSecurity.wpa2Enterprise.rawValue),
+            name: "Example", security: .unsupported("Enterprise")
+        )
+        #expect(try WiFiPassword.credentialSSID(for: personal, in: [personal]) == ssid)
+        #expect(throws: ToolError.self) {
+            try WiFiPassword.credentialSSID(for: personal, in: [personal, enterprise])
+        }
+        #expect(throws: ToolError.self) {
+            try WiFiPassword.credentialSSID(for: personal, in: [enterprise])
+        }
+    }
+
     @Test func labelsUnsupportedSecurityAndMissingPasswords() {
         #expect(WiFiPassword.networkSecurity(.wpa2Personal) == .shareable(.wpa))
         #expect(WiFiPassword.networkSecurity(.none) == .shareable(.open))

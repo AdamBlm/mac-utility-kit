@@ -46,12 +46,27 @@ package enum WiFiPassword {
     }
 
     package static func savedPassword(for network: SavedNetwork) async throws -> String {
-        guard case .shareable(let security) = network.security, security != .open else {
-            throw ToolError.invalid("The selected network has no supported saved password.")
-        }
-        let password = try await Keychain.shared.password(for: network.id.ssidData)
+        let profiles = await savedNetworks()
+        try Task.checkCancellation()
+        let ssid = try credentialSSID(for: network, in: profiles)
+        let password = try await Keychain.shared.password(for: ssid)
         try Task.checkCancellation()
         return password
+    }
+
+    package static func credentialSSID(for network: SavedNetwork, in profiles: [SavedNetwork]) throws -> Data {
+        guard let current = profiles.first(where: { $0.id == network.id }) else {
+            throw ToolError.invalid("The saved network changed or is no longer available. Refresh or enter the password manually.")
+        }
+        guard case .shareable(let security) = current.security, security != .open else {
+            throw ToolError.invalid("The selected network has no supported saved password.")
+        }
+        let ssid = current.id.ssidData
+        // CoreWLAN identifies the keychain item by SSID, which does not distinguish security profiles.
+        guard !profiles.contains(where: { $0.id.ssidData == ssid && $0.id != current.id }) else {
+            throw ToolError.invalid("Several saved profiles use this network name. Enter the password manually for the selected security type.")
+        }
+        return ssid
     }
 
     private actor Keychain {
