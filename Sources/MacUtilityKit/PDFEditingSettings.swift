@@ -241,8 +241,14 @@ private struct PDFDeletionSettings: View {
         }
         VStack(alignment: .leading, spacing: 10) {
             SettingRow("Remove pages") {
-                TextField("Pages to remove, e.g. 2, 4–6", text: $range)
-                    .labelsHidden()
+                HStack(spacing: 8) {
+                    TextField("Pages to remove, e.g. 2, 4–6", text: $range)
+                        .labelsHidden()
+                    Button("Clear", systemImage: "xmark.circle") { range = "" }
+                        .labelStyle(.iconOnly)
+                        .accessibilityLabel("Clear pages marked for removal")
+                        .disabled(range.isEmpty)
+                }
             }
             if !range.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                (try? PageSelection.indices(range, pageCount: count)) == nil {
@@ -273,7 +279,7 @@ private struct PDFDeletionSettings: View {
                                 var changed = marked
                                 if changed.contains(index) { changed.remove(index) }
                                 else { changed.insert(index) }
-                                range = changed.sorted().map { String($0 + 1) }.joined(separator: ", ")
+                                range = changed.isEmpty ? "" : PageSelection.expression(for: changed.sorted())
                             } label: {
                                 VStack(spacing: 6) {
                                     if let page = document.page(at: index) {
