@@ -69,6 +69,39 @@ struct StorageExplorerTests {
         #expect(FileManager.default.fileExists(atPath: editedChild.path))
     }
 
+    @Test(arguments: [false, true])
+    func trashHandlesHardLinkChangeTimeWithoutAcceptingAnExternalEdit(editRemainingLink: Bool) async throws {
+        let root = try makeRoot()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let names = root.appending(path: "Selected")
+        let trash = root.appending(path: "Moved")
+        let manager = FileManager.default
+        for directory in [names, trash] {
+            try manager.createDirectory(at: directory, withIntermediateDirectories: false)
+        }
+        let first = names.appending(path: "first.txt")
+        let second = names.appending(path: "second.txt")
+        try Data("original".utf8).write(to: first)
+        try manager.linkItem(at: first, to: second)
+        let report = try await StorageExplorer.scan(names)
+        let selected = report.items.filter(\.isHardLink)
+        try #require(selected.count == 2)
+        let result = await StorageExplorer.trash(Set(selected.map(\.id)), in: report) { source in
+            try manager.moveItem(at: source, to: trash.appending(path: source.lastPathComponent))
+            if editRemainingLink, source == selected[0].url {
+                try Data("altered!".utf8).write(to: selected[1].url)
+            }
+        }
+        if editRemainingLink {
+            #expect(result.moved == [selected[0].url])
+            #expect(result.issues.map(\.url) == [selected[1].url])
+            #expect(manager.fileExists(atPath: selected[1].url.path))
+        } else {
+            #expect(result.issues.isEmpty)
+            #expect(result.moved == selected.map(\.url))
+        }
+    }
+
     @Test func unreadableDirectoryAppearsOnceAndBlocksAncestorTrash() async throws {
         guard getuid() != 0 else { return }
         let root = try makeRoot()

@@ -29,12 +29,20 @@ extension StorageExplorer {
     ) async -> StorageTrashResult {
         var moved: [URL] = []
         var issues: [StorageScanIssue] = []
+        var hardLinks: [DuplicateFileIdentity: HardLinkUpdate] = [:]
         for item in selectedItems(ids, in: report) {
             do {
                 try Task.checkCancellation()
-                try await verifyTrashCandidate(item, in: report)
+                try await verifyTrashCandidate(item, in: report, hardLinks: hardLinks)
                 try Task.checkCancellation()
-                try move(item.url)
+                if item.isHardLink, let original = item.stamp {
+                    let expected = updatedStamp(original, hardLinks: hardLinks)
+                    if let current = try moveHardLink(item.url, expected: expected, move: move) {
+                        hardLinks[original.identity] = HardLinkUpdate(original: original, current: current)
+                    }
+                } else {
+                    try move(item.url)
+                }
                 moved.append(item.url)
             } catch is CancellationError {
                 break
@@ -45,13 +53,54 @@ extension StorageExplorer {
         return StorageTrashResult(moved: moved, issues: issues)
     }
 
+    private struct HardLinkUpdate {
+        let original: DuplicateFileStamp
+        let current: DuplicateFileStamp
+    }
+
+    private static var changed: ToolError {
+        .invalid("This item changed after the scan. Scan again before moving it to Trash.")
+    }
+
+    private static func updatedStamp(
+        _ original: DuplicateFileStamp, hardLinks: [DuplicateFileIdentity: HardLinkUpdate]
+    ) -> DuplicateFileStamp {
+        guard let update = hardLinks[original.identity], update.original == original else { return original }
+        return update.current
+    }
+
+    private static func moveHardLink(
+        _ url: URL, expected: DuplicateFileStamp, move: (URL) throws -> Void
+    ) throws -> DuplicateFileStamp? {
+        let descriptor = open(url.path, O_EVTONLY | O_NOFOLLOW | O_CLOEXEC)
+        guard descriptor >= 0 else { throw changed }
+        defer { close(descriptor) }
+        var before = stat()
+        guard fstat(descriptor, &before) == 0, before.st_mode & S_IFMT == S_IFREG,
+              DuplicateFileStamp(before) == expected else { throw changed }
+        try move(url)
+        // A same-volume rename can advance ctime for all names of the inode.
+        // Refresh from the opened inode only if its other observed state is intact.
+        var after = stat()
+        guard fstat(descriptor, &after) == 0, before.st_mode == after.st_mode,
+              before.st_uid == after.st_uid, before.st_gid == after.st_gid,
+              before.st_flags == after.st_flags else { return nil }
+        let current = DuplicateFileStamp(after)
+        return current.matchesExceptChangeTime(expected) ? current : nil
+    }
+
     static func verifyTrashCandidate(_ item: StorageScanItem, in report: StorageScanReport) async throws {
-        let changed = ToolError.invalid("This item changed after the scan. Scan again before moving it to Trash.")
+        try await verifyTrashCandidate(item, in: report, hardLinks: [:])
+    }
+
+    private static func verifyTrashCandidate(
+        _ item: StorageScanItem, in report: StorageScanReport, hardLinks: [DuplicateFileIdentity: HardLinkUpdate]
+    ) async throws {
         guard item.url.resolvingSymlinksInPath().standardizedFileURL.path == item.url.path,
               let expected = item.stamp else { throw changed }
 
         if item.kind == .file {
-            guard try DuplicateFileIO.inspect(item.url) == expected else { throw changed }
+            guard try DuplicateFileIO.inspect(item.url) == updatedStamp(expected, hardLinks: hardLinks) else { throw changed }
             return
         }
 
@@ -65,7 +114,8 @@ extension StorageExplorer {
         })
         for node in fresh.items.dropFirst() {
             try Task.checkCancellation()
-            guard let stamp = node.stamp, let old = stamps[Data(node.url.path.utf8)], old == stamp else { throw changed }
+            guard let stamp = node.stamp, let old = stamps[Data(node.url.path.utf8)] ?? nil,
+                  updatedStamp(old, hardLinks: hardLinks) == stamp else { throw changed }
         }
         var current = stat()
         guard lstat(item.url.path, &current) == 0, current.st_mode & S_IFMT == S_IFDIR,

@@ -29,6 +29,11 @@ struct DuplicateFileStamp: Equatable, Sendable {
         changedNanoseconds = info.st_ctimespec.tv_nsec
     }
 
+    func matchesExceptChangeTime(_ other: Self) -> Bool {
+        identity == other.identity && bytes == other.bytes && allocatedBytes == other.allocatedBytes &&
+        links == other.links && modifiedSeconds == other.modifiedSeconds && modifiedNanoseconds == other.modifiedNanoseconds
+    }
+
     var modified: Date {
         Date(timeIntervalSince1970: Double(modifiedSeconds) + Double(modifiedNanoseconds) / 1_000_000_000)
     }
