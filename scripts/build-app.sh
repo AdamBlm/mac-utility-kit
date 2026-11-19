@@ -1,6 +1,21 @@
 #!/bin/bash
 set -euo pipefail
 cd "$(dirname "$0")/.."
+bundle_id="${MUK_BUNDLE_ID-app.macutilitykit.preview}"
+release_version="${MUK_RELEASE_VERSION-0.0.1}"
+build_version="${MUK_BUILD_VERSION-2}"
+if [[ ! "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
+    printf 'MUK_BUNDLE_ID must contain dot-separated letters, digits, or hyphens.\n' >&2
+    exit 2
+fi
+if [[ ! "$release_version" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+    printf 'MUK_RELEASE_VERSION must contain three dot-separated integers.\n' >&2
+    exit 2
+fi
+if [[ ! "$build_version" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]]; then
+    printf 'MUK_BUILD_VERSION must contain one to three dot-separated integers.\n' >&2
+    exit 2
+fi
 swift build -c release
 binary_directory="$(swift build -c release --show-bin-path)"
 app="build/Mac Utility Kit.app"
@@ -27,13 +42,13 @@ cp licenses/swift-cmark-COPYING.txt "$app/Contents/Resources/"
 cp licenses/Unicode-License-V3.txt Sources/UtilityCore/Resources/confusables.txt "$app/Contents/Resources/"
 cp licenses/EFF-Wordlist-Attribution.txt Sources/UtilityCore/Resources/eff_large_wordlist.txt "$app/Contents/Resources/"
 cp licenses/libarchive-ABI.txt "$app/Contents/Resources/"
-cat > "$app/Contents/Info.plist" <<'PLIST'
+cat > "$app/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
     <key>CFBundleExecutable</key><string>MacUtilityKit</string>
-    <key>CFBundleIdentifier</key><string>app.macutilitykit.preview</string>
+    <key>CFBundleIdentifier</key><string>$bundle_id</string>
     <key>CFBundleName</key><string>Mac Utility Kit</string>
     <key>CFBundleIconFile</key><string>AppIcon.icns</string>
     <key>CFBundlePackageType</key><string>APPL</string>
@@ -46,8 +61,8 @@ cat > "$app/Contents/Info.plist" <<'PLIST'
             <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
         </dict>
     </array>
-    <key>CFBundleShortVersionString</key><string>0.0.1</string>
-    <key>CFBundleVersion</key><string>2</string>
+    <key>CFBundleShortVersionString</key><string>$release_version</string>
+    <key>CFBundleVersion</key><string>$build_version</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
     <key>NSPhotoLibraryUsageDescription</key><string>Organize selected downloaded images into Photos albums.</string>
     <key>NSMicrophoneUsageDescription</key><string>Record audio with the microphone you select.</string>
