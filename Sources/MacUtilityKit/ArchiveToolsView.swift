@@ -27,10 +27,19 @@ struct ArchiveToolsView: View {
     private var entries: [ArchiveEntry]? { listing?.entries }
     @State private var selection: Set<ArchiveEntry.ID> = []
     @State private var filter = ""
+    @State private var entryOrder = ArchiveEntryOrder.archive
+    @State private var listingRevision = UUID()
+    @State private var browsedRows: (request: EntryRequest, rows: [ArchiveEntry])?
     @State private var task: Task<Void, Never>?
     @State private var operation = ""
     @State private var error: String?
     @State private var result: String?
+
+    private struct EntryRequest: Equatable, Sendable {
+        let revision: UUID
+        let order: ArchiveEntryOrder
+        let filter: String
+    }
 
     var body: some View {
         InteractiveToolLayout(tool: .zipUnzip) { palette in
@@ -113,7 +122,10 @@ struct ArchiveToolsView: View {
     }
 
     private func contents(_ entries: [ArchiveEntry]) -> some View {
-        let visible = filter.isEmpty ? entries : entries.filter { $0.path.localizedStandardContains(filter) }
+        let request = EntryRequest(revision: listingRevision, order: entryOrder,
+                                   filter: filter.trimmingCharacters(in: .whitespacesAndNewlines))
+        let isUnfiltered = request.order == .archive && request.filter.isEmpty
+        let visible = isUnfiltered ? entries : (browsedRows?.request == request ? browsedRows?.rows : nil)
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(selection.count.formatted()) of \(entries.count.formatted()) selected")
@@ -124,14 +136,24 @@ struct ArchiveToolsView: View {
             }
             .font(.callout)
             if !entries.isEmpty {
-                TextField("Find an entry", text: $filter).textFieldStyle(.roundedBorder)
+                HStack {
+                    TextField("Find an entry", text: $filter).textFieldStyle(.roundedBorder)
+                    Picker("Sort by", selection: $entryOrder) {
+                        ForEach(ArchiveEntryOrder.allCases) { order in
+                            Text(order.rawValue).tag(order)
+                        }
+                    }
+                    .fixedSize()
+                }
             }
-            if visible.isEmpty {
-                Text(filter.isEmpty ? "This archive has no files or folders." : "No matching entries.")
+            if let visible, visible.isEmpty {
+                Text(request.filter.isEmpty ? "This archive has no files or folders." : "No matching entries.")
                     .font(.callout).foregroundStyle(.secondary)
+            } else if visible == nil {
+                ProgressView("Preparing entries…").controlSize(.small)
             }
             LazyVStack(alignment: .leading, spacing: 7) {
-                ForEach(visible) { entry in
+                ForEach(visible ?? []) { entry in
                     Toggle(isOn: Binding(get: { selection.contains(entry.id) }, set: { select(entry, on: $0, entries: entries) })) {
                         HStack {
                             Label(entry.path, systemImage: entry.isDirectory ? "folder" : "doc")
@@ -149,6 +171,10 @@ struct ArchiveToolsView: View {
                     .toggleStyle(.checkbox)
                 }
             }
+        }
+        .task(id: request) {
+            guard !isUnfiltered, let rows = await Self.rows(entries, for: request), !Task.isCancelled else { return }
+            browsedRows = (request, rows)
         }
         .disabled(draft.busy)
     }
@@ -223,6 +249,11 @@ struct ArchiveToolsView: View {
         if panel.runModal() == .OK { draft.destination = panel.url }
     }
 
+    @concurrent
+    private static func rows(_ entries: [ArchiveEntry], for request: EntryRequest) async -> [ArchiveEntry]? {
+        try? request.order.rows(entries, matching: request.filter)
+    }
+
     private func select(_ entry: ArchiveEntry, on: Bool, entries: [ArchiveEntry]) {
         let prefix = entry.path + "/"
         if on {
@@ -261,6 +292,7 @@ struct ArchiveToolsView: View {
         perform("Reading archive…") {
             let reviewed = try await ArchiveTools.readContents(archive, password: secret)
             try Task.checkCancellation()
+            listingRevision = UUID()
             listing = reviewed
             selection = Set(reviewed.entries.map(\.id))
         }

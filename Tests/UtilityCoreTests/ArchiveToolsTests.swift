@@ -4,6 +4,31 @@ import Testing
 @testable import UtilityCore
 
 struct ArchiveToolsTests {
+    @Test func ordersAndFiltersArchiveEntriesWithoutChangingExtractionIdentity() async throws {
+        let stage = try staging()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let source = stage.appending(path: "Archive files")
+        try source.ensureDirectory()
+        for (name, count) in [("Clip 10.dat", 8), ("Clip 2.dat", 1), ("Aside.txt", 4)] {
+            try Data(repeating: 1, count: count).write(to: source.appending(path: name))
+        }
+        let archive = stage.appending(path: "Sorted.zip")
+        try await ArchiveTools.create([source], to: archive)
+        let entries = try await ArchiveTools.list(archive)
+        #expect(try ArchiveEntryOrder.archive.rows(entries, matching: "  ") == entries)
+        let clips = try ArchiveEntryOrder.path.rows(entries, matching: " clip ")
+        #expect(clips.map(\.path) == ["Archive files/Clip 2.dat", "Archive files/Clip 10.dat"])
+        let largest = try ArchiveEntryOrder.largestFirst.rows(entries, matching: "")
+        #expect(largest.map(\.path) == ["Archive files/Clip 10.dat", "Archive files/Aside.txt",
+                                         "Archive files/Clip 2.dat", "Archive files"])
+        let picked = try #require(largest.first)
+        let output = stage.appending(path: "Destination")
+        try output.ensureDirectory()
+        _ = try await ArchiveTools.extract(archive, to: output, selected: [picked.id], conflicts: .skip)
+        let files = try FileManager.default.contentsOfDirectory(atPath: output.appending(path: "Archive files").path)
+        #expect(files == ["Clip 10.dat"])
+    }
+
     @Test func zipRoundTripSupportsSelectionAndKeepsConflicts() async throws {
         let stage = try staging()
         defer { try? FileManager.default.removeItem(at: stage) }
