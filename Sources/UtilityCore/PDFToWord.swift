@@ -13,6 +13,7 @@ public struct PDFToWordOptions: Equatable, Sendable {
     public var password = ""
     public var recognizeScans = true
     public var libreOfficeExecutable: URL?
+    package var reviewedSources: [URL: PDFSourceStamp] = [:]
 
     public init() {}
 }
@@ -33,10 +34,12 @@ public enum PDFToWord {
     private struct Source {
         let pdf: PDFDocument
         let pages: [Int]
-        let stamp: DuplicateFileStamp
+        let stamp: PDFSourceStamp
     }
 
     public static func optionIssue(_ input: URL, options: PDFToWordOptions) -> String? {
+        do { try verifyReviewedSource(input, options: options) }
+        catch { return error.localizedDescription }
         if let issue = inputIssue(input) { return issue }
         guard let selection = options.libreOfficeExecutable, LibreOfficeHeadless.hasExecutable(selection) else {
             return "Choose LibreOffice or its soffice executable to export."
@@ -53,11 +56,12 @@ public enum PDFToWord {
         }
     }
 
-    private static func inputStamp(_ input: URL) throws -> DuplicateFileStamp {
+    private static func inputStamp(_ input: URL) throws -> PDFSourceStamp {
         guard input.isFileURL, input.pathExtension.lowercased() == "pdf" else {
             throw ToolError.invalid("Choose a local PDF.")
         }
-        guard let stamp = try? DuplicateFileIO.inspect(input), stamp.bytes <= 256 * 1024 * 1024 else {
+        guard (try? input.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink) != true,
+              let stamp = try? PDFSourceStamp.read(input), stamp.bytes <= 256 * 1024 * 1024 else {
             throw ToolError.invalid("Choose a readable local PDF up to 256 MB.")
         }
         return stamp
@@ -154,19 +158,45 @@ public enum PDFToWord {
             && !FileManager.default.fileExists(atPath: output.path)
     }
 
-    private static func open(_ input: URL, _ options: PDFToWordOptions) throws -> Source {
+    @concurrent
+    package static func previewDocument(
+        _ input: URL, password: String
+    ) async throws -> sending (document: PDFDocument, stamp: PDFSourceStamp) {
+        let reviewed = try openDocument(input, password: password)
         try Task.checkCancellation()
-        let stamp = try inputStamp(input)
-        guard let pdf = PDFDocument(url: input) else {
-            throw ToolError.invalid("Choose a readable local PDF up to 256 MB.")
+        return reviewed
+    }
+
+    package static func verifyReviewedSource(
+        _ input: URL, options: PDFToWordOptions, stamp: PDFSourceStamp? = nil
+    ) throws {
+        guard let reviewed = options.reviewedSources[input] else { return }
+        guard (stamp ?? (try? PDFSourceStamp.read(input))) == reviewed else {
+            throw ToolError.invalid("The source PDF changed after page review. Reload its page thumbnails and review the range.")
         }
-        if pdf.isLocked || (pdf.isEncrypted && !options.password.isEmpty), !pdf.unlock(withPassword: options.password) {
-            throw ToolError.invalid("Could not open this PDF. Check the password.")
-        }
-        guard pdf.allowsCopying else { throw ToolError.invalid("This PDF does not allow copying.") }
+    }
+
+    private static func open(_ input: URL, _ options: PDFToWordOptions) throws -> Source {
+        try verifyReviewedSource(input, options: options)
+        let (pdf, stamp) = try openDocument(input, password: options.password)
+        try verifyReviewedSource(input, options: options, stamp: stamp)
         let pages = try PageSelection.indices(options.pages, pageCount: pdf.pageCount)
         guard !pages.isEmpty, pages.count <= 100 else { throw ToolError.invalid("Choose up to 100 PDF pages.") }
         return Source(pdf: pdf, pages: pages, stamp: stamp)
+    }
+
+    private static func openDocument(_ input: URL, password: String) throws -> (document: PDFDocument, stamp: PDFSourceStamp) {
+        try Task.checkCancellation()
+        let stamp = try inputStamp(input)
+        guard let pdf = PDFDocument(url: stamp.resolved) else {
+            throw ToolError.invalid("Choose a readable local PDF up to 256 MB.")
+        }
+        if pdf.isLocked || (pdf.isEncrypted && !password.isEmpty), !pdf.unlock(withPassword: password) {
+            throw ToolError.invalid("Could not open this PDF. Check the password.")
+        }
+        guard pdf.allowsCopying else { throw ToolError.invalid("This PDF does not allow copying.") }
+        try verifySource(input, stamp: stamp)
+        return (pdf, stamp)
     }
 
     private static func hasFormWidgets(_ source: Source) -> Bool {
@@ -258,8 +288,8 @@ public enum PDFToWord {
         }
     }
 
-    private static func verifySource(_ input: URL, stamp: DuplicateFileStamp) throws {
-        guard try DuplicateFileIO.inspect(input) == stamp else {
+    private static func verifySource(_ input: URL, stamp: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == stamp else {
             throw ToolError.invalid("The source PDF changed during conversion. Reopen it and try again.")
         }
     }

@@ -1,4 +1,5 @@
 import AppKit
+import PDFKit
 import SwiftUI
 import UtilityCore
 
@@ -6,7 +7,16 @@ struct PDFToWordControls: View {
     let inputs: [URL]
     @Binding var options: PDFToWordOptions
 
+    private struct SourceRequest: Equatable {
+        let input: URL
+        let password: String
+        let revision: UUID
+    }
+
+    @State private var reloadRevision = UUID()
+    @State private var requestedReload: URL?
     @State private var chosen: URL?
+    @State private var sourceDocument: (request: SourceRequest, result: Result<PDFDocument, any Error>)?
     @State private var preview: PDFToWord.Preview?
     @State private var previewPage = 0
     @State private var job: Task<Void, Never>?
@@ -20,11 +30,30 @@ struct PDFToWordControls: View {
     }
 
     var body: some View {
+        let request = source.map { SourceRequest(input: $0, password: options.password, revision: reloadRevision) }
         VStack(alignment: .leading, spacing: 12) {
             optionsControls
                 .disabled(job != nil)
             exportAvailability
-            previewControls
+            previewControls(request)
+        }
+        .task(id: request) {
+            guard let request else { sourceDocument = nil; return }
+            let acceptsReplacement = requestedReload == request.input
+            requestedReload = nil
+            do {
+                if !acceptsReplacement { try PDFToWord.verifyReviewedSource(request.input, options: options) }
+                let reviewed = try await PDFToWord.previewDocument(request.input, password: request.password)
+                try Task.checkCancellation()
+                if !acceptsReplacement {
+                    try PDFToWord.verifyReviewedSource(request.input, options: options, stamp: reviewed.stamp)
+                }
+                options.reviewedSources[request.input] = reviewed.stamp
+                sourceDocument = (request, .success(reviewed.document))
+            } catch {
+                guard !Task.isCancelled else { return }
+                sourceDocument = (request, .failure(error))
+            }
         }
         .onChange(of: options) { resetPreview() }
         .onChange(of: source) { resetPreview() }
@@ -60,9 +89,6 @@ struct PDFToWordControls: View {
                  ? "Rebuilds editable paragraphs, common headings, and lists. Use Preserve Layout to retain supported figures."
                  : "Rebuilds positioned text and supported figures. Complex tables, forms, and font matching can change.")
                 .font(.callout).foregroundStyle(.secondary)
-            SettingRow("Page range") {
-                TextField("All, or 1–3, 5", text: $options.pages).textFieldStyle(.roundedBorder)
-            }
             SettingRow("PDF password") {
                 SecureField("If required", text: $options.password).textFieldStyle(.roundedBorder)
             }
@@ -78,8 +104,12 @@ struct PDFToWordControls: View {
         }
     }
 
-    private var previewControls: some View {
-        VStack(alignment: .leading, spacing: 9) {
+    private func previewControls(_ request: SourceRequest?) -> some View {
+        let available = sourceDocument?.request == request ? sourceDocument?.result : nil
+        let isStale = request.map {
+            (try? PDFToWord.verifyReviewedSource($0.input, options: options)) == nil
+        } ?? false
+        return VStack(alignment: .leading, spacing: 9) {
             if inputs.count > 1 {
                 SettingRow("Preview file") {
                     Picker("Preview file", selection: Binding(get: { source }, set: { chosen = $0 })) {
@@ -89,9 +119,33 @@ struct PDFToWordControls: View {
                     .disabled(job != nil)
                 }
             }
+            if inputs.count > 1 {
+                Text("The page range applies to all PDFs in the batch.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if let request {
+                Button("Reload Page Thumbnails", systemImage: "arrow.clockwise") {
+                    resetPreview()
+                    requestedReload = request.input
+                    reloadRevision = UUID()
+                }
+                .disabled(job != nil)
+            }
+            if !isStale, case .success(let document) = available {
+                PDFExportPagePicker(document: document, range: $options.pages, startsWithAll: true)
+                    .disabled(job != nil)
+            } else {
+                SettingRow("Page range") {
+                    TextField("All, or 1–3, 5", text: $options.pages)
+                        .disabled(job != nil)
+                }
+                if !isStale, case .failure(let failure) = available {
+                    Text(failure.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                }
+            }
             HStack {
                 Button("Preview Text…", systemImage: "doc.viewfinder", action: makePreview)
-                    .disabled(job != nil || source.map { PDFToWord.inputIssue($0) != nil } != false)
+                    .disabled(job != nil || isStale || (try? available?.get()) == nil)
                 if job != nil {
                     if let progress {
                         ProgressView(value: progress).frame(width: 130).accessibilityLabel("Reading pages")

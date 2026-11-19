@@ -6,6 +6,51 @@ import Testing
 @testable import UtilityCore
 
 struct PDFToWordTests {
+    @Test func thumbnailSelectionFeedsPDFToWordTextInSourcePageOrderChosenByTheUser() async throws {
+        let stage = try makeStage()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let source = stage.appending(path: "input.pdf")
+        try fixture(source)
+        let reviewed = try await PDFToWord.previewDocument(source, password: "")
+        #expect(reviewed.document.pageCount == 3)
+        let selection = PageSelection.updating([2], at: 1, extendingFrom: 2)
+        var options = PDFToWordOptions()
+        options.pages = PageSelection.expression(for: selection)
+        options.reviewedSources[source] = reviewed.stamp
+        options.recognizeScans = false
+        let preview = try await PDFToWord.preview(source, options: options)
+        #expect(preview.pages.map(\.id) == [3, 2])
+        #expect(preview.pages.last?.text.contains("Project Overview") == true)
+    }
+
+    @Test func rejectsAReplacementAtTheReviewedPathUntilThumbnailsAreReloaded() async throws {
+        let stage = try makeStage()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let source = stage.appending(path: "input.pdf")
+        try fixture(source)
+        let initial = try await PDFToWord.previewDocument(source, password: "")
+        var options = PDFToWordOptions()
+        options.pages = "2"
+        options.reviewedSources[source] = initial.stamp
+        let replacement = stage.appending(path: "replacement.pdf")
+        try fixture(replacement)
+        try Data(contentsOf: replacement).write(to: source, options: .atomic)
+        let stale = "The source PDF changed after page review. Reload its page thumbnails and review the range."
+        #expect(PDFToWord.optionIssue(source, options: options) == stale)
+        let previewError = await #expect(throws: ToolError.self) { try await PDFToWord.preview(source, options: options) }
+        #expect(previewError?.localizedDescription == stale)
+        let output = stage.appending(path: "output.docx")
+        let exportError = await #expect(throws: ToolError.self) {
+            try await PDFToWord.export(source, to: output, options: options) { _ in }
+        }
+        #expect(exportError?.localizedDescription == stale)
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+
+        let refreshed = try await PDFToWord.previewDocument(source, password: "")
+        options.reviewedSources[source] = refreshed.stamp
+        #expect(try await PDFToWord.preview(source, options: options).pages.map(\.id) == [2])
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
     func flowingRecognizesNativeHeadingsListsAndScanTextWithLibreOffice() async throws {
         let engine = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"])
