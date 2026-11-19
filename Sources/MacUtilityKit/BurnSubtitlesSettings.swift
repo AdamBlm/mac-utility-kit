@@ -94,8 +94,13 @@ struct BurnSubtitlesSettings: View {
                     Text(error.localizedDescription).foregroundStyle(.red).font(.callout)
                 }
             }
-        } else if loadedInput == input, let inputError {
-            Text(inputError).foregroundStyle(.red).font(.callout)
+        } else {
+            if loadedInput == input, let inputError {
+                Text(inputError).foregroundStyle(.red).font(.callout)
+            }
+            if options.hasSubtitles, let issue = options.subtitleIssue {
+                Text(issue).foregroundStyle(.red).font(.callout)
+            }
         }
     }
 

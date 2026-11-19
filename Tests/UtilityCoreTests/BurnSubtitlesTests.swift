@@ -19,6 +19,11 @@ import UtilityCore
 
     @Test func validatesAndCanonicalizesSubRipCues() throws {
         let source = "\u{FEFF}5\r\n00:00:00,100 --> 00:00:01,200\r\nHello\r\n世界\r\n\r\n7\r\n00:00:01.200 --> 00:00:02.000\r\nThe end."
+        var options = BurnSubtitlesOptions()
+        options.srt = "invalid cue"
+        #expect(options.subtitleIssue?.contains("line 1") == true)
+        options.srt = source
+        #expect(options.subtitleIssue == nil)
         let parsed = try SubRip.parse(source)
         #expect(parsed.map(\.startMilliseconds) == [100, 1200])
         #expect(parsed.first?.text == "Hello\n世界")

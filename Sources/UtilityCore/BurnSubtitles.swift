@@ -42,6 +42,15 @@ public struct BurnSubtitlesOptions: Equatable, Sendable {
 
     package var hasSubtitles: Bool { !srt.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
+    package var subtitleIssue: String? {
+        do {
+            _ = try SubRip.parse(srt)
+            return nil
+        } catch {
+            return error.localizedDescription
+        }
+    }
+
     public init() {}
 }
 
