@@ -11,7 +11,7 @@ struct FrameExtractionSettings: View {
 
     private struct LoadedVideo {
         let input: URL
-        let duration: Double?
+        let bounds: Range<Double>?
         let error: String?
     }
 
@@ -23,8 +23,8 @@ struct FrameExtractionSettings: View {
     private var activeVideo: LoadedVideo? { loaded?.input == input ? loaded : nil }
 
     private var request: PreviewRequest? {
-        guard let input, let duration = activeVideo?.duration, seconds.isFinite,
-              seconds >= 0, seconds < duration else { return nil }
+        guard let input, let bounds = activeVideo?.bounds, seconds.isFinite,
+              bounds.contains(seconds) else { return nil }
         return PreviewRequest(input: input, time: seconds)
     }
 
@@ -51,8 +51,8 @@ struct FrameExtractionSettings: View {
                 Text("seconds").foregroundStyle(.secondary)
             }
         }
-        if let duration = activeVideo?.duration {
-            let plan = Result { try FrameExtraction.times(duration: duration, options: options) }
+        if let bounds = activeVideo?.bounds {
+            let plan = Result { try FrameExtraction.times(in: bounds, options: options) }
             switch plan {
             case .success(let times):
                 let count = times.count
@@ -90,7 +90,8 @@ struct FrameExtractionSettings: View {
 
     @ViewBuilder
     private var previewControls: some View {
-        if let duration = activeVideo?.duration {
+        if let bounds = activeVideo?.bounds {
+            let maximum = scrubMaximum(bounds)
             if let preview {
                 Image(decorative: preview, scale: 1)
                     .resizable()
@@ -99,8 +100,8 @@ struct FrameExtractionSettings: View {
                     .accessibilityLabel("Frame preview")
             }
             if let previewError { Text(previewError).font(.callout).foregroundStyle(.secondary) }
-            Slider(value: Binding(get: { min(max(0, seconds), scrubMaximum(duration)) },
-                                  set: { seconds = $0 }), in: 0...scrubMaximum(duration))
+            Slider(value: Binding(get: { min(max(bounds.lowerBound, seconds), maximum) },
+                                  set: { seconds = $0 }), in: bounds.lowerBound...maximum)
                 .accessibilityLabel("Scrub video")
                 .task(id: request) { await updatePreview(request) }
             if options.selection == .interval {
@@ -145,12 +146,12 @@ struct FrameExtractionSettings: View {
     private var canAddTimestamp: Bool {
         guard seconds.isFinite, seconds >= 0, options.timestamps.count < FrameExtraction.maximumFrames,
               !options.timestamps.contains(seconds) else { return false }
-        guard let duration = activeVideo?.duration else { return false }
-        return seconds < duration
+        return activeVideo?.bounds?.contains(seconds) == true
     }
 
-    private func scrubMaximum(_ duration: Double) -> Double {
-        max(duration * 0.999_999, duration - 0.001)
+    private func scrubMaximum(_ bounds: Range<Double>) -> Double {
+        let duration = bounds.upperBound - bounds.lowerBound
+        return min(bounds.upperBound.nextDown, bounds.upperBound - min(0.001, duration * 0.000_001))
     }
 
     private func load(_ url: URL?) async {
@@ -159,12 +160,12 @@ struct FrameExtractionSettings: View {
         loaded = nil
         guard let url else { return }
         do {
-            let duration = try await FrameExtraction.duration(of: url)
+            let bounds = try await FrameExtraction.timeBounds(of: url)
             guard !Task.isCancelled else { return }
-            if !seconds.isFinite || seconds < 0 || seconds >= duration { seconds = 0 }
-            loaded = LoadedVideo(input: url, duration: duration, error: nil)
+            if !seconds.isFinite || !bounds.contains(seconds) { seconds = bounds.lowerBound }
+            loaded = LoadedVideo(input: url, bounds: bounds, error: nil)
         } catch {
-            if !Task.isCancelled { loaded = LoadedVideo(input: url, duration: nil, error: error.localizedDescription) }
+            if !Task.isCancelled { loaded = LoadedVideo(input: url, bounds: nil, error: error.localizedDescription) }
         }
     }
 

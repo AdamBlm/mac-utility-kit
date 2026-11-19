@@ -66,12 +66,16 @@ public enum FrameExtraction {
         guard duration.isFinite, duration > 0 else {
             throw ToolError.invalid("The video must have a finite positive duration.")
         }
+        return try times(in: 0..<duration, options: options)
+    }
+
+    package static func times(in bounds: Range<Double>, options: FrameExtractionOptions) throws -> [Double] {
         switch options.selection {
         case .timestamps:
-            let times = options.timestamps.isEmpty ? [0] : options.timestamps
+            let times = options.timestamps.isEmpty ? [bounds.lowerBound] : options.timestamps
             guard times.count <= maximumFrames else { throw tooManyFrames() }
-            guard times.allSatisfy({ $0.isFinite && $0 >= 0 && $0 < duration }) else {
-                throw ToolError.invalid("Each timestamp must be at or after zero and before the end of the video.")
+            guard times.allSatisfy({ $0.isFinite && bounds.contains($0) }) else {
+                throw ToolError.invalid("Each timestamp must be at or after the first video frame and before the end of the video.")
             }
             return Set(times).sorted()
         case .interval:
@@ -79,23 +83,29 @@ public enum FrameExtraction {
             guard interval.isFinite, interval > 0 else {
                 throw ToolError.invalid("Enter an interval greater than zero seconds.")
             }
-            guard interval * Double(maximumFrames) >= duration else { throw tooManyFrames() }
-            return (0..<maximumFrames).map { Double($0) * interval }.prefix { $0 < duration }.map { $0 }
+            let firstExcess = bounds.lowerBound + Double(maximumFrames) * interval
+            guard firstExcess >= bounds.upperBound else { throw tooManyFrames() }
+            return Array((0..<maximumFrames).map { bounds.lowerBound + Double($0) * interval }
+                .prefix { $0 < bounds.upperBound })
         }
     }
 
     public static func duration(of input: URL) async throws -> Double {
-        try await load(input).duration
+        try await load(input).trackEnd
+    }
+
+    package static func timeBounds(of input: URL) async throws -> Range<Double> {
+        try await load(input).bounds
     }
 
     public static func preview(_ input: URL, at seconds: Double) async throws -> CGImage {
         let source = try await load(input)
-        guard seconds.isFinite, seconds >= 0, seconds < source.duration else {
+        guard seconds.isFinite, source.bounds.contains(seconds) else {
             throw ToolError.invalid("Select a timestamp within the video.")
         }
         let generator = makeGenerator(for: source.asset)
         generator.maximumSize = CGSize(width: 640, height: 360)
-        return try await image(at: seconds, generator: generator)
+        return try await image(at: seconds, start: source.start, generator: generator)
     }
 
     public static func export(
@@ -112,7 +122,7 @@ public enum FrameExtraction {
             throw ToolError.invalid("This Mac cannot encode \(options.format.rawValue) images.")
         }
         let source = try await load(input)
-        let times = try times(duration: source.duration, options: options)
+        let times = try times(in: source.bounds, options: options)
         let generator = makeGenerator(for: source.asset)
         let manager = FileManager.default
         var outputs: [URL] = []
@@ -126,7 +136,7 @@ public enum FrameExtraction {
                 let candidate = directory.appendingPathComponent(UUID().uuidString)
                 let output = directory.appendingPathComponent("\(stem).\(options.format.fileExtension)")
                 do {
-                    let frame = try await image(at: time, generator: generator)
+                    let frame = try await image(at: time, start: source.start, generator: generator)
                     try Task.checkCancellation()
                     try write(frame, to: candidate, options: options)
                     try Task.checkCancellation()
@@ -147,7 +157,7 @@ public enum FrameExtraction {
         }
     }
 
-    private static func load(_ input: URL) async throws -> (asset: AVURLAsset, duration: Double) {
+    private static func load(_ input: URL) async throws -> (asset: AVURLAsset, start: CMTime, bounds: Range<Double>, trackEnd: Double) {
         guard input.isFileURL else { throw ToolError.invalid("Choose a local video file.") }
         let asset = AVURLAsset(url: input, options: [
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue),
@@ -156,11 +166,18 @@ public enum FrameExtraction {
         guard let video = try await asset.loadTracks(withMediaType: .video).first else {
             throw ToolError.invalid("The selected file has no video track.")
         }
-        let duration = try await video.load(.timeRange).end.seconds
-        guard duration.isFinite, duration > 0 else {
+        let range = try await video.load(.timeRange)
+        // QuickTime edit lists can include an empty segment inside the track's time range.
+        let segments = try? await video.load(.segments)
+        try Task.checkCancellation()
+        let firstMedia = segments?.first { !$0.isEmpty }?.timeMapping.target.start ?? range.start
+        let lastMedia = segments?.last { !$0.isEmpty }?.timeMapping.target.end ?? range.end
+        let start = CMTimeMaximum(CMTimeMaximum(range.start, firstMedia), .zero)
+        let end = CMTimeMinimum(range.end, lastMedia)
+        guard start.isNumeric, end.isNumeric, end.seconds > start.seconds else {
             throw ToolError.invalid("The video must have a finite positive duration.")
         }
-        return (asset, duration)
+        return (asset, start, start.seconds..<end.seconds, range.end.seconds)
     }
 
     private static func makeGenerator(for asset: AVURLAsset) -> AVAssetImageGenerator {
@@ -171,7 +188,7 @@ public enum FrameExtraction {
         return generator
     }
 
-    private static func image(at seconds: Double, generator: AVAssetImageGenerator) async throws -> CGImage {
+    private static func image(at seconds: Double, start: CMTime, generator: AVAssetImageGenerator) async throws -> CGImage {
         try Task.checkCancellation()
         let time = CMTime(seconds: seconds, preferredTimescale: 1_000_000_000)
         guard time.isNumeric else { throw ToolError.invalid("Could not represent the selected timestamp.") }
@@ -179,7 +196,7 @@ public enum FrameExtraction {
         let seekTime = time.seconds > seconds && time.value > 0
             ? CMTime(value: time.value - 1, timescale: time.timescale)
             : time
-        return try await generator.image(at: seekTime).image
+        return try await generator.image(at: CMTimeMaximum(start, seekTime)).image
     }
 
     private static func write(_ image: CGImage, to url: URL, options: FrameExtractionOptions) throws {

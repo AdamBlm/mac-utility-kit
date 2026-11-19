@@ -34,7 +34,7 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 
 
 - **Change Speed** adjusts video timing with optional pitch preservation. Pitch-preserving export uses AVFoundation. Changing pitch along with speed requires a selected FFmpeg executable for clips with audio.
-- **Extract Frames** scrubs and previews source video, then exports selected timestamps or a fixed interval to PNG, JPEG, or HEIC. It uses the video formats supported by AVFoundation.
+- **Extract Frames** scrubs and previews source video, then exports selected timestamps or a fixed interval to PNG, JPEG, or HEIC. Fixed intervals start at the first visible video frame, and timestamps use the source timeline. It uses the video formats supported by AVFoundation.
 
 - **Trim Video** previews an in/out range, re-encodes a precise MP4 cut, or copies video and audio streams to MKV at keyframe-aligned boundaries with selected FFmpeg and ffprobe executables.
 - **Mute Video** previews the audio track list and removes selected tracks or all audio. It copies encoded video through AVFoundation when the chosen MOV, MP4, or M4V container supports the retained streams.
