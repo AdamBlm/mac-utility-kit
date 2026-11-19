@@ -43,7 +43,7 @@ struct TranslationDocumentTests {
 
     @Test func rejectsDamagedCuesAndUnsupportedFormatting() throws {
         #expect(throws: ToolError.self) {
-            try TranslationDocument("1\n00:00:01,000 --> 00:00:03,000\n<i>Styled cue</i>", kind: .srt)
+            try TranslationDocument("1\n00:00:01,000 --> 00:00:03,000\n<custom>Styled cue</custom>", kind: .srt)
         }
         #expect(throws: ToolError.self) {
             try TranslationDocument("WEBVTT\n\n00:04.000 --> 00:01.000\nBroken", kind: .vtt)
@@ -51,6 +51,28 @@ struct TranslationDocumentTests {
         let document = try TranslationDocument("1\n00:00:01,000 --> 00:00:03,000\nText", kind: .srt)
         #expect(throws: ToolError.self) { try document.rendering([]) }
         #expect(throws: ToolError.self) { try document.rendering(["text --> another cue"]) }
+    }
+
+    @Test func subRipPreservesFormattingAndDialogueBoundaries() throws {
+        let header = "7\r\n00:00:01,000 --> 00:00:03,000\r\n"
+        let source = header + "<FONT color=\"#ffee00\"><I>Bonjour</I> à tous</FONT><br/>Bienvenue\r\n"
+        let file = try TranslationDocument(source, kind: .srt)
+        #expect(file.requests == ["Bonjour", "à tous", "Bienvenue"])
+        let result = try file.rendering(["Hello", "everyone", "Welcome"])
+        #expect(result == header + "<FONT color=\"#ffee00\"><I>Hello</I> everyone</FONT><br/>Welcome\r\n")
+        let edited = result.replacingOccurrences(of: "everyone", with: "all")
+        #expect(try file.applyingEdits(edited.replacingOccurrences(of: "\r\n", with: "\n")) == edited)
+        #expect(throws: ToolError.self) {
+            try file.applyingEdits(result.replacingOccurrences(of: "<I>Hello</I> everyone", with: "<I></I>Hello everyone"))
+        }
+        #expect(throws: ToolError.self) {
+            try file.applyingEdits(result.replacingOccurrences(of: "#ffee00", with: "#ff0000"))
+        }
+        #expect(throws: ToolError.self) {
+            try file.rendering(["<b>Hello</b>", "everyone", "Welcome"])
+        }
+        let plain = try TranslationDocument(header + "x < 4", kind: .srt)
+        #expect(try plain.rendering(["x < 5"]) == header + "x < 5")
     }
 
     @Test func webVTTTranslatesAndEditsDialogueWhilePreservingFormatting() throws {
