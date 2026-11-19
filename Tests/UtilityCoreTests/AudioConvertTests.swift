@@ -29,16 +29,7 @@ struct AudioConvertTests {
     @Test func appliesMetadataToggleToAAC() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
-        let wav = try Self.writeStereoWAV(to: directory)
-        let initial = directory.appending(path: "untagged.m4a")
-        _ = try await AudioConvert.export(wav, to: initial, options: AudioConvertOptions()) { _ in }
-        let source = directory.appending(path: "tagged.m4a")
-        let exporter = try #require(AVAssetExportSession(asset: AVURLAsset(url: initial), presetName: AVAssetExportPresetPassthrough))
-        let tag = AVMutableMetadataItem()
-        tag.identifier = .commonIdentifierTitle
-        tag.value = "Tagged audio fixture" as NSString
-        exporter.metadata = [tag]
-        try await exporter.export(to: source, as: .m4a)
+        let source = try #require(Bundle.module.url(forResource: "tagged-audio", withExtension: "m4a"))
         for preserve in [true, false] {
             var options = AudioConvertOptions()
             options.preservesMetadata = preserve
