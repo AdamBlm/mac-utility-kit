@@ -24,6 +24,14 @@ public struct DuplicateGroup: Identifiable, Sendable {
     public let id: UUID
     public let files: [DuplicateFile]
     public var fileSize: Int64 { files.first?.bytes ?? 0 }
+
+    package func selection(keeping keeper: URL, from marked: Set<URL>) -> Set<URL> {
+        guard files.contains(where: { $0.url == keeper }) else { return marked }
+        var next = marked
+        next.remove(keeper)
+        next.formUnion(files.lazy.map(\.url).filter { $0 != keeper })
+        return next
+    }
 }
 
 public struct DuplicateIssue: Identifiable, Sendable {

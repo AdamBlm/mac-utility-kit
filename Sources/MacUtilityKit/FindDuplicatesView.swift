@@ -148,14 +148,14 @@ struct FindDuplicatesView: View {
                         Text("\(group.files.count) copies · \(bytes(group.fileSize)) each")
                             .font(.callout.weight(.medium))
                         let kept = group.files.filter { !draft.selected.contains($0.url) }.count
-                        ForEach(group.files) { file in fileRow(file, kept: kept) }
+                        ForEach(group.files) { file in fileRow(file, in: group, kept: kept) }
                     }
                 }
             }
         }
     }
 
-    private func fileRow(_ file: DuplicateFile, kept: Int) -> some View {
+    private func fileRow(_ file: DuplicateFile, in group: DuplicateGroup, kept: Int) -> some View {
         let selected = draft.selected.contains(file.url)
         return HStack(spacing: 10) {
             Toggle("Select \(file.url.lastPathComponent) for Trash", isOn: Binding(
@@ -176,6 +176,13 @@ struct FindDuplicatesView: View {
             }
             Spacer(minLength: 8)
             Text(selected ? "Trash" : "Keep").font(.caption).foregroundStyle(.secondary)
+            Button("Keep This Copy") {
+                draft.selected = group.selection(keeping: file.url, from: draft.selected)
+            }
+            .controlSize(.small)
+            .accessibilityLabel("Keep \(file.url.lastPathComponent)")
+            .help("Mark the other copies in this group for Trash.")
+            .disabled(busy || (!selected && kept == 1))
             Button("Preview \(file.url.lastPathComponent)", systemImage: "eye") { preview = file.url }
                 .labelStyle(.iconOnly)
                 .disabled(draft.trashInProgress)

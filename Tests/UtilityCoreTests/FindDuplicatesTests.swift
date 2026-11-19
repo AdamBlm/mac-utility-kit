@@ -4,6 +4,23 @@ import Testing
 
 @Suite(.serialized)
 struct FindDuplicatesTests {
+    @Test func keepSelectionMarksOnlyTheChosenGroupsOtherCopies() async throws {
+        let root = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let a = try Self.write("a.txt", Data("first group".utf8), in: root)
+        let b = try Self.write("b.txt", Data("first group".utf8), in: root)
+        let c = try Self.write("c.txt", Data("first group".utf8), in: root)
+        let d = try Self.write("d.txt", Data("second group".utf8), in: root)
+        let e = try Self.write("e.txt", Data("second group".utf8), in: root)
+        let report = try await FindDuplicates.scan([root], options: .init())
+        let group = try #require(report.groups.first { $0.files.contains { $0.url == a } })
+        let marked: Set<URL> = [b, d]
+        let next = group.selection(keeping: b, from: marked)
+        #expect(next == [a, c, d])
+        #expect(group.selection(keeping: e, from: next) == next)
+        #expect([a, b, c, d, e].allSatisfy { FileManager.default.fileExists(atPath: $0.path) })
+    }
+
     @Test func minimumSizeIsInclusiveAcrossFoldersAndLeavesDefaultUnchanged() async throws {
         let root = try Self.folder()
         defer { try? FileManager.default.removeItem(at: root) }
