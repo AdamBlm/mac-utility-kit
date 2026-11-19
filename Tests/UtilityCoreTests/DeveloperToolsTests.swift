@@ -23,6 +23,19 @@ import UtilityCore
         #expect(result.text == "{\n\t\"a\": [\n\t\t1,\n\t\t2\n\t]\n}")
     }
 
+    @Test func identifiesRepeatedKeysAtTheirOriginalLocations() throws {
+        let input = "{\r\n"
+            + #"  "nested":[{"👩‍👩‍👧‍👦":0,"a":1,"a":2}],"# + "\r"
+            + #"  "other":{"a":3,"# + "\n"
+            + #"     "\u0061":4,"a":5}}"#
+        let formatted = try JSONFormatter.format(input, indentation: .minified, sortKeys: true)
+        #expect(formatted.duplicateOccurrences.map(\.key) == ["a", "a", "a"])
+        #expect(formatted.duplicateOccurrences.map(\.line) == [2, 4, 4])
+        #expect(formatted.duplicateOccurrences.map(\.column) == [26, 6, 17])
+        #expect(formatted.text.contains(#""a":1,"a":2"#))
+        #expect(formatted.text.contains(#""a":3,"\u0061":4,"a":5"#))
+    }
+
     @Test(arguments: ["[01]", "1.", "1e-", "[true,]", "{\"a\":0,}", "{}{}", "\"\\x\"", "\"\\uAAG9\""])
     func rejectsMalformedJSON(_ text: String) {
         #expect(throws: JSONFormatError.self) { try JSONFormatter.format(text) }

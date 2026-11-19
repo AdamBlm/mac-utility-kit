@@ -70,9 +70,25 @@ struct JSONFormatterView: View {
                 } else if let error, outputInput == input {
                     Text(error).foregroundStyle(.red)
                 } else if let result, outputInput == input {
-                    if !result.duplicateKeys.isEmpty {
-                        Text("Duplicate keys preserved: \(result.duplicateKeys.prefix(10).map { String(reflecting: $0) }.joined(separator: ", "))")
-                            .foregroundStyle(.orange)
+                    if !result.duplicateOccurrences.isEmpty {
+                        DisclosureGroup {
+                            ScrollView {
+                                LazyVStack(alignment: .leading, spacing: 4) {
+                                    ForEach(result.duplicateOccurrences.indices, id: \.self) { index in
+                                        let duplicate = result.duplicateOccurrences[index]
+                                        Text("\(String(reflecting: duplicate.key)) · line \(duplicate.line), column \(duplicate.column)")
+                                            .font(.callout.monospaced())
+                                            .textSelection(.enabled)
+                                    }
+                                }
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                            }
+                            .frame(height: min(CGFloat(result.duplicateOccurrences.count) * 24, 144))
+                        } label: {
+                            Label("Duplicate keys preserved (\(result.duplicateOccurrences.count))",
+                                  systemImage: "exclamationmark.triangle")
+                                .foregroundStyle(.orange)
+                        }
                     }
                     let preview = result.text.prefix(20_000)
                     ScrollView([.horizontal, .vertical]) {

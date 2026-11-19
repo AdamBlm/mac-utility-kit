@@ -2,7 +2,14 @@ import Foundation
 
 public struct JSONFormatResult: Sendable {
     public let text: String
-    public let duplicateKeys: [String]
+    public let duplicateOccurrences: [JSONDuplicateKey]
+    public var duplicateKeys: [String] { duplicateOccurrences.map(\.key) }
+}
+
+public struct JSONDuplicateKey: Equatable, Sendable {
+    public let key: String
+    public let line: Int
+    public let column: Int
 }
 
 public struct JSONFormatError: LocalizedError {
@@ -43,7 +50,7 @@ public enum JSONFormatter {
         let root = try parser.parse()
         var output = ""
         try root.write(to: &output, indentation: indentation.whitespace, sortKeys: sortKeys, depth: 0)
-        return JSONFormatResult(text: output, duplicateKeys: parser.duplicateKeys)
+        return JSONFormatResult(text: output, duplicateOccurrences: try parser.duplicateOccurrences())
     }
 }
 
@@ -96,9 +103,19 @@ enum JSONNode {
 private struct Parser {
     let bytes: [UInt8]
     var offset = 0
-    var duplicateKeys: [String] = []
+    private var repeatedKeys: [(key: String, offset: Int)] = []
+
+    init(bytes: [UInt8]) { self.bytes = bytes }
 
     private var current: UInt8? { offset < bytes.count ? bytes[offset] : nil }
+
+    func duplicateOccurrences() throws -> [JSONDuplicateKey] {
+        var cursor = SourcePositionCursor(bytes: bytes)
+        return try repeatedKeys.map { occurrence in
+            try cursor.advance(to: occurrence.offset)
+            return JSONDuplicateKey(key: occurrence.key, line: cursor.line, column: cursor.column)
+        }
+    }
 
     mutating func parse() throws -> JSONNode {
         let root = try value(depth: 0)
@@ -132,9 +149,10 @@ private struct Parser {
         repeat {
             skipWhitespace()
             guard current == 34 else { throw error("Expected an object key in double quotes") }
+            let keyOffset = offset
             let (raw, decoded) = try string()
             let key = Array(decoded.utf8)
-            if !seen.insert(key).inserted { duplicateKeys.append(decoded) }
+            if !seen.insert(key).inserted { repeatedKeys.append((decoded, keyOffset)) }
             skipWhitespace()
             guard consume(58) else { throw error("Expected a colon after the object key") }
             members.append(JSONMember(rawKey: raw, key: key, value: try value(depth: depth + 1)))
@@ -243,6 +261,35 @@ private struct Parser {
         let lineCount = prefix.filter { lineEndings.contains($0) }.count
         let column = prefix.reversed().prefix { !lineEndings.contains($0) }.count + 1
         return JSONFormatError(message: message, line: lineCount + 1, column: column)
+    }
+}
+
+private struct SourcePositionCursor {
+    let bytes: [UInt8]
+    private(set) var line = 1
+    private(set) var column = 1
+    private var offset = 0
+
+    init(bytes: [UInt8]) {
+        self.bytes = bytes
+    }
+
+    mutating func advance(to target: Int) throws {
+        try Task.checkCancellation()
+        var chunkStart = offset
+        while offset < target {
+            if offset.isMultiple(of: 4_096) { try Task.checkCancellation() }
+            let byte = bytes[offset]
+            offset += 1
+            if byte == 13 || byte == 10 {
+                if byte == 13 && offset < target && bytes[offset] == 10 { offset += 1 }
+                line += 1
+                column = 1
+                chunkStart = offset
+            }
+        }
+        // Key offsets begin at a quote following syntax or whitespace, at a grapheme boundary.
+        column += String(decoding: bytes[chunkStart..<target], as: UTF8.self).count
     }
 }
 
