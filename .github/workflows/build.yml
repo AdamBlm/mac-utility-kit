@@ -23,6 +23,13 @@ jobs:
             printf 'MAC_UTILITY_FFPROBE_TEST=%s\n' "$ffmpeg_directory/ffprobe"
             printf 'MAC_UTILITY_MAGICK_TEST=%s\n' "$magick"
           } >> "$GITHUB_ENV"
+      - name: Set up the PDF forms integration test
+        shell: bash
+        run: |
+          python3 -m venv "$RUNNER_TEMP/muk-pdf-forms"
+          forms_python="$RUNNER_TEMP/muk-pdf-forms/bin/python3"
+          "$forms_python" -m pip install --disable-pip-version-check "pypdf==6.21.4"
+          printf 'MAC_UTILITY_FORMS_PYTHON=%s\n' "$forms_python" >> "$GITHUB_ENV"
       - name: Build test targets
         run: swift build --build-tests
       - name: Run tests
