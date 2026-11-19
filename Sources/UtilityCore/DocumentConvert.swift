@@ -142,6 +142,15 @@ public enum DocumentConvert {
         } catch {
             return error.localizedDescription
         }
+        return previewIssue(for: input, options: options)
+    }
+
+    package static func previewIssue(for input: URL, options: DocumentConvertOptions) -> String? {
+        do {
+            try validateInputFile(input)
+        } catch {
+            return error.localizedDescription
+        }
         return optionIssue(for: input, options: options)
     }
 
@@ -217,10 +226,7 @@ public enum DocumentConvert {
         progress: @Sendable (Double) async -> Void
     ) async throws -> Engine {
         let source = try Source(input)
-        let resources = try input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard resources.isRegularFile == true, let size = resources.fileSize, size <= 128 * 1024 * 1024 else {
-            throw ToolError.invalid("Choose a local document up to 128 MB.")
-        }
+        try validateInputFile(input)
         if let issue = optionIssue(for: input, options: options) { throw ToolError.invalid(issue) }
         let engine = try engine(for: source, options: options)
         try Task.checkCancellation()
@@ -263,6 +269,13 @@ public enum DocumentConvert {
         try Task.checkCancellation()
         try DocumentConversionEngines.verify(output, format: options.target)
         return engine
+    }
+
+    private static func validateInputFile(_ input: URL) throws {
+        guard input.isFileURL, let resources = try? input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
+              resources.isRegularFile == true, let size = resources.fileSize, size <= 128 * 1024 * 1024 else {
+            throw ToolError.invalid("Choose a local document up to 128 MB.")
+        }
     }
 
     private static func staging(in parent: URL) throws -> URL {

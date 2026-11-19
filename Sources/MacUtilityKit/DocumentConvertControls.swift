@@ -94,7 +94,7 @@ struct DocumentConvertControls: View {
                     .font(.callout).foregroundStyle(.secondary)
             }
         }
-        if let input = previewInput, DocumentConvert.optionIssue(for: input, options: options) == nil,
+        if let input = previewInput, DocumentConvert.previewIssue(for: input, options: options) == nil,
            let engine = try? DocumentConvert.requiredEngine(for: input, options: options) {
             Text("Engine: \(engine.rawValue)").font(.callout).foregroundStyle(.secondary)
         }
@@ -117,7 +117,7 @@ struct DocumentConvertControls: View {
                 if let previewInput { request = Request(input: previewInput, options: options) }
             }
             .disabled(request != nil || previewInput.map {
-                DocumentConvert.optionIssue(for: $0, options: options) != nil
+                DocumentConvert.previewIssue(for: $0, options: options) != nil
             } ?? true)
             if request != nil {
                 ProgressView().controlSize(.small)

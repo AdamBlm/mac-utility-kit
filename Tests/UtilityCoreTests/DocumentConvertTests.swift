@@ -57,6 +57,26 @@ struct DocumentConvertTests {
         #expect(try String(contentsOf: second, encoding: .utf8) == "second document")
     }
 
+    @Test func exportPreflightRejectsDirectoriesAndOversizedInputs() throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let fakeDocument = directory.appending(path: "Folder.txt", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: fakeDocument, withIntermediateDirectories: false)
+        let large = directory.appending(path: "Large.txt")
+        try Data().write(to: large)
+        let file = try FileHandle(forWritingTo: large)
+        try file.truncate(atOffset: 128 * 1024 * 1024 + 1)
+        try file.close()
+        var options = DocumentConvertOptions()
+        options.target = .html
+        for input in [fakeDocument, large] {
+            #expect(DocumentConvert.previewIssue(for: input, options: options)
+                    == "Choose a local document up to 128 MB.")
+            #expect(DocumentConvert.exportIssue(for: input, position: 1, options: options)
+                    == "Choose a local document up to 128 MB.")
+        }
+    }
+
     @Test func expansionRejectsInvalidNamesAndReportsUnsupportedPairsAndMissingEngines() throws {
         let base = URL(fileURLWithPath: "/tmp/My {index} résumé.docx")
         var options = DocumentConvertOptions()
