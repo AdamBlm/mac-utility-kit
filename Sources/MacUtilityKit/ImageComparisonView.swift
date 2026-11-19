@@ -1,4 +1,3 @@
-import ImageIO
 import SwiftUI
 import UtilityCore
 
@@ -6,7 +5,9 @@ struct ImageComparisonView: View {
     let pair: ImageComparisonResult
 
     @Environment(\.dismiss) private var dismiss
-    @State private var zoom = 1.0
+    @State private var magnification: Double = 0
+    @State private var x = 0.5
+    @State private var y = 0.5
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
@@ -19,10 +20,16 @@ struct ImageComparisonView: View {
                 comparisonPane("Original", url: pair.source)
                 comparisonPane("Compressed", url: pair.output)
             }
-            HStack {
-                Slider(value: $zoom, in: 1...4) { Text("Preview zoom") }
-                Text(zoom.formatted(.percent.precision(.fractionLength(0))))
-                    .monospacedDigit().foregroundStyle(.secondary)
+            Picker("Zoom", selection: $magnification) {
+                Text("Fit").tag(0.0)
+                Text("100%").tag(1.0)
+                Text("200%").tag(2.0)
+                Text("400%").tag(4.0)
+            }
+            .pickerStyle(.segmented)
+            if magnification > 0 {
+                Slider(value: $x, in: 0...1) { Text("Horizontal position") }
+                Slider(value: $y, in: 0...1) { Text("Vertical position") }
             }
         }
         .padding(22)
@@ -32,8 +39,7 @@ struct ImageComparisonView: View {
     private func comparisonPane(_ title: String, url: URL) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text(title).font(.callout.weight(.semibold))
-            ImageComparisonPane(url: url, zoom: zoom)
-                .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+            ImageComparisonPane(url: url, magnification: magnification, center: CGPoint(x: x, y: y))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -41,37 +47,70 @@ struct ImageComparisonView: View {
 
 private struct ImageComparisonPane: View {
     let url: URL
-    let zoom: Double
-    @State private var thumbnail: CGImage?
+    let magnification: Double
+    let center: CGPoint
+    @Environment(\.displayScale) private var displayScale
+    @State private var preview: ImageComparisonPreview?
     @State private var failed = false
 
+    private struct Request: Equatable {
+        let url: URL
+        let detail: Bool
+    }
+
     var body: some View {
-        GeometryReader { geometry in
-            if let thumbnail {
-                ScrollView([.horizontal, .vertical]) {
-                    Image(decorative: thumbnail, scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(width: geometry.size.width * zoom, height: geometry.size.height * zoom)
+        VStack(alignment: .leading, spacing: 6) {
+            GeometryReader { geometry in
+                Group {
+                    if let preview {
+                        if magnification == 0 {
+                            Image(decorative: preview.image, scale: 1)
+                                .resizable().scaledToFit()
+                        } else {
+                            let scale = displayScale / (magnification * preview.pixelsPerSample)
+                            let viewport = CGSize(width: geometry.size.width * scale, height: geometry.size.height * scale)
+                            if let tile = preview.region(center: center, viewport: viewport) {
+                                Image(decorative: tile, scale: 1)
+                                    .resizable().interpolation(.none)
+                                    .frame(width: CGFloat(tile.width) / scale, height: CGFloat(tile.height) / scale)
+                            }
+                        }
+                    } else if failed {
+                        ContentUnavailableView("Preview unavailable", systemImage: "photo")
+                    } else {
+                        ProgressView()
+                    }
                 }
-            } else if failed {
-                ContentUnavailableView("Preview unavailable", systemImage: "photo")
-            } else {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .clipped()
+            }
+            .background(.quaternary.opacity(0.35), in: RoundedRectangle(cornerRadius: 8))
+            .overlay(alignment: .bottomTrailing) {
+                if let preview, !preview.isFullResolution, magnification > 0 {
+                    Text("Reduced preview")
+                        .font(.caption)
+                        .padding(5)
+                        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 4))
+                        .padding(6)
+                }
             }
         }
-        .task(id: url) {
-            let image = await Task.detached(priority: .userInitiated) {
-                guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil as CGImage? }
-                return CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
-                    kCGImageSourceCreateThumbnailFromImageAlways: true,
-                    kCGImageSourceCreateThumbnailWithTransform: true,
-                    kCGImageSourceThumbnailMaxPixelSize: 1_600
-                ] as CFDictionary)
-            }.value
+        .task(id: Request(url: url, detail: magnification > 0)) {
+            let detail = magnification > 0
+            preview = nil
+            failed = false
+            let worker = Task.detached(priority: .userInitiated) {
+                guard !Task.isCancelled else { return nil as ImageComparisonPreview? }
+                return ImageComparisonPreview.load(url, detail: detail)
+            }
+            let loaded = await withTaskCancellationHandler {
+                await worker.value
+            } onCancel: {
+                worker.cancel()
+            }
             guard !Task.isCancelled else { return }
-            thumbnail = image
-            failed = image == nil
+            preview = loaded
+            failed = loaded == nil
         }
         .accessibilityLabel(url.lastPathComponent)
     }

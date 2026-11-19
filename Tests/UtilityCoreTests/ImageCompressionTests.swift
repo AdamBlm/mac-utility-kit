@@ -197,3 +197,37 @@ private func writeOpacityFixture(to url: URL, depth: Int, hasTransparentPixel: B
     CGImageDestinationAddImage(writer, image, nil)
     try #require(CGImageDestinationFinalize(writer))
 }
+
+@Test func compressionComparisonKeepsFineDetailAtTheSameImagePosition() throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let colorSpace = CGColorSpace(name: CGColorSpace.sRGB)!
+    let center = CGPoint(x: 1, y: 0)
+    for (index, component) in [CGFloat(0), CGFloat(1)].enumerated() {
+        let context = try #require(CGContext(data: nil, width: 3_200, height: 32, bitsPerComponent: 8,
+                                              bytesPerRow: 0, space: colorSpace,
+                                              bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        context.setFillColor(gray: 0.5, alpha: 1)
+        context.fill(CGRect(x: 0, y: 0, width: 3_200, height: 32))
+        context.setFillColor(gray: component, alpha: 1)
+        context.fill(CGRect(x: 3_199, y: 24, width: 1, height: 8))
+        let image = try #require(context.makeImage())
+        let url = directory.appending(path: "\(index).png")
+        let writer = try #require(CGImageDestinationCreateWithURL(url as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(writer, image, nil)
+        try #require(CGImageDestinationFinalize(writer))
+
+        let preview = try #require(ImageComparisonPreview.load(url, detail: true))
+        #expect(preview.isFullResolution && preview.image.width == 3_200)
+        let fitted = try #require(ImageComparisonPreview.load(url, detail: false))
+        #expect(fitted.image.width == 2_400 && !fitted.isFullResolution)
+        #expect(abs(fitted.pixelsPerSample - 4.0 / 3.0) < 0.001)
+        let corner = try #require(preview.region(center: center, viewport: CGSize(width: 1, height: 1)))
+        let sample = try #require(CGContext(data: nil, width: 1, height: 1, bitsPerComponent: 8,
+                                             bytesPerRow: 4, space: colorSpace,
+                                             bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        sample.draw(corner, in: CGRect(x: 0, y: 0, width: 1, height: 1))
+        let pixels = try #require(sample.data?.assumingMemoryBound(to: UInt8.self))
+        #expect(pixels[0] == UInt8(component * 255))
+    }
+}
