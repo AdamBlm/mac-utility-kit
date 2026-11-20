@@ -174,6 +174,9 @@ struct PDFFormsView: View {
                         Button("Choose Python with pypdf…", action: choosePython)
                         if let python = draft.python { Text(python.path).font(.caption).lineLimit(1) }
                     }
+                    if draft.python == nil {
+                        ExternalEngineSetupButton(engine: .forms) { draft.python = $0 }
+                    }
                     Button("Export PDF…", systemImage: "square.and.arrow.up", action: export)
                         .disabled(draft.python == nil || edit != originalEdit)
                     if edit != originalEdit {

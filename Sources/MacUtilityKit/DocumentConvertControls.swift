@@ -58,7 +58,13 @@ struct DocumentConvertControls: View {
             DisclosureGroup("Conversion Engines") {
                 VStack(alignment: .leading, spacing: 9) {
                     enginePicker("Pandoc", url: $options.pandocExecutable)
+                    if options.pandocExecutable == nil {
+                        ExternalEngineSetupButton(engine: .pandoc) { options.pandocExecutable = $0 }
+                    }
                     enginePicker("LibreOffice", url: $options.libreOfficeExecutable)
+                    if options.libreOfficeExecutable == nil {
+                        ExternalEngineSetupButton(engine: .libreOffice) { options.libreOfficeExecutable = $0 }
+                    }
                     Toggle("Prefer LibreOffice for compatible pairs", isOn: $options.prefersLibreOffice)
                     Text("Legacy Word files use LibreOffice. Markdown conversions use Pandoc except when wrapping plain text.")
                         .font(.callout).foregroundStyle(.secondary)

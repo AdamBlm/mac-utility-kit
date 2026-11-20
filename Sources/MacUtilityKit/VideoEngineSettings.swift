@@ -115,10 +115,28 @@ struct VideoEngineSettingsView: View {
                 }
                 if let error = engines.error { Text(error).foregroundStyle(.red) }
             }
+            engineSection("PDF Tools", engines: [.qpdf, .ghostscript, .libreOffice, .forms])
+            engineSection("Audio Tools", engines: [.ffmpeg, .whisper])
+            engineSection("Image Tools", engines: [.imagemagick, .exiftool])
+            engineSection("Document Conversion", engines: [.pandoc])
         }
         .formStyle(.grouped)
         .frame(minWidth: 520, minHeight: 240)
         .task { await engines.refresh() }
+    }
+
+    private func engineSection(_ title: String, engines: [HomebrewEngine]) -> some View {
+        Section(title) {
+            ForEach(engines) { engine in
+                LabeledContent(engine.rawValue) {
+                    if engine.installed != nil {
+                        Text("Installed").foregroundStyle(.secondary)
+                    } else {
+                        ExternalEngineSetupButton(engine: engine)
+                    }
+                }
+            }
+        }
     }
 
     private func run(_ operation: @escaping @MainActor () async throws -> Void) {

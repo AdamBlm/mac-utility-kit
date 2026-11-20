@@ -98,6 +98,9 @@ struct VideoCompressionControls: View {
                     }
                     Button("Choose FFmpeg…", action: chooseFFmpeg)
                 }
+                if options.ffmpegExecutable == nil, installedFFmpeg == nil {
+                    ExternalEngineSetupButton(engine: .ffmpeg) { selectEngine($0) }
+                }
                 if options.videoFormat == .webm {
                     Text("WebM uses Opus audio with standard mono, stereo, or surround layouts.")
                         .font(.caption).foregroundStyle(.secondary)

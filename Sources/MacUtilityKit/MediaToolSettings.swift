@@ -318,20 +318,26 @@ private struct AudioExtractionControls: View {
     }
 }
 
+@MainActor
 func executablePicker(_ name: String, selection: Binding<URL?>) -> some View {
-    HStack {
-        if let current = selection.wrappedValue {
-            Label(current.lastPathComponent, systemImage: "gearshape")
-                .foregroundStyle(.secondary)
-            Spacer(minLength: 8)
-            Button("Use macOS") { selection.wrappedValue = nil }
-        } else {
-            Text("macOS engine").foregroundStyle(.secondary)
-            Spacer(minLength: 8)
+    let setup = name == "FFmpeg with libass" ? HomebrewEngine.ffmpeg : HomebrewEngine(rawValue: name)
+    return VStack(alignment: .leading, spacing: 6) {
+        HStack {
+            if let current = selection.wrappedValue {
+                Label(current.lastPathComponent, systemImage: "gearshape")
+                    .foregroundStyle(.secondary)
+                Spacer(minLength: 8)
+                Button("Clear") { selection.wrappedValue = nil }
+            } else {
+                Spacer(minLength: 8)
+            }
+            Button("Choose \(name)…") {
+                let panel = NSOpenPanel()
+                if panel.runModal() == .OK { selection.wrappedValue = panel.url }
+            }
         }
-        Button("Choose \(name)…") {
-            let panel = NSOpenPanel()
-            if panel.runModal() == .OK { selection.wrappedValue = panel.url }
+        if selection.wrappedValue == nil, let setup {
+            ExternalEngineSetupButton(engine: setup) { selection.wrappedValue = $0 }
         }
     }
     .font(.callout)

@@ -36,7 +36,11 @@ struct HomebrewVideoTools {
         return nil
     }
 
-    private static func executable(_ path: String) -> URL? {
+    static func findExecutable(_ name: String) -> URL? {
+        prefixes.lazy.compactMap { executable($0 + "/bin/" + name) }.first
+    }
+
+    static func executable(_ path: String) -> URL? {
         let url = URL(fileURLWithPath: path)
         guard FileManager.default.isExecutableFile(atPath: path),
               (try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
@@ -48,8 +52,16 @@ struct HomebrewVideoTools {
 
 struct HomebrewVideoSetup: View {
     var refresh: (() -> Void)?
+    var body: some View {
+        HomebrewSetupCommand(command: "brew install yt-dlp ffmpeg-full", toolName: "the video tools", refresh: refresh)
+    }
+}
+
+struct HomebrewSetupCommand: View {
+    let command: String
+    let toolName: String
+    var refresh: (() -> Void)?
     @State private var copied = false
-    private let command = "brew install yt-dlp ffmpeg-full"
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -61,7 +73,7 @@ struct HomebrewVideoSetup: View {
                 }
                 if let refresh { Button("Detect Installed Tools", action: refresh) }
             }
-            Text("Run the command in Terminal to install the video tools.")
+            Text("Run the command in Terminal to install \(toolName).")
                 .font(.callout).foregroundStyle(.secondary)
             if let guide = URL(string: "https://docs.brew.sh/Installation") {
                 Link("Install Homebrew", destination: guide)

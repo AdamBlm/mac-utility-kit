@@ -78,6 +78,9 @@ struct PDFProtectionView: View {
                 }
             }
         }
+        .task {
+            if options.executable == nil { options.executable = HomebrewEngine.qpdf.installed }
+        }
         .onChange(of: options.password) { verifiedPreview = nil }
         .onChange(of: input) { resetInputState() }
         .onDisappear {

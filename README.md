@@ -98,7 +98,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 
 ### PDF conversion and protection
 
-- **Compress PDF** estimates savings from a page sample and verifies the exported page geometry, selectable text, and links. Use qpdf for structural compression or Ghostscript for image DPI reduction.
+- **Compress PDF** appears near the top of Documents and estimates savings from a page sample and verifies the exported page geometry, selectable text, and links. Use qpdf for structural compression or Ghostscript for image DPI reduction.
 - **Crop PDF** applies precise edge offsets to selected pages and previews the visible area before export.
 - **Make PDF Searchable** adds invisible, selectable Vision OCR text to chosen PDF pages. Preview recognized text, choose a language, and optionally skip pages that already contain text.
 - **Redact PDF** permanently removes marked content in a rasterized copy of an unencrypted PDF. The copy contains rendered pages, with text selection, links, and forms removed.
@@ -170,6 +170,8 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 
 
 ### Terminal and local MCP
+
+**Settings → Engines** includes Homebrew setup commands for PDF, audio, image, and document conversion engines. The tool’s setup panel can detect its newly installed executable. Compress PDF and PDF password tools also look for qpdf in standard Homebrew locations.
 
 The app bundle includes the `muk` executable in `Contents/MacOS`. In a source checkout, run `swift run muk --help`. Use `muk catalog` to list the app’s tool IDs, categories, and declared file input type identifiers as JSON. Each entry’s `automation` field lists its CLI command or its opt-in MCP capability where available. An empty object indicates an app-only tool. The `workspaceStatus` value `registered` indicates that the tool appears in the app’s workspace catalog. The `prerequisites` list records known fixed requirements by surface, including single-PDF input, LibreOffice for the dedicated Office-to-PDF tools, an existing destination for CLI file jobs, and an explicit allow option for MCP. It also identifies qpdf for PDF password exports and yt-dlp for video inspection and download. The list is partial. Tool controls check remaining requirements at runtime, including those specific to a machine, input, or selected option. The CLI reuses the app’s image resize, PDF merge, media inspection, file hashing, and JSON formatting operations. File-producing commands print a JSON report with output paths and per-input failures.
 

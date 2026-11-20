@@ -15,7 +15,7 @@ public enum ToolCategory: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum Tool: String, CaseIterable, Identifiable, Sendable {
-    case resizeImages, mergePDFs, compressVideo, convertVideo, mediaInfo, extractAudio
+    case resizeImages, mergePDFs, compressPDF, compressVideo, convertVideo, mediaInfo, extractAudio
     case convertImages, compressImages, removeMetadata, rotateImages, beautifyScreenshot, blurFaces, screenshot, redactImage, annotateScreenshot, removeBackground, colorPicker, watermark
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
@@ -23,7 +23,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
     case signPDF, extractText, wordCounter, summarize, caseConverter, batchFindReplace, translate, askDocument
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, jwtDecoder, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, ejectAllDisks, presentationMode, networkSpeedTest, storageExplorer, clipboardHistory, resetPermissions, appDamageDiagnosis, loginBackgroundItems, hiddenSettings, cleanKeyboard, wifiPasswordQR, uninstallApp, displayControl, mouseFixes, organizeDownloads, findDuplicates, zipUnzip
     case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles, extractSubtitles
-    case scanDocument, fillFlattenForms, pdfToWord, makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
+    case scanDocument, fillFlattenForms, pdfToWord, makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
     case recordScreen, downloadVideo
     case trimAudio, mergeAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 

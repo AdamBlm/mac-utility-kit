@@ -129,6 +129,7 @@ struct OfficePDFControls: View {
     private var availability: some View {
         let issues = inputs.compactMap { input in OfficePDF.optionIssue(input, kind: kind, options: options).map { (input, $0) } }
         if options.libreOfficeExecutable == nil {
+            ExternalEngineSetupButton(engine: .libreOffice) { options.libreOfficeExecutable = $0 }
             Text("Choose LibreOffice to preview and export.").font(.callout).foregroundStyle(.secondary)
         } else {
             ForEach(Array(issues.enumerated()), id: \.offset) { _, issue in

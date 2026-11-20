@@ -50,6 +50,9 @@ struct AudioCleanupControls: View {
                     Text(executable.lastPathComponent).lineLimit(1).help(executable.path)
                 }
             }
+            if options.executable == nil {
+                ExternalEngineSetupButton(engine: .ffmpeg) { options.executable = $0 }
+            }
             if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             SettingRow("Output") {
                 Picker("Output", selection: $options.output) {

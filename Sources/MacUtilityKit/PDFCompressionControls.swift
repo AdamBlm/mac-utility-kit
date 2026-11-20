@@ -57,6 +57,14 @@ struct PDFCompressionControls: View {
             }
             estimate
         }
+        .task(id: options.engine) {
+            switch options.engine {
+            case .qpdf:
+                if options.qpdfExecutable == nil { options.qpdfExecutable = HomebrewEngine.qpdf.installed }
+            case .ghostscript:
+                if options.ghostscriptExecutable == nil { options.ghostscriptExecutable = HomebrewEngine.ghostscript.installed }
+            }
+        }
         .task(id: pending) {
             guard let pending else { return }
             do {

@@ -117,6 +117,9 @@ struct TranscribeView: View {
                         }
                     }
                 }
+                if draft.options.model == nil, let link = HomebrewEngine.whisperModels {
+                    Link("Get a Whisper model", destination: link)
+                }
                 SettingRow("Language") {
                     Picker("Language", selection: $draft.options.language) {
                         Text("Auto-detect").tag("auto")

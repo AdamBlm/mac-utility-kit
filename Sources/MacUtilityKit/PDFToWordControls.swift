@@ -101,6 +101,9 @@ struct PDFToWordControls: View {
                         .labelStyle(.iconOnly)
                 }
             }
+            if options.libreOfficeExecutable == nil {
+                ExternalEngineSetupButton(engine: .libreOffice) { options.libreOfficeExecutable = $0 }
+            }
         }
     }
 
