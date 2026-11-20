@@ -92,6 +92,51 @@ struct ImageRotateTests {
         #expect(!FileManager.default.fileExists(atPath: output.path))
     }
 
+    @Test(arguments: [UTType.png, UTType.tiff])
+    func keepsOpaqueGrayscaleProfileAndPixelValues(format: UTType) throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ext = try #require(format.preferredFilenameExtension)
+        let input = directory.appending(path: "source." + ext)
+        let output = directory.appending(path: "rotated." + ext)
+        let space = try #require(CGColorSpace(name: CGColorSpace.genericGrayGamma2_2))
+        let flags = CGImageAlphaInfo.none.rawValue | CGBitmapInfo.byteOrder16Little.rawValue
+        let source = try #require(CGContext(data: nil, width: 3, height: 2, bitsPerComponent: 16,
+                                            bytesPerRow: 0, space: space, bitmapInfo: flags))
+        let values = try #require(source.data?.assumingMemoryBound(to: UInt16.self))
+        let stride = source.bytesPerRow / MemoryLayout<UInt16>.stride
+        for y in 0..<2 {
+            for x in 0..<3 {
+                values[y * stride + x] = UInt16(10_000 + 37 * (3 * y + x))
+            }
+        }
+        let fixture = try #require(source.makeImage())
+        let writer = try #require(CGImageDestinationCreateWithURL(input as CFURL, format.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(writer, fixture, nil)
+        try #require(CGImageDestinationFinalize(writer))
+        let original = try Self.read(input).0
+        #expect(original.colorSpace?.model == .monochrome)
+
+        var options = ImageRotateOptions()
+        options.turn = .clockwise
+        _ = try ImageRotate.export(input, to: output, options: options)
+        let (rotated, orientation) = try Self.read(output)
+        #expect(orientation == 1)
+        #expect(rotated.width == 2 && rotated.height == 3)
+        #expect(rotated.bitsPerComponent == 16)
+        #expect(rotated.colorSpace?.model == .monochrome)
+        #expect(rotated.colorSpace?.name == original.colorSpace?.name)
+        let read = try #require(CGContext(data: nil, width: 2, height: 3, bitsPerComponent: 16,
+                                          bytesPerRow: 0, space: space, bitmapInfo: flags))
+        read.draw(rotated, in: CGRect(x: 0, y: 0, width: 2, height: 3))
+        let rotatedValues = try #require(read.data?.assumingMemoryBound(to: UInt16.self))
+        let readStride = read.bytesPerRow / MemoryLayout<UInt16>.stride
+        let samples = (0..<3).flatMap { row in
+            [rotatedValues[row * readStride], rotatedValues[row * readStride + 1]]
+        }
+        #expect(samples == [10_111, 10_000, 10_148, 10_037, 10_185, 10_074])
+    }
+
     @Test(arguments: [UTType.jpeg, UTType.heic])
     func keepsOriginalLossyContainerAndNormalizesOrientation(format: UTType) throws {
         let directory = try Self.directory()

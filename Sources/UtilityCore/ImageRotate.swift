@@ -175,14 +175,18 @@ public enum ImageRotate {
             throw ToolError.invalid("This floating-point or high-precision image cannot be rotated by the current renderer.")
         }
         let rectangle = bounds.applying(transform).integral
+        let alpha = ImageConversion.imageContainsAlpha(image)
         let colorSpace: CGColorSpace
-        if let original = image.colorSpace, original.model == .rgb {
+        if let original = image.colorSpace, original.model == .rgb || (original.model == .monochrome && !alpha) {
             colorSpace = original
         } else {
             colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         }
-        let alpha = ImageConversion.imageContainsAlpha(image)
-        let flags = alpha ? CGImageAlphaInfo.premultipliedLast : .noneSkipLast
+        let flags: CGImageAlphaInfo = if colorSpace.model == .monochrome {
+            .none
+        } else {
+            alpha ? .premultipliedLast : .noneSkipLast
+        }
         let depth = image.bitsPerComponent > 8 ? 16 : 8
         guard let context = CGContext(data: nil, width: Int(rectangle.width), height: Int(rectangle.height),
                                       bitsPerComponent: depth, bytesPerRow: 0, space: colorSpace,
