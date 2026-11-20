@@ -271,6 +271,7 @@ public enum QRTools {
         try Task.checkCancellation()
         let request = VNDetectBarcodesRequest()
         try VNImageRequestHandler(cgImage: image).perform([request])
+        try Task.checkCancellation()
         return (request.results ?? []).compactMap { observation in
             let payload: String
             if let text = observation.payloadStringValue {

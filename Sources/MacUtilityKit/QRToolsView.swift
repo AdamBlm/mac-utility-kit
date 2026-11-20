@@ -106,15 +106,14 @@ struct QRToolsView: View {
                 }
             }
         }
+        .onChange(of: draft.mode) {
+            if draft.mode == .generate, scanning { stopScan() }
+        }
         .onDisappear {
-            scanTask?.cancel()
-            scanTask = nil
-            scanning = false
-            scannedName = nil
+            stopScan()
             detections = []
             selectedDetections = []
             copyMessage = nil
-            scanMessage = nil
             password = ""
         }
     }
@@ -219,7 +218,10 @@ struct QRToolsView: View {
                     .lineLimit(1)
             }
             if scanning {
-                ProgressView().controlSize(.small)
+                HStack {
+                    ProgressView("Scanning image…").controlSize(.small)
+                    Button("Cancel") { stopScan(message: "Scan cancelled.") }
+                }
             } else if let scanMessage {
                 Text(scanMessage).font(.callout).foregroundStyle(.secondary)
             }
@@ -292,7 +294,10 @@ struct QRToolsView: View {
         scanning = true
         scanTask = Task {
             defer {
-                if !Task.isCancelled { scanning = false }
+                if !Task.isCancelled {
+                    scanning = false
+                    scanTask = nil
+                }
                 withExtendedLifetime(attachment) {}
             }
             do {
@@ -311,6 +316,14 @@ struct QRToolsView: View {
                 if !Task.isCancelled { scanMessage = error.localizedDescription }
             }
         }
+    }
+
+    private func stopScan(message: String? = nil) {
+        scanTask?.cancel()
+        scanTask = nil
+        scanning = false
+        scanMessage = message
+        if message == nil { scannedName = nil }
     }
 
     private func copyDetections(_ ids: Set<QRDetection.ID>) {

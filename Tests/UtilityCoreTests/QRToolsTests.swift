@@ -55,6 +55,18 @@ import Testing
         #expect(try QRTools.detect(in: panorama).map(\.payload) == ["DETAIL-MARKER", "DETAIL-MARKER"])
     }
 
+    @Test func cancelledNativeScanDoesNotPublishDetections() async throws {
+        let url = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: url) }
+        try QRTools.png(QRTools.generate(.text("Scannable fixture"))).write(to: url)
+        #expect(try QRTools.detect(in: url).map(\.payload) == ["Scannable fixture"])
+        let scan = Task.detached {
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try QRTools.detect(in: url)
+        }
+        await #expect(throws: CancellationError.self) { try await scan.value }
+    }
+
     @Test func wiFiPayloadEscapesDelimitersAndOmitsOpenNetworkPassword() throws {
         let secured = QRPayload.wiFi(name: #"a;b:c,d\x"#, security: .wpa, password: #"p;:"z"#, hidden: true)
         #expect(try secured.encoded() == #"WIFI:T:WPA;S:a\;b\:c\,d\\x;P:p\;\:\"z;H:true;;"#)
