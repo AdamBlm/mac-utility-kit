@@ -22,7 +22,7 @@ struct CaptureTextView: View {
     var body: some View {
         InteractiveToolLayout(tool: .captureText) { palette in
             WorkspaceSection("Capture", palette: palette) {
-                Text("Drag a rectangle around the text on your screen, then press Return.")
+                Text("Drag a rectangle around the text. Use the arrow keys to move it or Shift-arrow keys to resize it, then press Return.")
                     .font(.callout).foregroundStyle(.secondary)
                 SettingRow("Language") {
                     Picker("Recognition language", selection: $draft.language) {

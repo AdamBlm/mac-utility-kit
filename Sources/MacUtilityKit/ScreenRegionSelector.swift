@@ -1,4 +1,5 @@
 import AppKit
+import UtilityCore
 
 @MainActor
 final class ScreenRegionSelector {
@@ -85,16 +86,24 @@ final class ScreenRegionSelector {
 
     fileprivate func update(at point: CGPoint) {
         guard let start = dragStart else { return }
-        region = CGRect(x: min(start.x, point.x), y: min(start.y, point.y),
-                        width: abs(start.x - point.x), height: abs(start.y - point.y))
-        for view in views {
-            view.selection = region
-        }
+        show(CGRect(x: min(start.x, point.x), y: min(start.y, point.y),
+                    width: abs(start.x - point.x), height: abs(start.y - point.y)))
     }
 
     fileprivate func end(at point: CGPoint) {
         update(at: point)
         dragStart = nil
+    }
+
+    fileprivate func adjust(by delta: CGVector, resizing: Bool) {
+        guard dragStart == nil, let region, region.width >= 2, region.height >= 2 else { return }
+        show(CaptureRegionGeometry.adjusting(region, by: delta, resizing: resizing,
+                                             displays: displayList.map(\.frame)))
+    }
+
+    private func show(_ region: CGRect) {
+        self.region = region
+        for view in views { view.selection = region }
     }
 
     fileprivate func confirm() {
@@ -155,9 +164,14 @@ private final class RegionOverlay: NSView {
     }
 
     override func keyDown(with event: NSEvent) {
+        let resizing = event.modifierFlags.contains(.shift)
         switch event.keyCode {
         case 53: selector?.cancel()
         case 36, 76: selector?.confirm()
+        case 123: selector?.adjust(by: CGVector(dx: -1, dy: 0), resizing: resizing)
+        case 124: selector?.adjust(by: CGVector(dx: 1, dy: 0), resizing: resizing)
+        case 125: selector?.adjust(by: CGVector(dx: 0, dy: -1), resizing: resizing)
+        case 126: selector?.adjust(by: CGVector(dx: 0, dy: 1), resizing: resizing)
         default: super.keyDown(with: event)
         }
     }
@@ -178,7 +192,10 @@ private final class RegionOverlay: NSView {
             .font: NSFont.systemFont(ofSize: 13, weight: .semibold),
             .foregroundColor: NSColor.white
         ]
-        let instruction = NSAttributedString(string: "Drag to select  •  Return to capture  •  Esc to cancel", attributes: attributes)
+        let instruction = NSAttributedString(
+            string: "Drag to select  •  Arrows move  •  Shift-arrows resize  •  Return captures  •  Esc cancels",
+            attributes: attributes
+        )
         let size = instruction.size()
         let origin = CGPoint(x: (bounds.width - size.width) / 2, y: bounds.height - size.height - 29)
         let backdrop = NSBezierPath(roundedRect: CGRect(origin: origin, size: size).insetBy(dx: -12, dy: -7),

@@ -33,6 +33,37 @@ import UtilityCore
         #expect(CaptureRegionGeometry.displayRect(appKit: .null, primaryScreen: right) == nil)
     }
 
+    @Test func nudgesAcrossDisplayEdgeAndResizesFromTopLeft() {
+        let displays = [
+            CGRect(x: -100, y: 20, width: 100, height: 100),
+            CGRect(x: 0, y: 0, width: 100, height: 100)
+        ]
+        let region = CGRect(x: -10, y: 40, width: 10, height: 10)
+        let moved = CaptureRegionGeometry.adjusting(region, by: CGVector(dx: 1, dy: 1),
+                                                   resizing: false, displays: displays)
+        #expect(moved == CGRect(x: -9, y: 41, width: 10, height: 10))
+        let resized = CaptureRegionGeometry.adjusting(moved, by: CGVector(dx: 1, dy: -1),
+                                                     resizing: true, displays: displays)
+        #expect(resized == CGRect(x: -9, y: 40, width: 11, height: 11))
+        #expect(CaptureRegionGeometry.displayRect(appKit: resized, primaryScreen: displays[1])
+                == CGRect(x: -9, y: 49, width: 11, height: 11))
+    }
+
+    @Test func keepsKeyboardAdjustmentsOutOfDesktopGapsAndRejectsTooSmallRegions() {
+        let displays = [
+            CGRect(x: -100, y: 20, width: 100, height: 100),
+            CGRect(x: 0, y: 0, width: 100, height: 100)
+        ]
+        let region = CGRect(x: -50, y: 20, width: 2, height: 2)
+        let desktopEdge = CGRect(x: -100, y: 20, width: 2, height: 2)
+        #expect(CaptureRegionGeometry.adjusting(region, by: CGVector(dx: 0, dy: -2),
+                                               resizing: false, displays: displays) == region)
+        #expect(CaptureRegionGeometry.adjusting(region, by: CGVector(dx: -1, dy: 0),
+                                               resizing: true, displays: displays) == region)
+        #expect(CaptureRegionGeometry.adjusting(desktopEdge, by: CGVector(dx: -1, dy: 0),
+                                               resizing: false, displays: displays) == desktopEdge)
+    }
+
     @Test func usesExistingVisionPipelineForInMemoryImages() async throws {
         let width = 650
         let height = 150
