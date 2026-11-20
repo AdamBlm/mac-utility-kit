@@ -1,30 +1,37 @@
 import Foundation
-import PDFKit
 import AppKit
 import UniformTypeIdentifiers
 import cmark_gfm
 
 public enum SpeechDocument {
+    private static let maximumDocumentBytes = 24 * 1024 * 1024
+
     public static func load(_ url: URL) async throws -> String {
         try await load(url, renderMarkdown: false)
     }
 
     public static func loadForSpeech(_ url: URL, pages: String = "") async throws -> String {
-        try await load(url, renderMarkdown: true, pages: pages)
+        try await loadForSpeech(url, pages: pages, password: "")
     }
 
-    private static func load(_ url: URL, renderMarkdown: Bool, pages: String = "") async throws -> String {
+    package static func loadForSpeech(_ url: URL, pages: String, password: String) async throws -> String {
+        try await load(url, renderMarkdown: true, pages: pages, password: password)
+    }
+
+    private static func load(
+        _ url: URL, renderMarkdown: Bool, pages: String = "", password: String = ""
+    ) async throws -> String {
         try Task.checkCancellation()
         guard url.isFileURL else { throw ToolError.invalid("Choose a local document.") }
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard values.isRegularFile == true, let bytes = values.fileSize, bytes <= 24 * 1024 * 1024 else {
+        guard values.isRegularFile == true, let bytes = values.fileSize, bytes <= maximumDocumentBytes else {
             throw ToolError.invalid("Choose a local document under 24 MB.")
         }
         let type = UTType(filenameExtension: url.pathExtension)
         let markdown = ["md", "markdown"].contains(url.pathExtension.lowercased())
         let text: String
         if type?.conforms(to: .pdf) == true {
-            text = try extractPDF(url, range: pages)
+            text = try extractPDF(url, range: pages, password: password)
         } else if type?.conforms(to: .rtf) == true {
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
             text = try readRTF(data)
@@ -53,13 +60,10 @@ public enum SpeechDocument {
         return text
     }
 
-    private static func extractPDF(_ url: URL, range: String) throws -> String {
-        guard let pdf = PDFDocument(url: url), !pdf.isLocked else {
-            throw ToolError.invalid("Could not open the PDF. Unlock protected PDFs before opening them here.")
-        }
-        guard pdf.allowsCopying else {
-            throw ToolError.invalid("This PDF restricts text extraction.")
-        }
+    private static func extractPDF(_ url: URL, range: String, password: String) throws -> String {
+        let source = try PDFSourceStamp.read(url)
+        guard source.bytes <= maximumDocumentBytes else { throw ToolError.invalid("Choose a local document under 24 MB.") }
+        let pdf = try TextExtraction.openPDF(source.resolved, password: password)
         var pages: [String] = []
         var bytes = 0
         let selected = try PageSelection.indices(range, pageCount: pdf.pageCount).sorted()
@@ -72,6 +76,9 @@ public enum SpeechDocument {
                 throw ToolError.invalid("Choose PDF pages with less than 2 MB of extracted text.")
             }
             pages.append(text)
+        }
+        guard (try? PDFSourceStamp.read(url)) == source else {
+            throw ToolError.invalid("The source PDF changed while reading. Try again.")
         }
         return pages.joined(separator: "\n\n")
     }

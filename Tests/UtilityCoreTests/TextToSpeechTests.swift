@@ -41,6 +41,32 @@ struct TextToSpeechTests {
         }
     }
 
+    @Test func opensPasswordProtectedPDFPagesForSpeechAndHonorsCopyRestrictions() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let readable = folder.appending(path: "Protected.pdf")
+        let restricted = folder.appending(path: "Protected Copy Restricted.pdf")
+        let password = "test-reader"
+        let security: [String: Any] = [
+            kCGPDFContextUserPassword as String: password,
+            kCGPDFContextOwnerPassword as String: "test-owner",
+            kCGPDFContextAllowsCopying as String: true
+        ]
+        try Self.makePDF(at: readable, pages: ["First section", "Second section"], options: security)
+        await #expect(throws: ToolError.self) { try await SpeechDocument.loadForSpeech(readable, pages: "2") }
+        await #expect(throws: ToolError.self) {
+            try await SpeechDocument.loadForSpeech(readable, pages: "2", password: "invalid")
+        }
+        #expect(try await SpeechDocument.loadForSpeech(readable, pages: "2", password: password) == "Second section")
+
+        var restrictedSecurity = security
+        restrictedSecurity[kCGPDFContextAllowsCopying as String] = false
+        try Self.makePDF(at: restricted, options: restrictedSecurity)
+        await #expect(throws: ToolError.self) {
+            try await SpeechDocument.loadForSpeech(restricted, pages: "", password: password)
+        }
+    }
+
     @Test func importsReadableMarkdownContentForSpeech() async throws {
         let folder = try Self.folder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -120,9 +146,11 @@ struct TextToSpeechTests {
         return folder
     }
 
-    private static func makePDF(at url: URL, pages: [String] = ["Readable text"]) throws {
+    private static func makePDF(
+        at url: URL, pages: [String] = ["Readable text"], options: [String: Any] = [:]
+    ) throws {
         var rectangle = CGRect(x: 0, y: 0, width: 250, height: 100)
-        let context = try #require(CGContext(url as CFURL, mediaBox: &rectangle, nil))
+        let context = try #require(CGContext(url as CFURL, mediaBox: &rectangle, options as CFDictionary))
         for page in pages {
             context.beginPDFPage(nil)
             context.textPosition = CGPoint(x: 20, y: 30)

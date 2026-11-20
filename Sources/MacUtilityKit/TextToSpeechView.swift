@@ -31,6 +31,7 @@ struct TextToSpeechView: View {
     @State private var renderTask: Task<Void, Never>?
     @State private var exportTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
+    @State private var pdfPassword = ""
     @State private var issue: String?
 
     private struct Artifact {
@@ -84,6 +85,7 @@ struct TextToSpeechView: View {
                             draft.sourceName = nil
                             draft.pdfSource = nil
                             draft.pdfPages = ""
+                            pdfPassword = ""
                             issue = nil
                         }
                     }
@@ -92,6 +94,11 @@ struct TextToSpeechView: View {
                     else if let name = draft.sourceName { Text(name).lineLimit(1).foregroundStyle(.secondary) }
                 }
                 if let pdf = draft.pdfSource {
+                    SettingRow("PDF password") {
+                        SecureField("If required", text: $pdfPassword)
+                            .onSubmit { loadDocument(pdf, pages: draft.pdfPages, password: pdfPassword) }
+                    }
+                    .disabled(importTask != nil)
                     SettingRow("PDF pages") {
                         if draft.sourceName != pdf.lastPathComponent {
                             Text(pdf.lastPathComponent).lineLimit(1)
@@ -101,7 +108,7 @@ struct TextToSpeechView: View {
                         TextField("All or e.g. 1, 3–5", text: $draft.pdfPages)
                             .accessibilityLabel("PDF pages from \(pdf.lastPathComponent)")
                             .help(pdf.path)
-                        Button("Load Pages") { loadDocument(pdf, pages: draft.pdfPages) }
+                        Button("Load Pages") { loadDocument(pdf, pages: draft.pdfPages, password: pdfPassword) }
                             .help("Load text from \(pdf.lastPathComponent)")
                     }
                     .disabled(importTask != nil)
@@ -169,6 +176,7 @@ struct TextToSpeechView: View {
             cancelRender()
             importTask?.cancel()
             importTask = nil
+            pdfPassword = ""
             exportTask?.cancel()
         }
     }
@@ -212,15 +220,16 @@ struct TextToSpeechView: View {
     private func importDocument(_ url: URL) {
         draft.pdfSource = UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true ? url : nil
         draft.pdfPages = ""
-        loadDocument(url, pages: "")
+        pdfPassword = ""
+        loadDocument(url, pages: "", password: "")
     }
 
-    private func loadDocument(_ url: URL, pages: String) {
+    private func loadDocument(_ url: URL, pages: String, password: String) {
         importTask?.cancel()
         issue = nil
         importTask = Task {
             do {
-                let loaded = try await SpeechDocument.loadForSpeech(url, pages: pages)
+                let loaded = try await SpeechDocument.loadForSpeech(url, pages: pages, password: password)
                 guard !Task.isCancelled else { return }
                 selection = nil
                 draft.text = loaded
