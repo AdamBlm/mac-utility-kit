@@ -18,6 +18,24 @@ struct BurnSubtitlesSettings: View {
     @State private var inputError: String?
     @State private var importError: String?
     @State private var importing = false
+    @State private var batchReview: BatchReview?
+
+    private struct BatchRequest: Equatable, Sendable {
+        let inputs: [URL]
+        let srt: String
+        let offset: Double
+    }
+
+    private struct BatchReview: Sendable {
+        struct Row: Sendable {
+            let url: URL
+            let description: String
+            let isIssue: Bool
+        }
+
+        let request: BatchRequest
+        let rows: [Row]
+    }
 
     private struct Request: Equatable {
         let input: URL
@@ -38,6 +56,7 @@ struct BurnSubtitlesSettings: View {
         let previews = previewInputs
         let input = selectedSource.flatMap { previews.contains($0) ? $0 : nil } ?? previews.first
         let palette = WorkspacePalette(dark: colorScheme == .dark)
+        let batch = BatchRequest(inputs: inputs, srt: options.srt, offset: options.offset)
         if previews.count > 1 {
             SettingRow("Preview video") {
                 Picker("Preview video", selection: Binding(get: { input }, set: { selectedSource = $0 })) {
@@ -108,6 +127,9 @@ struct BurnSubtitlesSettings: View {
         if let issue = options.engineIssue {
             Text(issue).font(.callout).foregroundStyle(.secondary)
         }
+        if inputs.count > 1, options.hasSubtitles {
+            batchPlan(batch)
+        }
         if let input, loadedInput == input, let duration {
             if options.hasSubtitles {
                 switch Result(catching: { try BurnSubtitles.plan(duration: duration, options: options) }) {
@@ -129,6 +151,63 @@ struct BurnSubtitlesSettings: View {
                 Text(issue).foregroundStyle(.red).font(.callout)
             }
         }
+    }
+
+    @ViewBuilder
+    private func batchPlan(_ request: BatchRequest) -> some View {
+        Group {
+            if let batchReview, batchReview.request == request {
+                let rows = batchReview.rows
+                if !rows.isEmpty {
+                    DisclosureGroup("Per-file subtitle timing") {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("\(index + 1). \(row.url.lastPathComponent)").lineLimit(1).help(row.url.path)
+                                Text(row.description).foregroundStyle(row.isIssue ? Color.red : Color.secondary)
+                            }
+                            .font(.callout)
+                        }
+                    }
+                    let unready = rows.count { $0.isIssue }
+                    if unready > 0 {
+                        Text(unready == 1 ? "1 video cannot use these subtitles." : "\(unready) videos cannot use these subtitles.")
+                            .font(.callout).foregroundStyle(.red)
+                    }
+                }
+            } else {
+                ProgressView("Checking subtitle timing…").controlSize(.small)
+            }
+        }
+        .task(id: request) {
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+                let rows = await Self.reviewBatch(request)
+                try Task.checkCancellation()
+                batchReview = BatchReview(request: request, rows: rows)
+            } catch {}
+        }
+    }
+
+    @concurrent
+    private static func reviewBatch(_ request: BatchRequest) async -> [BatchReview.Row] {
+        guard !Task.isCancelled, let cues = try? SubRip.parse(request.srt) else { return [] }
+        var timing = BurnSubtitlesOptions()
+        timing.offset = request.offset
+        var rows: [BatchReview.Row] = []
+        for url in request.inputs {
+            guard !Task.isCancelled else { return [] }
+            do {
+                let duration = try await TrimVideo.duration(of: url)
+                let plan = try BurnSubtitles.plan(duration: duration, options: timing, parsedCues: cues)
+                let description = "\(plan.cues.count) cues · \(plan.clipped) clipped · \(plan.removed) outside video"
+                rows.append(.init(url: url, description: description, isIssue: false))
+            } catch is CancellationError {
+                return []
+            } catch {
+                rows.append(.init(url: url, description: error.localizedDescription, isIssue: true))
+            }
+        }
+        return rows
     }
 
     @ViewBuilder

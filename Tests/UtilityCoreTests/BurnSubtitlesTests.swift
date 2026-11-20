@@ -56,6 +56,11 @@ import UtilityCore
         #expect(plan.cues.map(\.endMilliseconds) == [600, 2_100])
         #expect(plan.removed == 1)
         #expect(plan.clipped == 2)
+        let parsed = try SubRip.parse(options.srt)
+        let short = try BurnSubtitles.plan(duration: 2.1, options: options, parsedCues: parsed)
+        let long = try BurnSubtitles.plan(duration: 5, options: options, parsedCues: parsed)
+        #expect(short.cues == plan.cues && short.clipped == plan.clipped)
+        #expect(long.cues.count == 3 && long.clipped == 1 && long.removed == 0)
         options.offset = 10
         #expect(throws: ToolError.self) { try BurnSubtitles.plan(duration: 2.1, options: options) }
     }

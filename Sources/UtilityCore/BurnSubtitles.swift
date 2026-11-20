@@ -62,6 +62,12 @@ public struct BurnSubtitlesPlan: Sendable {
 
 public enum BurnSubtitles {
     public static func plan(duration: Double, options: BurnSubtitlesOptions) throws -> BurnSubtitlesPlan {
+        try plan(duration: duration, options: options, parsedCues: nil)
+    }
+
+    package static func plan(
+        duration: Double, options: BurnSubtitlesOptions, parsedCues: [SubtitleCue]?
+    ) throws -> BurnSubtitlesPlan {
         guard options.offset.isFinite, abs(options.offset) <= 86_400 else {
             throw ToolError.invalid("Choose an offset between −86,400 and 86,400 seconds.")
         }
@@ -73,7 +79,7 @@ public enum BurnSubtitles {
         }
         let limit = Int((duration * 1_000).rounded(.down))
         let offset = Int((options.offset * 1_000).rounded())
-        let source = try SubRip.parse(options.srt)
+        let source = try parsedCues ?? SubRip.parse(options.srt)
         var clipped = 0
         let adjusted = source.compactMap { cue -> SubtitleCue? in
             let shiftedStart = cue.startMilliseconds + offset
