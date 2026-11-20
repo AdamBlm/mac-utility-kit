@@ -1,3 +1,4 @@
+import Sparkle
 import SwiftUI
 import UtilityCore
 
@@ -15,7 +16,13 @@ struct MacUtilityKitApp: App {
         _ = DraftRetention.shared
     }
 
+    private static let updater = SPUStandardUpdaterController(
+        startingUpdater: Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil,
+        updaterDelegate: nil, userDriverDelegate: nil
+    )
+
     var body: some Scene {
+        let _ = Self.updater
         @Bindable var launcher = launcherController
         WindowGroup("Mac Utility Kit", id: LauncherController.workspaceID) {
             Workspace(
@@ -26,6 +33,14 @@ struct MacUtilityKitApp: App {
                 audioRecordingController: audioRecordingController,
                 screenRecordingController: screenRecordingController
             )
+            .task {
+                await VideoEngineSettings.shared.refresh()
+                while !Task.isCancelled {
+                    await VideoEngineSettings.shared.updateAutomatically()
+                    do { try await Task.sleep(for: .seconds(3_600)) }
+                    catch { return }
+                }
+            }
         }
             .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 940, height: 690)
@@ -42,7 +57,18 @@ struct MacUtilityKitApp: App {
         }
 
         Settings {
-            LauncherSettingsView(controller: launcherController)
+            TabView {
+                VStack {
+                    LauncherSettingsView(controller: launcherController)
+                    if Bundle.main.object(forInfoDictionaryKey: "SUFeedURL") != nil {
+                        Button("Check for App Updates…") { Self.updater.checkForUpdates(nil) }
+                            .padding(.bottom)
+                    }
+                }
+                    .tabItem { Label("General", systemImage: "gear") }
+                VideoEngineSettingsView()
+                    .tabItem { Label("Engines", systemImage: "shippingbox") }
+            }
         }
     }
 }

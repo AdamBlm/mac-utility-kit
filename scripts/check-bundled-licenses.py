@@ -18,6 +18,8 @@ for pin in pins:
     checkout = checkouts / ("KeyboardShortcuts" if identity == "keyboardshortcuts" else identity)
     if identity == "keyboardshortcuts":
         verify(checkout / "license", resources / "KeyboardShortcuts-LICENSE.txt")
+    elif identity == "sparkle":
+        verify(repository / ".build/artifacts/sparkle/Sparkle/LICENSE", resources / "Sparkle-LICENSE.txt")
     elif identity == "swift-cmark":
         verify(checkout / "COPYING", resources / "swift-cmark-COPYING.txt")
     else:

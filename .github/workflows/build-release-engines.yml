@@ -1,0 +1,49 @@
+name: Qualify FFmpeg release candidates
+
+on: workflow_dispatch
+
+permissions:
+  contents: read
+
+jobs:
+  ffmpeg:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-15
+            architecture: arm64
+          - runner: macos-15-intel
+            architecture: x86_64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install build prerequisites
+        run: brew install autoconf autoconf-archive automake libtool nasm pkgconf
+      - name: Build GPL media engines
+        run: scripts/build-release-ffmpeg.sh "$RUNNER_TEMP/ffmpeg-release"
+      - name: Exercise the exact release candidates
+        run: |
+          export MAC_UTILITY_FFMPEG_TEST="$RUNNER_TEMP/ffmpeg-release/bin/ffmpeg"
+          export MAC_UTILITY_FFPROBE_TEST="$RUNNER_TEMP/ffmpeg-release/bin/ffprobe"
+          swift test --no-parallel
+      - name: Retain audited build inputs and candidate binaries
+        run: |
+          candidate="$RUNNER_TEMP/ffmpeg-release"
+          git -C "$candidate/vcpkg" archive --format=tar.gz -o "$candidate/vcpkg-recipes.tar.gz" HEAD
+          tar -czf "$candidate/vcpkg-downloads.tar.gz" -C "$candidate" downloads
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-candidate-${{ matrix.architecture }}
+          if-no-files-found: error
+          path: |
+            ${{ runner.temp }}/ffmpeg-release/bin
+            ${{ runner.temp }}/ffmpeg-release/notices
+            ${{ runner.temp }}/ffmpeg-release/*-buildconf.txt
+            ${{ runner.temp }}/ffmpeg-release/vcpkg-*.txt
+            ${{ runner.temp }}/ffmpeg-release/vcpkg-*.patch
+            ${{ runner.temp }}/ffmpeg-release/vcpkg-*.tar.gz

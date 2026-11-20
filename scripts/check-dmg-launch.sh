@@ -30,9 +30,10 @@ if [[ ! "$minimum" =~ ^15(\.0){0,2}$ ]]; then
     printf 'Expected the app bundle to declare macOS 15.0, found %s.\n' "$minimum" >&2
     exit 1
 fi
+architecture="$(uname -m)"
 for executable in MacUtilityKit muk; do
     binary="$installed/Contents/MacOS/$executable"
-    if ! xcrun vtool -arch arm64 -show-build "$binary" | awk '
+    if ! xcrun vtool -arch "$architecture" -show-build "$binary" | awk '
         $1 == "platform" { macos = ($2 == "MACOS") }
         $1 == "minos" && macos && $2 ~ /^[0-9]+\.[0-9]+(\.[0-9]+)?$/ {
             split($2, version, ".")
@@ -40,7 +41,7 @@ for executable in MacUtilityKit muk; do
         }
         END { exit !supported }
     '; then
-        printf '%s must contain an arm64 macOS executable loadable on macOS 15.0.\n' "$executable" >&2
+        printf '%s must contain a %s executable loadable on macOS 15.0.\n' "$executable" "$architecture" >&2
         exit 1
     fi
 done

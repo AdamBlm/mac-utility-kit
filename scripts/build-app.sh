@@ -69,11 +69,35 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </dict>
 </plist>
 PLIST
+plist="$app/Contents/Info.plist"
+add_release_feed() {
+    local feed="$1" key="$2" feed_name="$3" key_name="$4"
+    if [[ -z "$feed" && -z "$key" ]]; then return; fi
+    if [[ "$feed" != https://?* || ! "$key" =~ ^[A-Za-z0-9+/]{43}=$ ]]; then
+        printf 'Invalid release configuration for %s and %s.\n' "$feed_name" "$key_name" >&2
+        exit 2
+    fi
+    /usr/bin/plutil -insert "$feed_name" -string "$feed" "$plist"
+    /usr/bin/plutil -insert "$key_name" -string "$key" "$plist"
+}
+add_release_feed "${MUK_VIDEO_ENGINE_FEED:-}" "${MUK_VIDEO_ENGINE_PUBLIC_KEY:-}" MUKVideoEngineFeed MUKVideoEnginePublicKey
+add_release_feed "${MUK_APPCAST_URL:-}" "${MUK_APPCAST_PUBLIC_KEY:-}" SUFeedURL SUPublicEDKey
+
+sparkle_artifact=".build/artifacts/sparkle/Sparkle"
+framework="$app/Contents/Frameworks/Sparkle.framework"
+mkdir -p "$app/Contents/Frameworks"
+ditto "$sparkle_artifact/Sparkle.xcframework/macos-arm64_x86_64/Sparkle.framework" "$framework"
+cp "$sparkle_artifact/LICENSE" "$app/Contents/Resources/Sparkle-LICENSE.txt"
 identity="${MUK_CODESIGN_IDENTITY:--}"
 signing=(--force --sign "$identity")
 if [[ "$identity" != "-" ]]; then
     signing+=(--options runtime --timestamp)
 fi
+sparkle_version="$framework/Versions/Current"
+for component in "$sparkle_version"/XPCServices/*.xpc "$sparkle_version/Updater.app" "$sparkle_version/Autoupdate"; do
+    if [[ -e "$component" ]]; then codesign "${signing[@]}" --preserve-metadata=entitlements "$component"; fi
+done
+codesign "${signing[@]}" "$framework"
 codesign "${signing[@]}" "$app/Contents/MacOS/muk"
 codesign "${signing[@]}" "$app"
 # Refresh the icon when a local build replaces an already registered app in place.

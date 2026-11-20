@@ -19,14 +19,19 @@ struct VideoDownloadDraft {
 struct InspectedVideo {
     let source: URL
     let executable: URL
+    let engines: ManagedVideoEngines?
     let info: VideoDownloadInfo
 }
 
 struct VideoDownloadView: View {
     @Binding var draft: VideoDownloadDraft
+    private let engineSettings = VideoEngineSettings.shared
+    private var needsSetup: Bool {
+        draft.executable == nil && engineSettings.installed == nil && engineSettings.available
+    }
     private var inspected: InspectedVideo? {
         guard let value = draft.inspected, value.source == (try? VideoDownload.sourceURL(draft.address)),
-              value.executable == draft.executable else { return nil }
+              value.executable == (draft.executable ?? engineSettings.installed?.downloader) else { return nil }
         return value
     }
 
@@ -36,9 +41,17 @@ struct VideoDownloadView: View {
                 TextField("Video URL", text: $draft.address)
                     .textFieldStyle(.roundedBorder)
                     .onSubmit(inspect)
-                executablePicker("yt-dlp", selection: $draft.executable)
-                Button("Inspect Link", systemImage: "list.bullet", action: inspect)
-                    .disabled(draft.executable == nil || (try? VideoDownload.sourceURL(draft.address)) == nil)
+                if engineSettings.available {
+                    DisclosureGroup("Advanced") {
+                        executablePicker("yt-dlp", selection: $draft.executable)
+                    }
+                } else {
+                    executablePicker("yt-dlp", selection: $draft.executable)
+                }
+                Button(needsSetup ? "Install Video Tools" : "Inspect Link",
+                       systemImage: needsSetup ? "arrow.down.circle" : "list.bullet", action: inspect)
+                    .disabled((draft.executable == nil && !engineSettings.available)
+                              || (try? VideoDownload.sourceURL(draft.address)) == nil)
             }
             .disabled(draft.task != nil)
             if let inspected {
@@ -52,7 +65,7 @@ struct VideoDownloadView: View {
                     if draft.downloading {
                         downloadProgress
                     } else {
-                        ProgressView("Inspecting link…").controlSize(.small)
+                        ProgressView(engineSettings.progress ?? "Inspecting link…").controlSize(.small)
                     }
                     Spacer()
                     Button("Cancel") { draft.task?.cancel() }
@@ -69,6 +82,7 @@ struct VideoDownloadView: View {
                 }
             }
         }
+        .task { await engineSettings.refresh() }
         .onDisappear { if !draft.downloading { draft.task?.cancel() } }
         .onChange(of: draft.address) { draft.error = nil }
     }
@@ -97,7 +111,13 @@ struct VideoDownloadView: View {
                 streamPicker("Audio", items: inspected.info.formats.filter { $0.hasAudio && !$0.hasVideo },
                              selection: $draft.selection.audioID)
             }
-            executablePicker("FFmpeg", selection: $draft.selection.ffmpeg)
+            if inspected.engines != nil {
+                DisclosureGroup("Advanced") {
+                    executablePicker("FFmpeg", selection: $draft.selection.ffmpeg)
+                }
+            } else {
+                executablePicker("FFmpeg", selection: $draft.selection.ffmpeg)
+            }
             HStack {
                 Button(draft.destination.lastPathComponent, systemImage: "folder") { chooseDestination() }
                     .help("Choose an output folder")
@@ -132,21 +152,33 @@ struct VideoDownloadView: View {
     }
 
     private func inspect() {
-        guard draft.task == nil, let executable = draft.executable,
-              let source = try? VideoDownload.sourceURL(draft.address) else { return }
+        guard draft.task == nil, let source = try? VideoDownload.sourceURL(draft.address) else { return }
         draft.error = nil
         draft.downloading = false
         draft.task = Task {
             defer { draft.task = nil }
             do {
-                let info = try await VideoDownload.inspect(source, executable: executable)
+                let custom = draft.executable
+                let engines: ManagedVideoEngines?
+                if custom == nil, engineSettings.available {
+                    if let installed = engineSettings.installed { engines = installed }
+                    else { engines = try await engineSettings.install() }
+                } else {
+                    engines = nil
+                }
+                guard let executable = custom ?? engines?.downloader else { return }
+                let info = try await VideoDownload.inspect(
+                    source, executable: executable, deno: engines?.deno,
+                    ffmpeg: draft.selection.ffmpeg ?? engines?.ffmpeg
+                )
                 try Task.checkCancellation()
                 draft.selection.videoID = nil
                 draft.selection.audioID = nil
-                draft.inspected = InspectedVideo(source: source, executable: executable, info: info)
+                draft.inspected = InspectedVideo(source: source, executable: executable, engines: engines, info: info)
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 draft.error = error.localizedDescription
             }
         }
@@ -180,6 +212,7 @@ struct VideoDownloadView: View {
     private func download(_ inspected: InspectedVideo) {
         guard draft.task == nil else { return }
         var selection = draft.selection
+        selection.ffmpeg = selection.ffmpeg ?? inspected.engines?.ffmpeg
         if !selection.output.audioOnly,
            inspected.info.formats.contains(where: { $0.id == selection.videoID && $0.hasAudio }) {
             selection.audioID = nil
@@ -202,7 +235,7 @@ struct VideoDownloadView: View {
             do {
                 draft.result = try await VideoDownload.downloadWithProgress(
                     inspected.source, info: inspected.info, executable: inspected.executable,
-                    selection: selection, destination: destination
+                    selection: selection, destination: destination, deno: inspected.engines?.deno
                 ) { value in
                     await MainActor.run {
                         guard draft.activeDownload == job else { return }
@@ -224,6 +257,7 @@ struct VideoDownloadView: View {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 draft.error = error.localizedDescription
             }
         }

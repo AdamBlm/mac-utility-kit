@@ -1,0 +1,32 @@
+name: Check engine upstream releases
+
+on:
+  schedule:
+    - cron: '30 8 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  versions:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Report upstream release tags for review
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          {
+            echo '### Current upstream release candidates'
+            echo
+            for repo in yt-dlp/yt-dlp denoland/deno; do
+              gh api "repos/$repo/releases/latest" --jq '"- [" + .tag_name + "](" + .html_url + ")"'
+            done
+            echo
+            ffmpeg_tag="$(gh api 'repos/FFmpeg/FFmpeg/tags?per_page=100' --jq '.[].name' |
+              awk '/^n[0-9]+\.[0-9]+(\.[0-9]+)?$/' | sort -V | tail -n 1)"
+            test -n "$ffmpeg_tag"
+            printf -- '- [FFmpeg %s](https://github.com/FFmpeg/FFmpeg/tree/%s)\n' "$ffmpeg_tag" "$ffmpeg_tag"
+            echo 'Verify upstream artifacts and test the exact candidates before signing any new manifest.'
+          } | tee -a "$GITHUB_STEP_SUMMARY"

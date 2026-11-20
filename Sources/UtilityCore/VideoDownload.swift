@@ -75,6 +75,10 @@ public enum VideoDownload {
     package static let executableName = "yt-dlp"
     private static let baseline = ["--ignore-config", "--no-playlist", "--no-warnings", "--no-colors"]
 
+    private static func runtimeArguments(_ deno: URL?) -> [String] {
+        deno.map { ["--no-js-runtimes", "--js-runtimes", "deno:\($0.path)", "--no-remote-components", "--no-plugin-dirs"] } ?? []
+    }
+
     public static func sourceURL(_ input: String) throws -> URL {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         guard let url = URL(string: text, encodingInvalidCharacters: false),
@@ -85,7 +89,7 @@ public enum VideoDownload {
         return url
     }
 
-    public static func inspect(_ source: URL, executable: URL) async throws -> VideoDownloadInfo {
+    public static func inspect(_ source: URL, executable: URL, deno: URL? = nil, ffmpeg: URL? = nil) async throws -> VideoDownloadInfo {
         let url = try sourceURL(source.absoluteString)
         let directory = try temporaryDirectory(in: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -94,7 +98,9 @@ public enum VideoDownload {
         let writer = try FileHandle(forWritingTo: report)
         defer { try? writer.close() }
         try await ExternalTool.run(executable, name: executableName,
-                                   arguments: baseline + ["--dump-single-json", "--skip-download", "--", url.absoluteString],
+                                   arguments: baseline + runtimeArguments(deno)
+                                       + (ffmpeg.map { ["--ffmpeg-location", $0.path] } ?? [])
+                                       + ["--dump-single-json", "--skip-download", "--", url.absoluteString],
                                    directory: directory, standardOutput: writer)
         guard let bytes = try report.resourceValues(forKeys: [.fileSizeKey]).fileSize, bytes <= 24 * 1024 * 1024,
               let info = try? JSONDecoder().decode(VideoDownloadInfo.self, from: Data(contentsOf: report)),
@@ -117,7 +123,7 @@ public enum VideoDownload {
 
     package static func downloadWithProgress(
         _ source: URL, info: VideoDownloadInfo, executable: URL, selection: VideoDownloadSelection,
-        destination: URL, progress: @escaping @Sendable (VideoDownloadProgress) async -> Void
+        destination: URL, deno: URL? = nil, progress: @escaping @Sendable (VideoDownloadProgress) async -> Void
     ) async throws -> URL {
         let url = try sourceURL(source.absoluteString)
         let manager = FileManager.default
@@ -157,7 +163,7 @@ public enum VideoDownload {
         defer { monitor.cancel() }
 
         let template = media.appendingPathComponent("%(title)s [%(id)s].%(ext)s").path
-        try await ExternalTool.run(executable, name: executableName, arguments: baseline + options + [
+        try await ExternalTool.run(executable, name: executableName, arguments: baseline + runtimeArguments(deno) + options + [
             "--newline", "--progress",
             "--progress-template", "download:MUK:download\t%(info.vcodec)s\t%(info.acodec)s\t%(progress._percent_str)s",
             "--progress-template", "postprocess:MUK:processing",

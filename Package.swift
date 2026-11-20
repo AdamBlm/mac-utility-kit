@@ -9,6 +9,7 @@ let package = Package(
         .executable(name: "muk", targets: ["MacUtilityCLI"]),
     ],
     dependencies: [
+        .package(url: "https://github.com/sparkle-project/Sparkle.git", exact: "2.10.1"),
         .package(url: "https://github.com/sindresorhus/KeyboardShortcuts.git", exact: "2.3.0"),
         .package(url: "https://github.com/swiftlang/swift-cmark.git", exact: "0.7.0"),
         .package(url: "https://github.com/swiftlang/swift-subprocess.git", exact: "1.0.2"),
@@ -27,7 +28,8 @@ let package = Package(
         ], resources: [.copy("Resources/confusables.txt"), .copy("Resources/eff_large_wordlist.txt")]),
         .executableTarget(name: "MacUtilityKit", dependencies: [
             "UtilityCore", .product(name: "KeyboardShortcuts", package: "KeyboardShortcuts"),
-        ]),
+            .product(name: "Sparkle", package: "Sparkle"),
+        ], linkerSettings: [.unsafeFlags(["-Xlinker", "-rpath", "-Xlinker", "@executable_path/../Frameworks"])]),
         .executableTarget(name: "MacUtilityCLI", dependencies: [
             "UtilityCore", .product(name: "ArgumentParser", package: "swift-argument-parser"),
             .product(name: "MCP", package: "swift-sdk"),

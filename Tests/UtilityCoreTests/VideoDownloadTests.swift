@@ -113,11 +113,24 @@ struct VideoDownloadTests {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: folder) }
-        let info = try await VideoDownload.inspect(source, executable: executable)
-        let output = try await VideoDownload.download(
-            source, info: info, executable: executable, selection: .init(), destination: folder
+        let deno = environment["MAC_UTILITY_YTDLP_DENO_TEST"].map { URL(fileURLWithPath: $0) }
+        let ffmpeg = environment["MAC_UTILITY_YTDLP_FFMPEG_TEST"].map { URL(fileURLWithPath: $0) }
+        let info = try await VideoDownload.inspect(source, executable: executable, deno: deno, ffmpeg: ffmpeg)
+        var selection = VideoDownloadSelection()
+        if let ffmpeg {
+            selection.ffmpeg = ffmpeg
+            selection.videoID = try #require(info.formats.first { $0.hasVideo && !$0.hasAudio }?.id)
+            selection.audioID = try #require(info.formats.first { $0.hasAudio && !$0.hasVideo }?.id)
+        }
+        let output = try await VideoDownload.downloadWithProgress(
+            source, info: info, executable: executable, selection: selection, destination: folder, deno: deno
         ) { _ in }
-        #expect(try await AVURLAsset(url: output).load(.isPlayable))
+        let asset = AVURLAsset(url: output)
+        #expect(try await asset.load(.isPlayable))
+        if ffmpeg != nil {
+            #expect(try await asset.loadTracks(withMediaType: .video).count == 1)
+            #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
+        }
     }
 
     private static let fixture = """
