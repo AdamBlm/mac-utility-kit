@@ -29,9 +29,10 @@ package enum LoginBackgroundItems {
         package let kind: Kind
         package let status: Status
         package let systemWide: Bool
+        fileprivate var parentBundle: URL?
 
         package var location: URL? {
-            if let sourcePath, let url = Self.localURL(sourcePath) { return url }
+            if let sourcePath, let url = Self.localURL(sourcePath) ?? bundledLocation(sourcePath) { return url }
             return executablePath.flatMap(Self.localURL)
         }
 
@@ -41,13 +42,43 @@ package enum LoginBackgroundItems {
             }
         }
 
-        private static func localURL(_ raw: String) -> URL? {
+        private func bundledLocation(_ raw: String) -> URL? {
+            guard let parentBundle else { return nil }
+            let root = parentBundle.resolvingSymlinksInPath().standardizedFileURL
+            var directory: ObjCBool = false
+            guard root.pathExtension.lowercased() == "app",
+                  FileManager.default.fileExists(atPath: root.path, isDirectory: &directory), directory.boolValue else { return nil }
+            let requiresDirectory = raw.hasSuffix("/")
+            let path = requiresDirectory ? raw.dropLast() : raw[...]
+            let parts = path.split(separator: "/", omittingEmptySubsequences: false)
+            guard parts.count > 1, parts.first == "Contents" else { return nil }
+            var child = root
+            for part in parts {
+                guard let decoded = part.removingPercentEncoding, !decoded.isEmpty, decoded != ".", decoded != "..",
+                      !decoded.contains(where: { "/\\\0?#".contains($0) }) else { return nil }
+                child.append(path: decoded)
+            }
+            guard FileManager.default.fileExists(atPath: child.path, isDirectory: &directory),
+                  !requiresDirectory || directory.boolValue else { return nil }
+            let resolved = child.resolvingSymlinksInPath().standardizedFileURL
+            let rootPath = root.pathComponents
+            let childPath = resolved.pathComponents
+            guard childPath.count > rootPath.count, childPath.starts(with: rootPath) else { return nil }
+            return resolved
+        }
+
+        fileprivate static func localURL(_ raw: String) -> URL? {
             if raw.hasPrefix("/") { return URL(filePath: raw) }
             guard let url = URL(string: raw), url.isFileURL, url.path.hasPrefix("/"),
                   url.host == nil || url.host?.isEmpty == true || url.host == "localhost"
             else { return nil }
             return url
         }
+    }
+
+    private struct ScopedIdentifier: Hashable {
+        let uid: Int
+        let identifier: String
     }
 
     package static func inventory() async throws -> [Entry] {
@@ -73,6 +104,8 @@ package enum LoginBackgroundItems {
         var recognizedSection = false
         var recordNumber: String?
         var fields: [String: String] = [:]
+        var parentIndices: [ScopedIdentifier: [Int]] = [:]
+        var children: [(index: Int, parent: ScopedIdentifier)] = []
 
         func finishRecord() {
             defer { fields.removeAll(keepingCapacity: true) }
@@ -108,6 +141,14 @@ package enum LoginBackgroundItems {
                 status = .unknown
             }
 
+            let index = entries.count
+            if kind == .app {
+                for identifier in Set([identifier, fields["Identifier"]].compactMap { $0 }) {
+                    parentIndices[ScopedIdentifier(uid: currentUID, identifier: identifier), default: []].append(index)
+                }
+            } else if [.loginItem, .agent, .daemon, .background].contains(kind), let parent = fields["Parent Identifier"] {
+                children.append((index, ScopedIdentifier(uid: currentUID, identifier: parent)))
+            }
             entries.append(Entry(
                 id: "\(currentUID):\(recordNumber):\(fields["UUID"] ?? "")",
                 name: name, publisher: fields["Developer Name"], team: fields["Team Identifier"],
@@ -140,6 +181,12 @@ package enum LoginBackgroundItems {
         }
         finishRecord()
         guard recognizedSection else { throw ToolError.invalid("macOS did not return a recognizable login item inventory.") }
+        for child in children {
+            guard let matches = parentIndices[child.parent], matches.count == 1,
+                  let raw = entries[matches[0]].sourcePath, let parent = Entry.localURL(raw),
+                  parent.pathExtension.lowercased() == "app" else { continue }
+            entries[child.index].parentBundle = parent
+        }
         return entries.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 }

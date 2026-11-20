@@ -85,6 +85,59 @@ struct LoginBackgroundItemsTests {
         #expect(entry.revealLocation == nil)
     }
 
+    @Test func resolvesOnlyBundledHelpersWithAUniqueLocalParentInTheirScope() throws {
+        let manager = FileManager.default
+        let folder = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        let parent = folder.appending(path: "Example App.app")
+        let contents = parent.appending(path: "Contents/Library/LoginItems")
+        try manager.createDirectory(at: contents, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: folder) }
+        let helper = contents.appending(path: "Example Helper.app")
+        try manager.createDirectory(at: helper, withIntermediateDirectories: false)
+        let outside = folder.appending(path: "Outside.app")
+        try manager.createDirectory(at: outside, withIntermediateDirectories: false)
+        try manager.createSymbolicLink(at: contents.appending(path: "Escaping.app"), withDestinationURL: outside)
+
+        let app = """
+         Name: Parent App
+         Identifier: com.example.parent
+         Type: app (0x2)
+         URL: \(parent.absoluteString)
+        """
+        func child(_ number: Int, _ name: String, _ source: String, parentID: String = "com.example.parent") -> String {
+            """
+            #\(number):
+             Name: \(name)
+             Type: login item (0x4)
+             Parent Identifier: \(parentID)
+             URL: \(source)
+            """
+        }
+        let relative = "Contents/Library/LoginItems/Example%20Helper.app"
+        let records = [
+            "Records for UID 501 : placeholder",
+            child(1, "Safe", relative),
+            child(2, "Escaping symlink", "Contents/Library/LoginItems/Escaping.app"),
+            child(3, "Encoded traversal", "Contents/%2e%2e/Outside.app"),
+            child(4, "Foreign scope", relative, parentID: "com.example.system"),
+            child(5, "Safe directory URL", relative + "/"),
+            "#6:\n" + app,
+            "Records for UID -2 : placeholder",
+            "#1:\n" + app.replacingOccurrences(of: "com.example.parent", with: "com.example.system")
+        ]
+        let entries = try LoginBackgroundItems.parse(records.joined(separator: "\n"), userID: 501)
+        let safe = try #require(entries.first { $0.name == "Safe" })
+        #expect(safe.sourcePath == relative)
+        #expect(safe.revealLocation?.path == helper.resolvingSymlinksInPath().standardizedFileURL.path)
+        #expect(entries.first { $0.name == "Safe directory URL" }?.revealLocation?.path == safe.revealLocation?.path)
+        #expect(entries.filter { $0.kind == .loginItem && !$0.name.hasPrefix("Safe") }.allSatisfy { $0.revealLocation == nil })
+
+        let ambiguous = try LoginBackgroundItems.parse(
+            (Array(records.prefix(7)) + ["#7:\n" + app]).joined(separator: "\n"), userID: 501
+        )
+        #expect(ambiguous.first { $0.name == "Safe" }?.revealLocation == nil)
+    }
+
     @Test func distinguishesUnavailableInventoryFromEmptyRegistry() throws {
         #expect(throws: ToolError.self) {
             try LoginBackgroundItems.parse("Unrecognized response", userID: 501)

@@ -98,7 +98,11 @@ struct LoginBackgroundItemsView: View {
                         Text("The source file is missing or unavailable.").foregroundStyle(.secondary)
                     }
                     Button(location == entry.location ? "Reveal in Finder" : "Reveal Executable in Finder", systemImage: "folder") {
-                        NSWorkspace.shared.activateFileViewerSelecting([location])
+                        guard let current = entry.revealLocation, current == location else {
+                            error = "The item location changed. Refresh and try again."
+                            return
+                        }
+                        NSWorkspace.shared.activateFileViewerSelecting([current])
                     }
                 } else if entry.location != nil {
                     Text("File is missing or unavailable.").foregroundStyle(.secondary)
