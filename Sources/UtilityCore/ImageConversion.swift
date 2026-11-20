@@ -94,8 +94,10 @@ public enum ImageConversion {
             throw ToolError.invalid("Lossless WebP supports up to 8 bits per channel. Choose a different output format.")
         }
         let flatten = options.flattenTransparency || options.format == .jpg
+        let keepsHighDepth = (options.format == .png || options.format == .tiff)
+            && max(sourceDepth, image.bitsPerComponent) > 8
         let converted = try flatten && imageContainsAlpha(image)
-            ? flattenImage(image, backgroundRGB: options.backgroundRGB) : image
+            ? flattenImage(image, backgroundRGB: options.backgroundRGB, bitsPerComponent: keepsHighDepth ? 16 : 8) : image
 
         let directory = output.deletingLastPathComponent()
         let staging = directory.appendingPathComponent(UUID().uuidString + "." + options.format.rawValue)
@@ -122,6 +124,9 @@ public enum ImageConversion {
         }
         if !flatten, imageContainsAlpha(image), !imageContainsAlpha(outputImage) {
             throw ToolError.invalid("The encoder did not preserve transparency. Try PNG or enable flattening.")
+        }
+        if flatten, imageContainsAlpha(image), keepsHighDepth, outputImage.bitsPerComponent < 16 {
+            throw ToolError.invalid("The encoder did not retain 16-bit color precision after flattening.")
         }
         try FileManager.default.moveItem(at: staging, to: output)
         let notice = CGImageSourceGetCount(source) > 1 ? " · Primary image only" : ""
@@ -197,16 +202,17 @@ public enum ImageConversion {
         return false
     }
 
-    static func flattenImage(_ image: CGImage, backgroundRGB: UInt32) throws -> CGImage {
+    static func flattenImage(_ image: CGImage, backgroundRGB: UInt32, bitsPerComponent: Int = 8) throws -> CGImage {
         let colorSpace: CGColorSpace
         if let original = image.colorSpace, original.model == .rgb {
             colorSpace = original
         } else {
             colorSpace = CGColorSpace(name: CGColorSpace.sRGB) ?? CGColorSpaceCreateDeviceRGB()
         }
-        guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: 8,
+        let byteOrder = bitsPerComponent == 16 ? CGBitmapInfo.byteOrder16Little.rawValue : 0
+        guard let context = CGContext(data: nil, width: image.width, height: image.height, bitsPerComponent: bitsPerComponent,
                                       bytesPerRow: 0, space: colorSpace,
-                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue | byteOrder),
               let background = CGColor(
                 srgbRed: CGFloat((backgroundRGB >> 16) & 255) / 255,
                 green: CGFloat((backgroundRGB >> 8) & 255) / 255,

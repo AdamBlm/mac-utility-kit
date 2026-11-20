@@ -89,6 +89,49 @@ import UtilityCore
     #expect(!FileManager.default.fileExists(atPath: output.path))
 }
 
+@Test(arguments: [ImageConversionFormat.png, .tiff], [1, 6])
+func imageConversionKeeps16BitColorWhenFlattening(format: ImageConversionFormat, orientation: Int) async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appendingPathComponent("alpha16.png")
+    let colorSpace = try #require(CGColorSpace(name: CGColorSpace.displayP3))
+    let byteOrder = CGBitmapInfo.byteOrder16Little.rawValue
+    let fixture = try #require(CGContext(data: nil, width: 2, height: 1, bitsPerComponent: 16,
+                                         bytesPerRow: 0, space: colorSpace,
+                                         bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue | byteOrder))
+    let pixels = try #require(fixture.data?.assumingMemoryBound(to: UInt16.self))
+    for x in 0..<2 {
+        pixels[4 * x] = 10_000 + UInt16(x * 40)
+        pixels[4 * x + 1] = 6000
+        pixels[4 * x + 2] = 1000
+        pixels[4 * x + 3] = 32_768
+    }
+    let inputImage = try #require(fixture.makeImage())
+    let writer = try #require(CGImageDestinationCreateWithURL(source as CFURL, UTType.png.identifier as CFString, 1, nil))
+    CGImageDestinationAddImage(writer, inputImage, [kCGImagePropertyOrientation: orientation] as CFDictionary)
+    try #require(CGImageDestinationFinalize(writer))
+
+    var options = ImageConversionOptions()
+    options.format = format
+    options.flattenTransparency = true
+    options.backgroundRGB = 0
+    let output = folder.appendingPathComponent("flattened." + format.rawValue)
+    _ = try await ImageConversion.convert(source, to: output, options: options)
+    let converted = try conversionImage(output)
+    #expect(converted.bitsPerComponent == 16)
+    #expect(try !ImageConversion.hasTransparency(output))
+    #expect(converted.colorSpace?.name == colorSpace.name)
+    #expect(converted.width == (orientation == 6 ? 1 : 2))
+    #expect(converted.height == (orientation == 6 ? 2 : 1))
+    let reader = try #require(CGContext(data: nil, width: converted.width, height: converted.height, bitsPerComponent: 16,
+                                        bytesPerRow: 0, space: colorSpace,
+                                        bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue | byteOrder))
+    reader.draw(converted, in: CGRect(x: 0, y: 0, width: converted.width, height: converted.height))
+    let values = try #require(reader.data?.assumingMemoryBound(to: UInt16.self))
+    let secondPixel = orientation == 6 ? reader.bytesPerRow / MemoryLayout<UInt16>.stride : 4
+    #expect(abs(abs(Int(values[secondPixel]) - Int(values[0])) - 40) < 10)
+}
+
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
 func imageConversionUsesImageMagickForWebPWithoutLosingAlpha() async throws {
     let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
