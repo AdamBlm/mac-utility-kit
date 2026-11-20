@@ -19,6 +19,7 @@ struct PDFFormsView: View {
     @State private var page = 0
     @State private var fields: [PDFForms.Field] = []
     @State private var candidates: [PDFForms.Candidate] = []
+    @State private var reviewedCandidate: UUID?
     @State private var selected: UUID?
     @State private var edit: FieldEdit?
     @State private var originalEdit: FieldEdit?
@@ -65,6 +66,14 @@ struct PDFFormsView: View {
     }
 
     var body: some View {
+        ScrollViewReader { scroll in
+            workspace {
+                withAnimation(.easeInOut(duration: 0.2)) { scroll.scrollTo("forms-page-preview", anchor: .top) }
+            }
+        }
+    }
+
+    private func workspace(revealPreview: @escaping () -> Void) -> some View {
         InteractiveToolLayout(tool: .fillFlattenForms) { palette in
             WorkspaceSection("Source", palette: palette) {
                 HStack {
@@ -89,9 +98,10 @@ struct PDFFormsView: View {
                         Button("Detect Boxes", systemImage: "rectangle.dashed", action: detect)
                     }
                     PDFFormsPreview(document: session.document, page: page, revision: revision,
-                                    candidates: candidates.map(\.bounds),
+                                    candidates: candidates, reviewedCandidate: reviewedCandidate,
                                     selection: fields.first { $0.id == selected }?.bounds, onClick: picked)
                         .frame(minHeight: 270, maxHeight: 350)
+                        .id("forms-page-preview")
                     HStack {
                         Picker("Field type", selection: $kind) {
                             ForEach(PDFForms.Kind.addable) { Text($0.rawValue).tag($0) }
@@ -108,13 +118,19 @@ struct PDFFormsView: View {
                     WorkspaceSection("Review Detected Boxes", palette: palette) {
                         Text("Review the position before adding a suggested field. Coordinates are in PDF points from the page’s lower-left origin.")
                             .font(.caption).foregroundStyle(.secondary)
-                        ForEach(candidates) { candidate in
+                        ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
                             HStack {
-                                Text("\(candidate.kind.rawValue) · x \(Int(candidate.bounds.minX)), y \(Int(candidate.bounds.minY))")
+                                Text("\(index + 1). \(candidate.kind.rawValue) · x \(Int(candidate.bounds.minX)), y \(Int(candidate.bounds.minY))")
                                     .font(.callout)
                                 Spacer()
+                                Button("Preview", systemImage: "eye") {
+                                    reviewedCandidate = candidate.id
+                                    revealPreview()
+                                }
+                                .accessibilityLabel("Preview suggested field \(index + 1)")
                                 Button("Add") { add(candidate.kind, bounds: candidate.bounds) }
                                     .disabled(edit != originalEdit)
+                                    .accessibilityLabel("Add suggested field \(index + 1)")
                             }
                         }
                     }
@@ -227,6 +243,7 @@ struct PDFFormsView: View {
             page = 0
             placing = false
             candidates = []
+            reviewedCandidate = nil
             refresh()
             select(nil)
             issue = nil
@@ -238,6 +255,7 @@ struct PDFFormsView: View {
     private func changePage(_ delta: Int) {
         page += delta
         candidates = []
+        reviewedCandidate = nil
         placing = false
         refresh()
         select(nil)
@@ -267,6 +285,8 @@ struct PDFFormsView: View {
     }
 
     private func detect() {
+        reviewedCandidate = nil
+        candidates = []
         do {
             candidates = try session?.candidates(on: page) ?? []
             issue = candidates.isEmpty ? "No box candidates were detected." : nil
@@ -281,6 +301,7 @@ struct PDFFormsView: View {
             refresh()
             select(fields.first { $0.id == id })
             candidates.removeAll { $0.bounds.intersects(bounds) }
+            if !candidates.contains(where: { $0.id == reviewedCandidate }) { reviewedCandidate = nil }
             issue = nil
         } catch {
             issue = error.localizedDescription
@@ -359,7 +380,8 @@ private struct PDFFormsPreview: NSViewRepresentable {
     let document: PDFDocument
     let page: Int
     let revision: Int
-    let candidates: [CGRect]
+    let candidates: [PDFForms.Candidate]
+    let reviewedCandidate: UUID?
     let selection: CGRect?
     let onClick: (CGPoint) -> Void
 
@@ -382,6 +404,7 @@ private struct PDFFormsPreview: NSViewRepresentable {
         }
         view.onClick = onClick
         view.candidates = candidates
+        view.reviewedCandidate = reviewedCandidate
         view.selection = selection
         view.overlay.needsDisplay = true
     }
@@ -389,7 +412,8 @@ private struct PDFFormsPreview: NSViewRepresentable {
     final class PlacementView: PDFView {
         var revision = -1
         var onClick: ((CGPoint) -> Void)?
-        var candidates: [CGRect] = []
+        var candidates: [PDFForms.Candidate] = []
+        var reviewedCandidate: UUID?
         var selection: CGRect?
         let overlay = OverlayView()
 
@@ -399,7 +423,8 @@ private struct PDFFormsPreview: NSViewRepresentable {
             overlay.drawBoxes = { [weak self] in
                 guard let self, let page = currentPage else { return }
                 for candidate in candidates {
-                    let path = NSBezierPath(rect: convert(candidate, from: page))
+                    if candidate.id == reviewedCandidate { continue }
+                    let path = NSBezierPath(rect: convert(candidate.bounds, from: page))
                     path.lineWidth = 2
                     path.setLineDash([4, 3], count: 2, phase: 0)
                     NSColor.systemOrange.setStroke()
@@ -409,6 +434,12 @@ private struct PDFFormsPreview: NSViewRepresentable {
                     let path = NSBezierPath(rect: convert(selection, from: page).insetBy(dx: -2, dy: -2))
                     path.lineWidth = 2
                     NSColor.controlAccentColor.setStroke()
+                    path.stroke()
+                }
+                if let candidate = candidates.first(where: { $0.id == reviewedCandidate }) {
+                    let path = NSBezierPath(rect: convert(candidate.bounds, from: page).insetBy(dx: -2, dy: -2))
+                    path.lineWidth = 3
+                    NSColor.systemOrange.setStroke()
                     path.stroke()
                 }
             }
