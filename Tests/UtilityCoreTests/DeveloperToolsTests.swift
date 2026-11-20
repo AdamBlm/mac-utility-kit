@@ -3,6 +3,27 @@ import Testing
 import UtilityCore
 
 @Suite struct JSONFormatterTests {
+    @Test func opensBoundedUTF8WithoutChangingJSONTokens() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "input.json")
+        let text = "{\"n\":9007199254740993,\"s\":\"e\u{301}\"}"
+        try Data(("\u{FEFF}" + text).utf8).write(to: file)
+        let input = try await JSONFormatter.loadUTF8(file)
+        #expect(input.utf8.elementsEqual(text.utf8))
+        #expect(try JSONFormatter.format(input, indentation: .minified).text.utf8.elementsEqual(text.utf8))
+        try Data([0xFF]).write(to: file)
+        await #expect(throws: ToolError.self) { try await JSONFormatter.loadUTF8(file) }
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.truncate(atOffset: UInt64(JSONFormatter.maximumInputBytes) + 1)
+        try handle.close()
+        let oversized = await #expect(throws: ToolError.self) { try await JSONFormatter.loadUTF8(file) }
+        #expect(oversized?.localizedDescription.contains("16 MiB") == true)
+        let pasted = String(repeating: " ", count: JSONFormatter.maximumInputBytes + 1)
+        #expect(throws: ToolError.self) { try JSONFormatter.format(pasted) }
+    }
+
     @Test func preservesNumbersAndDuplicateKeysWhenSorted() throws {
         let result = try JSONFormatter.format(
             #"{"z": -0, "a":9223372036854775808123, "\u0061":1.000e+400, "n":[true,null,{}]}"#,

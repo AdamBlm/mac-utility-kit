@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 struct JSONFormatterDraft {
@@ -15,10 +16,13 @@ struct JSONFormatterView: View {
     @State private var outputInput: Input?
     @State private var fileError: String?
     @State private var exportError: String?
-    @State private var isLoading = false
+    @State private var importTask: Task<Void, Never>?
+    @State private var sourceName: String?
     @State private var selection: TextSelection?
     @FocusState private var inputFocused: Bool
     @Namespace private var inputTarget
+    private var isLoading: Bool { importTask != nil }
+    private static let inputTypes: [UTType] = [.json, .plainText]
 
     private struct Input: Equatable, Sendable {
         let text: String
@@ -39,7 +43,7 @@ struct JSONFormatterView: View {
     private func workspace(input: Input, scroll: ScrollViewProxy) -> some View {
         InteractiveToolLayout(tool: .jsonFormatter) { palette in
             WorkspaceSection("JSON input", palette: palette) {
-                TextEditor(text: $draft.text, selection: $selection)
+                TextEditor(text: Binding(get: { draft.text }, set: { updateText($0) }), selection: $selection)
                     .focused($inputFocused)
                     .id(inputTarget)
                     .font(.system(.body, design: .monospaced))
@@ -51,15 +55,17 @@ struct JSONFormatterView: View {
                     .disabled(isLoading)
                 HStack {
                     Button("Open file…", systemImage: "folder", action: openFile)
-                    Button("Paste", systemImage: "doc.on.clipboard") {
-                        if let text = NSPasteboard.general.string(forType: .string) { draft.text = text }
+                    ClipboardFileButton(allowedTypes: Self.inputTypes, buttonOnlyTitle: "Paste File", onPasteFile: load)
+                    Button("Paste Text", systemImage: "doc.on.clipboard") {
+                        if let text = NSPasteboard.general.string(forType: .string) { updateText(text) }
                     }
                     Spacer()
-                    Button("Clear") { draft.text = "" }
+                    Button("Clear") { updateText("") }
                         .disabled(draft.text.isEmpty)
                 }
                 .disabled(isLoading)
                 if isLoading { ProgressView("Opening file…").controlSize(.small) }
+                else if let sourceName { Text(sourceName).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                 if let fileError { Text(fileError).foregroundStyle(.red).font(.callout) }
             }
             WorkspaceSection("Format", palette: palette) {
@@ -138,6 +144,7 @@ struct JSONFormatterView: View {
                 }
             }
         }
+        .onDisappear { importTask?.cancel() }
         .task(id: input) {
             result = nil
             error = nil
@@ -170,13 +177,31 @@ struct JSONFormatterView: View {
     }
 
     private func openFile() {
-        guard let url = DeveloperToolFiles.choose(allowedTypes: [.json, .plainText]) else { return }
+        guard let url = DeveloperToolFiles.choose(allowedTypes: Self.inputTypes) else { return }
+        load(url)
+    }
+
+    private func updateText(_ text: String) {
+        draft.text = text
+        sourceName = nil
         fileError = nil
-        isLoading = true
-        Task {
-            defer { isLoading = false }
-            do { draft.text = try DeveloperToolFiles.utf8(await DeveloperToolFiles.read(url)) }
-            catch { fileError = error.localizedDescription }
+    }
+
+    private func load(_ url: URL) {
+        guard importTask == nil else { return }
+        fileError = nil
+        importTask = Task {
+            defer { importTask = nil }
+            do {
+                let text = try await JSONFormatter.loadUTF8(url)
+                try Task.checkCancellation()
+                selection = nil
+                draft.text = text
+                sourceName = url.lastPathComponent
+            } catch is CancellationError {
+            } catch {
+                if !Task.isCancelled { fileError = error.localizedDescription }
+            }
         }
     }
 }

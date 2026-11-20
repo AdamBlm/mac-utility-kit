@@ -51,6 +51,21 @@ public enum JSONIndentation: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum JSONFormatter {
+    package static let maximumInputBytes = 16 * 1024 * 1024
+
+    package static func loadUTF8(_ input: URL) async throws -> String {
+        let data: Data
+        do {
+            data = try await PlainTextDecoding.loadVerifiedBytes(input, maximumBytes: maximumInputBytes)
+        } catch PlainTextDecoding.ReadIssue.tooLarge {
+            throw ToolError.invalid("Choose a JSON file no larger than 16 MiB.")
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ToolError.invalid("This file contains invalid UTF-8.")
+        }
+        return text
+    }
+
     static func parsedValue(_ text: String) throws -> JSONNode {
         var parser = Parser(bytes: Array(text.utf8))
         return try parser.parse()
@@ -59,6 +74,9 @@ public enum JSONFormatter {
     public static func format(
         _ text: String, indentation: JSONIndentation = .twoSpaces, sortKeys: Bool = false
     ) throws -> JSONFormatResult {
+        guard text.utf8.count <= maximumInputBytes else {
+            throw ToolError.invalid("Enter JSON no larger than 16 MiB.")
+        }
         var parser = Parser(bytes: Array(text.utf8))
         let root = try parser.parse()
         var output = ""

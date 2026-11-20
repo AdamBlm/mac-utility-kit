@@ -63,8 +63,8 @@ struct FormatJSON: CatalogCommandBinding {
     }
 
     func run() throws {
-        let source = try readUTF8Text(file: file, limit: 16 * 1024 * 1024,
-                                      invalidInput: "Provide UTF-8 JSON up to 16 MB.")
+        let source = try readUTF8Text(file: file, limit: JSONFormatter.maximumInputBytes,
+                                      invalidInput: "Provide UTF-8 JSON up to 16 MiB.")
         let result = try JSONFormatter.format(source, indentation: indentation.style, sortKeys: sortKeys)
         print(result.text)
         for key in result.duplicateKeys { writeError("Duplicate key kept: \(key)") }
