@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 import Testing
 @testable import UtilityCore
@@ -112,6 +113,29 @@ struct FindDuplicatesTests {
         #expect(report.fileCount == 3)
         #expect(Set(report.groups.flatMap(\.files).map(\.url)) == [visible, hidden, deep])
         #expect(report.issues.contains { $0.url == visible })
+    }
+
+    @Test(.enabled(if: geteuid() != 0))
+    func reportsUnreadableFileAndStillGroupsReadableCopies() async throws {
+        let root = try Self.folder()
+        let manager = FileManager.default
+        defer { try? manager.removeItem(at: root) }
+        let data = Data("exact shared contents".utf8)
+        let first = try Self.write("first.txt", data, in: root)
+        let second = try Self.write("second.txt", data, in: root)
+        let unreadable = try Self.write("unreadable.txt", data, in: root)
+        try manager.setAttributes([.posixPermissions: 0], ofItemAtPath: unreadable.path)
+        #expect(access(unreadable.path, R_OK) != 0)
+
+        let report = try await FindDuplicates.scan([root], options: .init())
+        #expect(report.fileCount == 2)
+        #expect(report.groups.count == 1)
+        #expect(Set(report.groups.flatMap(\.files).map(\.url)) == [first, second])
+        #expect(report.issues.count == 1)
+        let issue = try #require(report.issues.first)
+        #expect(issue.url.lastPathComponent == unreadable.lastPathComponent)
+        #expect(try DuplicateFileIO.inspect(issue.url)?.identity == DuplicateFileIO.inspect(unreadable)?.identity)
+        #expect(!issue.message.isEmpty)
     }
 
     @Test
