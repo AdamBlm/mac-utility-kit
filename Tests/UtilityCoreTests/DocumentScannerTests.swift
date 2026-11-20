@@ -45,6 +45,23 @@ struct DocumentScannerTests {
         #expect(throws: ToolError.self) { try DocumentScanner.corrected(page) }
     }
 
+    @Test func retainsDetectedCornersAcrossManualEdits() throws {
+        let source = try #require(DocumentScanner.load(try imageData(), name: "Fixture").first)
+        let detected = ScanCorners(
+            topLeft: CGPoint(x: 0.1, y: 0.85), topRight: CGPoint(x: 0.91, y: 0.95),
+            bottomRight: CGPoint(x: 0.88, y: 0.12), bottomLeft: CGPoint(x: 0.2, y: 0.08)
+        )
+        var page = ScannedPage(name: source.name, image: source.image, corners: detected)
+        let initial = try DocumentScanner.corrected(page)
+        page.corners = .fullPage
+        #expect(try DocumentScanner.corrected(page).width == source.image.width)
+        #expect(page.detectedCorners == detected)
+        page.corners = page.detectedCorners
+        let restored = try DocumentScanner.corrected(page)
+        #expect(restored.width == initial.width && restored.height == initial.height)
+        #expect(restored.width != source.image.width)
+    }
+
     private func imageData() throws -> Data {
         let canvas = try #require(CGContext(data: nil, width: 180, height: 100, bitsPerComponent: 8, bytesPerRow: 0,
                                             space: CGColorSpaceCreateDeviceRGB(),

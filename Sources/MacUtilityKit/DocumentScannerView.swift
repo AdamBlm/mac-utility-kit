@@ -104,7 +104,12 @@ struct DocumentScannerView: View {
                         .id(draft.pages[index].id)
                         .disabled(exporting)
                     HStack {
-                        Button("Reset corners") { draft.pages[index].corners = .fullPage }
+                        if page.detectedCorners != .fullPage {
+                            Button("Restore detected corners") { draft.pages[index].corners = page.detectedCorners }
+                                .disabled(page.corners == page.detectedCorners)
+                        }
+                        Button("Use whole page") { draft.pages[index].corners = .fullPage }
+                            .disabled(page.corners == .fullPage)
                         Button("Rotate", systemImage: "rotate.right") {
                             draft.pages[index].rotation = (draft.pages[index].rotation + 1) % 4
                         }

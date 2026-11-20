@@ -52,9 +52,17 @@ public struct ScannedPage: Identifiable, Sendable {
     public let id = UUID()
     public let name: String
     public let image: CGImage
+    public let detectedCorners: ScanCorners
     public var corners: ScanCorners
     public var rotation = 0
     public var color: ScanColor = .original
+
+    init(name: String, image: CGImage, corners: ScanCorners) {
+        self.name = name
+        self.image = image
+        self.detectedCorners = corners
+        self.corners = corners
+    }
 }
 
 public enum DocumentScanner {
