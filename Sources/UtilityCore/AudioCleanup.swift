@@ -25,15 +25,24 @@ public enum AudioCleanup {
         defer { try? manager.removeItem(at: staging) }
         let dry = staging.appending(path: "original.wav")
         let wet = staging.appending(path: "cleaned.wav")
-        let selection = ["-map", "0:a:\(options.trackIndex)", "-t", decimal(duration), "-ar", "48000",
+        let report = staging.appending(path: "audio-levels.txt")
+        try Data().write(to: report)
+        let levelOutput = try FileHandle(forWritingTo: report)
+        defer { try? levelOutput.close() }
+        let segment = decimal(duration)
+        let selection = ["-map", "0:a:\(options.trackIndex)", "-t", segment, "-ar", "48000",
                          "-ac", "2", "-c:a", "pcm_f32le", "-f", "wav"]
         var arguments = prefix
         arguments.append(contentsOf: ["-ss", decimal(start), "-i", input.path])
         arguments.append(contentsOf: selection)
         arguments.append(dry.path)
         arguments.append(contentsOf: selection)
-        arguments.append(contentsOf: ["-af", filter(options), wet.path])
-        try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: staging)
+        // Measure the selected segment before stereo playback conversion can hide a channel peak.
+        let wetFilters = [filter(options), "atrim=duration=\(segment)", peakFilter].joined(separator: ",")
+        arguments.append(contentsOf: ["-af", wetFilters, wet.path])
+        try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: staging,
+                                   standardOutput: levelOutput)
+        let sourcePeak = try readPeak(report)
         let dryLevel = try measure(dry)
         let wetLevel = try measure(wet)
         guard dryLevel.rms > 0.000_01 else {
@@ -46,7 +55,8 @@ public enum AudioCleanup {
         try Task.checkCancellation()
         return AudioCleanupPreview(original: try Data(contentsOf: dry), cleaned: try Data(contentsOf: wet),
                                    originalVolume: dryGain, cleanedVolume: wetGain,
-                                   isNearClipping: wetLevel.peak >= 0.99, duration: min(dryLevel.duration, wetLevel.duration))
+                                   isNearClipping: sourcePeak >= nearClippingDB || wetLevel.peak >= 0.99,
+                                   duration: min(dryLevel.duration, wetLevel.duration))
     }
 
     public static func export(
@@ -67,11 +77,9 @@ public enum AudioCleanup {
         let levelOutput = try FileHandle(forWritingTo: report)
         defer { try? levelOutput.close() }
 
-        let stats = "astats=metadata=1:reset=0:measure_perchannel=none:measure_overall=Peak_level"
-        let log = "ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=-:direct=1"
         var arguments = prefix + ["-copyts", "-start_at_zero", "-i", input.path]
         if options.output == .mkv { arguments += ["-map", "0:V:0", "-c:v", "copy"] }
-        arguments += ["-map", "0:a:\(options.trackIndex)", "-af", [filter(options), stats, log].joined(separator: ","),
+        arguments += ["-map", "0:a:\(options.trackIndex)", "-af", [filter(options), peakFilter].joined(separator: ","),
                       "-c:a", options.output == .wav ? "pcm_f32le" : "flac",
                       "-f", options.output == .wav ? "wav" : "matroska", candidate.path]
         try await ExternalTool.run(executable, name: "FFmpeg", arguments: arguments, directory: staging, standardOutput: levelOutput)
@@ -85,11 +93,14 @@ public enum AudioCleanup {
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
-        let warning = peak >= -0.1 ? " · Peaks near clipping" : ""
+        let warning = peak >= nearClippingDB ? " · Peaks near clipping" : ""
         return "\(input.lastPathComponent) · \(options.output.title)\(warning)"
     }
 
     private static let prefix = ["-nostdin", "-hide_banner", "-loglevel", "error", "-n", "-protocol_whitelist", "file"]
+    private static let nearClippingDB = -0.1
+    private static let peakFilter = "astats=metadata=1:reset=0:measure_perchannel=none:measure_overall=Peak_level,"
+        + "ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=-:direct=1"
 
     private static func validate(_ input: URL, options: AudioCleanupOptions) throws -> URL {
         guard input.isFileURL, try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {

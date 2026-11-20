@@ -71,6 +71,33 @@ struct AudioCleanupTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func previewWarnsForNativeChannelPeaksHiddenByPlaybackDownmix() async throws {
+        let engine = try Self.executable()
+        let folder = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "mono.wav")
+        _ = try Self.run(engine, [
+            "-f", "lavfi", "-i", "aevalsrc='(0.2+0.9*gte(t,0.5))*sin(2*PI*1000*t)':s=48000:d=1",
+            "-c:a", "pcm_f32le", source.path
+        ])
+        var options = AudioCleanupOptions()
+        options.executable = engine
+        options.reductionDB = 0
+        let low = try await AudioCleanup.preview(source, options: options, start: 0, duration: 0.49)
+        #expect(!low.isNearClipping)
+        let high = try await AudioCleanup.preview(source, options: options, start: 0.55, duration: 0.3)
+        #expect(high.isNearClipping)
+        let playback = folder.appending(path: "playback.wav")
+        try high.cleaned.write(to: playback)
+        #expect(try Self.samples(in: playback).map(abs).max() ?? 1 < 0.99)
+
+        let exported = folder.appending(path: "exported.wav")
+        let result = try await AudioCleanup.export(source, to: exported, options: options) { _ in }
+        #expect(result.contains("Peaks near clipping"))
+        #expect(try Self.samples(in: exported).map(abs).max() ?? 0 > 1)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
     func verifiesSilentTrackAndCopiesEncodedPicturePackets() async throws {
         let engine = try Self.executable()
         let folder = try Self.makeDirectory()
