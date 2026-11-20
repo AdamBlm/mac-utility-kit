@@ -151,7 +151,7 @@ struct PDFCompressionTests {
         automatic.qpdfExecutable = try Self.qpdf()
         automatic.ghostscriptExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"]))
         let result = directory.appending(path: "Automatic.pdf")
-        _ = try await PDFCompression.export(source, to: result, options: automatic) { _ in }
+        let summary = try await PDFCompression.export(source, to: result, options: automatic) { _ in }
 
         var lossless = automatic
         lossless.engine = .qpdf
@@ -166,7 +166,14 @@ struct PDFCompressionTests {
             _ = try await PDFCompression.export(source, to: manual, options: options) { _ in }
             sizes.append(try Data(contentsOf: manual).count)
         }
-        #expect(try Data(contentsOf: result).count == sizes.min())
+        let ghostscript = directory.appending(path: "Manual-2.pdf")
+        let combined = directory.appending(path: "Manual-combined.pdf")
+        _ = try await PDFCompression.export(ghostscript, to: combined, options: lossless) { _ in }
+        let combinedBytes = try Data(contentsOf: combined).count
+        #expect(try Data(contentsOf: result).count == min(try #require(sizes.min()), combinedBytes))
+        if combinedBytes < (try #require(sizes.min())) {
+            #expect(summary.contains("Ghostscript") && summary.contains("+ qpdf lossless"))
+        }
         #expect(PDFDocument(url: result)?.page(at: 0)?.annotations.first?.url?.absoluteString == "https://example.test/page/1")
     }
 

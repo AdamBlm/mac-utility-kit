@@ -121,9 +121,9 @@ public enum PDFCompression {
         let estimate = pages.count == document.pageCount
             ? compressed : Int64(min(Double(Int64.max - 1024), (Double(originalBytes) * Double(compressed) / Double(measured)).rounded()))
         let canSuggest = options.engine == .automatic && options.preset != .higherQuality
-            && options.ghostscriptExecutable == nil && chosen.engine == .qpdf && compressed >= measured
+            && options.ghostscriptExecutable == nil && chosen.options.engine == .qpdf && compressed >= measured
         let suggestsImageDownsampling = canSuggest ? try PDFCompressionEngines.canRewriteImages(in: document) : false
-        return Sample(engine: chosen.engine, method: method(for: chosen), suggestsImageDownsampling: suggestsImageDownsampling,
+        return Sample(engine: chosen.options.engine, method: chosen.method, suggestsImageDownsampling: suggestsImageDownsampling,
                       originalBytes: measured, candidateBytes: compressed, samplePages: pages.count,
                       totalPages: document.pageCount, estimatedBytes: estimate,
                       preview: verified.page(at: 0).flatMap(render))
@@ -167,16 +167,36 @@ public enum PDFCompression {
         try manager.moveItem(at: result, to: output)
         await progress(1)
         let name = options.engine == .automatic
-            ? "\(input.lastPathComponent) · \(method(for: chosen))" : input.lastPathComponent
+            ? "\(input.lastPathComponent) · \(chosen.method)" : input.lastPathComponent
         return summary(name, original: originalBytes, candidate: candidateBytes, keptOriginal: keptOriginal)
+    }
+
+    private struct VerifiedCandidate {
+        let url: URL
+        let bytes: Int64
+        let options: PDFCompressionOptions
+        let structurallyOptimized: Bool
+
+        var method: String {
+            let primary = PDFCompression.method(for: options)
+            return structurallyOptimized ? primary + " + qpdf lossless" : primary
+        }
     }
 
     private static func compressVerified(
         _ input: URL, to output: URL, reference: PDFDocument, candidates: [PDFCompressionOptions]
-    ) async throws -> PDFCompressionOptions {
-        var best: (url: URL, bytes: Int64, options: PDFCompressionOptions)?
+    ) async throws -> VerifiedCandidate {
+        var best: VerifiedCandidate?
         var failure: Error?
         let compare = candidates.count > 1
+        let lossless = candidates.first(where: \.isLossless)
+
+        func consider(_ candidate: VerifiedCandidate) {
+            // Keep the earlier, less destructive result on a tie.
+            if let current = best, candidate.bytes >= current.bytes { return }
+            best = candidate
+        }
+
         for (index, options) in candidates.enumerated() {
             try Task.checkCancellation()
             let candidate = compare
@@ -185,10 +205,13 @@ public enum PDFCompression {
             do {
                 try await PDFCompressionEngines.run(input, to: candidate, options: options)
                 try verify(open(candidate), against: reference, engine: options.engine)
-                let size = try bytes(candidate)
-                // Candidates are ordered from least to most destructive. Keep the earlier one on a tie.
-                if let current = best, size >= current.bytes { continue }
-                best = (candidate, size, options)
+                consider(.init(url: candidate, bytes: try bytes(candidate), options: options, structurallyOptimized: false))
+                if options.engine == .ghostscript, let lossless {
+                    let combined = output.deletingLastPathComponent().appending(path: "Candidate-\(index)-qpdf.pdf")
+                    try await PDFCompressionEngines.run(candidate, to: combined, options: lossless)
+                    try verify(open(combined), against: reference, engine: .ghostscript)
+                    consider(.init(url: combined, bytes: try bytes(combined), options: options, structurallyOptimized: true))
+                }
             } catch {
                 try Task.checkCancellation()
                 failure = error
@@ -198,7 +221,7 @@ public enum PDFCompression {
             throw failure ?? ToolError.invalid("No compression engine produced a verified PDF.")
         }
         if compare { try FileManager.default.moveItem(at: best.url, to: output) }
-        return best.options
+        return best
     }
 
     private static func method(for options: PDFCompressionOptions) -> String {
