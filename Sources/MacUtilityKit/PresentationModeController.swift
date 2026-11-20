@@ -41,7 +41,11 @@ final class PresentationModeController: NSObject {
         issue = nil
         do {
             if hideDock { dock = try PresentationDockSession.start() }
-            if keepAwake { awake = try KeepAwakeSession(keepDisplayAwake: true) }
+            let seconds = minutes.map { $0 * 60 }
+            let end = seconds.map { ContinuousClock.now.advanced(by: .seconds($0)) }
+            if keepAwake {
+                awake = try KeepAwakeSession(keepDisplayAwake: true, timeoutSeconds: Double(seconds ?? 0))
+            }
             if hideDesktop {
                 let cover = PresentationDesktopCover()
                 cover.update()
@@ -52,7 +56,7 @@ final class PresentationModeController: NSObject {
             keepsAwake = keepAwake
             isActive = true
             installStatus()
-            beginTasks(minutes: minutes)
+            beginTasks(deadline: end)
         } catch {
             let startError = error.localizedDescription
             stop()
@@ -100,9 +104,8 @@ final class PresentationModeController: NSObject {
         }
     }
 
-    private func beginTasks(minutes: Int?) {
-        if let minutes {
-            let end = ContinuousClock.now + .seconds(minutes * 60)
+    private func beginTasks(deadline end: ContinuousClock.Instant?) {
+        if let end {
             deadline = end
             timer = Task { [weak self] in
                 do { try await ContinuousClock().sleep(until: end) } catch { return }
@@ -119,6 +122,7 @@ final class PresentationModeController: NSObject {
                             self.dock = nil
                             self.hidesDock = false
                             self.issue = "Dock visibility changed outside Presentation Mode. The current setting will be kept."
+                            if !self.hidesDesktop && !self.keepsAwake { self.stop() }
                             return
                         }
                     } catch {
