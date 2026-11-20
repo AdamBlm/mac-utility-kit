@@ -18,7 +18,7 @@ struct PDFEditingSettings: View {
 
     var body: some View {
         Group {
-            if tool == .extractPDFPages, input != nil {
+            if reviewedSource != nil, input != nil {
                 Button("Refresh Page Preview", systemImage: "arrow.clockwise", action: load)
             }
             if let document {
@@ -82,6 +82,7 @@ struct PDFEditingSettings: View {
     private var canExport: Bool {
         guard let input, let document, !document.isLocked,
               hasPermission(document), document.pageCount > 0 else { return false }
+        if let reviewedSource, reviewedSource.wrappedValue == nil { return false }
         switch tool {
         case .splitPDF:
             guard let groups = try? PDFPageEditing.splitGroups(pageCount: document.pageCount, options: options.pdfSplit)
@@ -95,8 +96,7 @@ struct PDFEditingSettings: View {
             else { return false }
             return !removed.isEmpty && removed.count < document.pageCount
         case .extractPDFPages:
-            return options.pdfExtract.reviewedSource != nil &&
-                (try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options.pdfExtract)) != nil
+            return (try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options.pdfExtract)) != nil
         case .pdfToImages:
             return rasterReady
         default:
@@ -118,12 +118,23 @@ struct PDFEditingSettings: View {
         }
     }
 
+    private var reviewedSource: Binding<PDFSourceStamp?>? {
+        switch tool {
+        case .splitPDF: $options.pdfSplit.reviewedSource
+        case .organizePDF: $options.pdfOrganize.reviewedSource
+        case .deletePDFPages: $options.pdfDelete.reviewedSource
+        case .extractPDFPages: $options.pdfExtract.reviewedSource
+        default: nil
+        }
+    }
+
     private func load() {
         passwordError = false
         sourceIssue = nil
-        if tool == .extractPDFPages {
+        if let reviewedSource {
+            let previous = reviewedSource.wrappedValue
             document = nil
-            options.pdfExtract.reviewedSource = nil
+            reviewedSource.wrappedValue = nil
             guard let input else { return }
             do {
                 let source = try PDFSourceStamp.read(input)
@@ -133,9 +144,11 @@ struct PDFEditingSettings: View {
                 guard (try? PDFSourceStamp.read(input)) == source else {
                     throw ToolError.invalid("The source PDF changed while opening. Refresh the page preview.")
                 }
+                if let previous, previous != source { clearPageEdits() }
                 document = opened
-                options.pdfExtract.reviewedSource = source
+                reviewedSource.wrappedValue = source
             } catch {
+                if previous != nil { clearPageEdits() }
                 sourceIssue = error.localizedDescription
             }
         } else {
@@ -147,20 +160,30 @@ struct PDFEditingSettings: View {
 
     private func unlock() {
         guard let input else { return }
-        let reviewedSource = tool == .extractPDFPages ? options.pdfExtract.reviewedSource : nil
-        guard let unlocked = PDFDocument(url: reviewedSource?.resolved ?? input),
+        let source = reviewedSource?.wrappedValue
+        guard let unlocked = PDFDocument(url: source?.resolved ?? input),
               unlocked.unlock(withPassword: password.wrappedValue) else {
             passwordError = true
             return
         }
-        if let reviewedSource, (try? PDFSourceStamp.read(input)) != reviewedSource {
-            options.pdfExtract.reviewedSource = nil
+        if let source, (try? PDFSourceStamp.read(input)) != source {
+            reviewedSource?.wrappedValue = nil
+            clearPageEdits()
             document = nil
             sourceIssue = "The source PDF changed while unlocking. Refresh the page preview."
             return
         }
         passwordError = !hasPermission(unlocked)
         document = unlocked
+    }
+
+    private func clearPageEdits() {
+        if tool == .organizePDF {
+            options.pdfOrganize.pages = nil
+            organizerHistory = PDFOrganizerHistory()
+        } else if tool == .deletePDFPages {
+            options.pdfDelete.range = ""
+        }
     }
 }
 

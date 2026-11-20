@@ -15,6 +15,7 @@ public struct PDFSplitOptions: Sendable {
     public var customRanges = ""
     public var filenamePattern = "{name}-{number}"
     public var password = ""
+    package var reviewedSource: PDFSourceStamp?
 
     public init() {}
 }
@@ -42,6 +43,7 @@ public struct PDFPageEdit: Identifiable, Hashable, Sendable {
 public struct PDFOrganizeOptions: Sendable {
     public var pages: [PDFPageEdit]?
     public var password = ""
+    package var reviewedSource: PDFSourceStamp?
 
     public init() {}
 }
@@ -49,6 +51,7 @@ public struct PDFOrganizeOptions: Sendable {
 public struct PDFDeleteOptions: Sendable {
     public var range = ""
     public var password = ""
+    package var reviewedSource: PDFSourceStamp?
 
     public init() {}
 }
@@ -84,16 +87,12 @@ public enum PDFPageEditing {
         progress: @Sendable (Double) async -> Void
     ) async throws {
         try Task.checkCancellation()
-        let source = try options.reviewedSource ?? PDFSourceStamp.read(input)
-        func verifySource() throws {
-            guard (try? PDFSourceStamp.read(input)) == source else {
-                throw ToolError.invalid("The source PDF changed. Refresh the page preview before extracting.")
-            }
-        }
-        try verifySource()
+        let source = try reviewedInput(input, expected: options.reviewedSource)
         let original = try open(source.resolved, password: options.password)
         let selected = try extractPages(pageCount: original.pageCount, options: options)
-        try writeCopy(selected.map { PDFPageEdit(pageNumber: $0) }, from: original, to: output, beforePublish: verifySource)
+        try writeCopy(selected.map { PDFPageEdit(pageNumber: $0) }, from: original, to: output) {
+            try verifySource(input, expected: source)
+        }
         await progress(1)
     }
 
@@ -203,7 +202,8 @@ public enum PDFPageEditing {
         progress: @Sendable (Double) async -> Void
     ) async throws -> [URL] {
         try Task.checkCancellation()
-        let original = try open(input, password: options.password)
+        let source = try reviewedInput(input, expected: options.reviewedSource)
+        let original = try open(source.resolved, password: options.password)
         let groups = try splitGroups(pageCount: original.pageCount, options: options)
         let names = try splitFilenames(input, groups: groups, pattern: options.filenamePattern)
         let outputs = names.map { directory.appendingPathComponent($0) }
@@ -219,6 +219,7 @@ public enum PDFPageEditing {
                            to: staging.appendingPathComponent(names[index]))
             await progress(Double(index + 1) / Double(groups.count + 1))
         }
+        try verifySource(input, expected: source)
         var published: [URL] = []
         do {
             for output in outputs {
@@ -239,9 +240,10 @@ public enum PDFPageEditing {
         progress: @Sendable (Double) async -> Void
     ) async throws {
         try Task.checkCancellation()
-        let original = try open(input, password: options.password)
+        let source = try reviewedInput(input, expected: options.reviewedSource)
+        let original = try open(source.resolved, password: options.password)
         let pages = options.pages ?? (1...original.pageCount).map { PDFPageEdit(pageNumber: $0) }
-        try writeCopy(pages, from: original, to: output)
+        try writeCopy(pages, from: original, to: output) { try verifySource(input, expected: source) }
         await progress(1)
     }
 
@@ -250,14 +252,29 @@ public enum PDFPageEditing {
         progress: @Sendable (Double) async -> Void
     ) async throws {
         try Task.checkCancellation()
-        let original = try open(input, password: options.password)
+        let source = try reviewedInput(input, expected: options.reviewedSource)
+        let original = try open(source.resolved, password: options.password)
         let range = options.range.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !range.isEmpty else { throw ToolError.invalid("Select at least one page to remove.") }
         let removed = Set(try PageSelection.indices(range, pageCount: original.pageCount))
         guard !removed.isEmpty else { throw ToolError.invalid("Select at least one page to remove.") }
         let remaining = (0..<original.pageCount).filter { !removed.contains($0) }
-        try writeCopy(remaining.map { PDFPageEdit(pageNumber: $0 + 1) }, from: original, to: output)
+        try writeCopy(remaining.map { PDFPageEdit(pageNumber: $0 + 1) }, from: original, to: output) {
+            try verifySource(input, expected: source)
+        }
         await progress(1)
+    }
+
+    private static func reviewedInput(_ input: URL, expected: PDFSourceStamp?) throws -> PDFSourceStamp {
+        guard let expected else { return try PDFSourceStamp.read(input) }
+        try verifySource(input, expected: expected)
+        return expected
+    }
+
+    private static func verifySource(_ input: URL, expected: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == expected else {
+            throw ToolError.invalid("The source PDF changed. Refresh the page preview before exporting.")
+        }
     }
 
     private static func open(_ input: URL, password: String) throws -> PDFDocument {

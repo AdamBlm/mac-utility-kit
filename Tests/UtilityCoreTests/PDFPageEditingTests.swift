@@ -256,6 +256,46 @@ import UtilityCore
     }
 }
 
+@Test func pageEditingRejectsSamePathReplacementForEveryReviewedWorkflow() async throws {
+    try await withPDFEditingFixture { source, directory in
+        let previous = try PDFSourceStamp.read(source)
+        let bytes = try Data(contentsOf: source)
+        try bytes.write(to: source, options: .atomic)
+        let current = try PDFSourceStamp.read(source)
+        #expect(previous != current)
+        var split = PDFSplitOptions()
+        split.reviewedSource = previous
+        var organize = PDFOrganizeOptions()
+        organize.reviewedSource = previous
+        var delete = PDFDeleteOptions()
+        delete.range = "1"
+        delete.reviewedSource = previous
+        let organized = directory.appendingPathComponent("Organized.pdf")
+        let remaining = directory.appendingPathComponent("Remaining.pdf")
+        let before = Set(try FileManager.default.contentsOfDirectory(atPath: directory.path))
+        await #expect(throws: ToolError.self) { try await PDFPageEditing.split(source, into: directory, options: split) { _ in } }
+        await #expect(throws: ToolError.self) { try await PDFPageEditing.organize(source, to: organized, options: organize) { _ in } }
+        await #expect(throws: ToolError.self) { try await PDFPageEditing.delete(source, to: remaining, options: delete) { _ in } }
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: directory.path)) == before)
+
+        delete.reviewedSource = current
+        try await PDFPageEditing.delete(source, to: remaining, options: delete) { _ in }
+        #expect(try pdfPageNumbers(remaining) == [2, 3, 4, 5])
+        try FileManager.default.removeItem(at: remaining)
+
+        split.reviewedSource = current
+        await #expect(throws: ToolError.self) {
+            try await PDFPageEditing.split(source, into: directory, options: split) { progress in
+                if progress == 5.0 / 6 {
+                    do { try bytes.write(to: source, options: .atomic) }
+                    catch { Issue.record("Could not replace the PDF source: \(error)") }
+                }
+            }
+        }
+        #expect(try Set(FileManager.default.contentsOfDirectory(atPath: directory.path)) == before)
+    }
+}
+
 private func withPDFEditingFixture(_ test: (URL, URL) async throws -> Void) async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
