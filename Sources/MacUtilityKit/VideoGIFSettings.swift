@@ -7,7 +7,9 @@ struct VideoGIFSettings: View {
     @Binding var options: VideoGIFOptions
     @State private var loaded: Source?
     @State private var scrubTime = 0.0
-    @State private var sourceFrame: CGImage?
+    @State private var sourceFrame: (request: ScrubRequest, result: Result<CGImage, Error>)?
+    @State private var startText: String?
+    @State private var endText: String?
     @State private var preview: VideoGIFPreview?
     @State private var activePreview: Request?
     @State private var previewError: String?
@@ -30,29 +32,43 @@ struct VideoGIFSettings: View {
     }
 
     private var format: FloatingPointFormatStyle<Double> {
-        .number.grouping(.never).precision(.fractionLength(0...3))
+        .number.locale(Locale(identifier: "en_US_POSIX")).grouping(.never).precision(.fractionLength(0...3))
     }
 
     var body: some View {
         let request = Request(input: input, options: options)
         let source = loaded?.url == input ? loaded : nil
         SettingRow("In point") {
-            TextField("In point in seconds", value: Binding(
-                get: { options.start == 0 ? source?.bounds?.lowerBound ?? 0 : options.start },
-                set: { options.start = $0 }
-            ), format: format)
+            TextField("In point", text: Binding(
+                get: { startText ?? (options.start == 0 ? source?.bounds?.lowerBound ?? 0 : options.start).formatted(format) },
+                set: {
+                    startText = $0
+                    options.start = VideoTimecode.seconds(from: $0) ?? -1
+                }
+            ))
                 .frame(width: 80)
-            Text("seconds").foregroundStyle(.secondary)
+                .help("Seconds, MM:SS, or HH:MM:SS. Zero starts at the first visible frame.")
         }
         .task(id: input) { await load(input) }
+        if options.start == 0, let start = source?.bounds?.lowerBound, start > 0 {
+            Text("Starts at the first visible frame (\(start.formatted(format)) s).")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         SettingRow("Out point") {
             if let end = options.end {
-                TextField("Out point in seconds", value: Binding(
-                    get: { options.end ?? end }, set: { options.end = $0 }
-                ), format: format)
+                TextField("Out point", text: Binding(
+                    get: { endText ?? end.formatted(format) },
+                    set: {
+                        endText = $0
+                        options.end = VideoTimecode.seconds(from: $0) ?? -1
+                    }
+                ))
                 .frame(width: 80)
-                Text("seconds").foregroundStyle(.secondary)
-                Button("Use End") { options.end = nil }
+                .help("Seconds, MM:SS, or HH:MM:SS")
+                Button("Use End") {
+                    endText = nil
+                    options.end = nil
+                }
             } else {
                 if let duration = source?.bounds?.upperBound {
                     Text("End of video (\(duration.formatted(format)) s)").foregroundStyle(.secondary)
@@ -63,12 +79,12 @@ struct VideoGIFSettings: View {
             }
         }
         SettingRow("Maximum width") {
-            TextField("Maximum width in pixels", value: $options.width, format: .number.grouping(.never))
+            GIFIntegerField(label: "Maximum width in pixels", value: $options.width)
                 .frame(width: 80)
             Text("pixels").foregroundStyle(.secondary)
         }
         SettingRow("Frame rate") {
-            TextField("Frames per second", value: $options.fps, format: .number.grouping(.never))
+            GIFIntegerField(label: "Frames per second", value: $options.fps)
                 .frame(width: 80)
             Text("fps").foregroundStyle(.secondary)
         }
@@ -85,7 +101,7 @@ struct VideoGIFSettings: View {
             }
             .labelsHidden()
             if options.loop == .repeatCount {
-                TextField("Additional repeats", value: $options.repetitions, format: .number.grouping(.never))
+                GIFIntegerField(label: "Additional repeats", value: $options.repetitions)
                     .frame(width: 48)
                 Text("times").foregroundStyle(.secondary)
             }
@@ -112,32 +128,43 @@ struct VideoGIFSettings: View {
 
     @ViewBuilder
     private func clipScrubber(_ input: URL, bounds: Range<Double>) -> some View {
-        if let sourceFrame {
-            Image(decorative: sourceFrame, scale: 1)
+        let maximum = max(bounds.lowerBound, min(bounds.upperBound.nextDown, bounds.upperBound - 0.001))
+        let request = ScrubRequest(input: input, time: min(max(scrubTime, bounds.lowerBound), maximum))
+        if let sourceFrame, sourceFrame.request == request, case .success(let image) = sourceFrame.result {
+            Image(decorative: image, scale: 1)
                 .resizable()
                 .aspectRatio(contentMode: .fit)
                 .frame(maxWidth: .infinity, maxHeight: 160)
                 .accessibilityLabel("Source frame")
+        } else if let sourceFrame, sourceFrame.request == request, case .failure(let error) = sourceFrame.result {
+            Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+        } else {
+            ProgressView("Preparing source frame…").controlSize(.small)
         }
-        let maximum = max(bounds.lowerBound, min(bounds.upperBound.nextDown, bounds.upperBound - 0.001))
-        let request = ScrubRequest(input: input, time: min(max(scrubTime, bounds.lowerBound), maximum))
         Slider(value: Binding(get: { request.time }, set: { scrubTime = $0 }), in: bounds.lowerBound...maximum)
             .accessibilityLabel("Scrub source video")
             .task(id: request) {
                 do {
                     try await Task.sleep(for: .milliseconds(110))
                     let image = try await FrameExtraction.preview(request.input, at: request.time)
-                    if !Task.isCancelled { sourceFrame = image }
+                    if !Task.isCancelled { sourceFrame = (request, .success(image)) }
                 } catch {
-                    if !Task.isCancelled { sourceFrame = nil }
+                    if !Task.isCancelled { sourceFrame = (request, .failure(error)) }
                 }
             }
         HStack {
-            Text("\(scrubTime.formatted(format)) s").monospacedDigit()
+            Text("\(request.time.formatted(format)) s").monospacedDigit()
             Spacer()
-            Button("Set In") { options.start = scrubTime }
-            Button("Set Out") { options.end = scrubTime }
+            Button("Set In") {
+                startText = nil
+                options.start = request.time
+            }
+            Button("Set Out") {
+                endText = nil
+                options.end = request.time
+            }
         }
+        .disabled(sourceFrame?.request != request || (try? sourceFrame?.result.get()) == nil)
     }
 
     @ViewBuilder
@@ -172,6 +199,7 @@ struct VideoGIFSettings: View {
     }
 
     private func load(_ input: URL?) async {
+        guard !Task.isCancelled else { return }
         loaded = nil
         scrubTime = 0
         sourceFrame = nil
@@ -206,6 +234,22 @@ struct VideoGIFSettings: View {
         activePreview = nil
         preview = nil
         previewError = nil
+    }
+}
+
+private struct GIFIntegerField: View {
+    let label: String
+    @Binding var value: Int
+    @State private var text: String?
+
+    var body: some View {
+        TextField(label, text: Binding(
+            get: { text ?? (value == 0 ? "" : String(value)) },
+            set: {
+                text = $0
+                value = Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
+            }
+        ))
     }
 }
 

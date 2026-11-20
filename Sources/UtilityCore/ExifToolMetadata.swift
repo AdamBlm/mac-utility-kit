@@ -32,7 +32,17 @@ enum ExifToolMetadata {
     static func remove(
         _ input: URL, to output: URL, groups: Set<ImageMetadataGroup>, executable: URL
     ) async throws -> (ImageMetadataSnapshot, ImageMetadataSnapshot) {
-        let original = try await inspect(input, executable: executable)
+        let resolved = input.resolvingSymlinksInPath().standardizedFileURL
+        guard let stamp = try DuplicateFileIO.inspect(resolved) else {
+            throw ToolError.invalid("Choose a readable local image file.")
+        }
+        try FileManager.default.copyItem(at: resolved, to: output)
+        guard try DuplicateFileIO.inspect(output) != nil,
+              try DuplicateFileIO.inspect(resolved) == stamp,
+              input.resolvingSymlinksInPath().standardizedFileURL == resolved else {
+            throw ToolError.invalid("The original image changed while preparing its copy.")
+        }
+        let original = try await inspect(output, executable: executable)
         let fields = Set(groups.flatMap { original.groups[$0] ?? [] })
         // The group classifiers may overlap. ExifTool reads details first, then removes only recognized,
         // writable names together with complete groups where the user explicitly selected them.
@@ -47,7 +57,6 @@ enum ExifToolMetadata {
             }
         }
 
-        try FileManager.default.copyItem(at: input, to: output)
         if !fields.isEmpty {
             arguments += ["--", output.path]
             try await ExternalTool.run(executable, name: "ExifTool", arguments: arguments,

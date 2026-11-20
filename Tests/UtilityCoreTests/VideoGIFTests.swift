@@ -29,6 +29,8 @@ import UtilityCore
         options.end = 2
         options.start = 2
         #expect(throws: ToolError.self) { try VideoGIF.plan(duration: 4, options: options) }
+        options.start = VideoTimecode.seconds(from: "00:01bad") ?? -1
+        #expect(options.settingsIssue != nil)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil),
@@ -84,8 +86,8 @@ import UtilityCore
 
         var settings = VideoGIFOptions()
         settings.ffmpegExecutable = ffmpeg
-        settings.start = 0.25
-        settings.end = 1.25
+        settings.start = try #require(VideoTimecode.seconds(from: "00:00:00.25"))
+        settings.end = try #require(VideoTimecode.seconds(from: "0:01.25"))
         settings.width = 96
         settings.fps = 10
         settings.loop = loop

@@ -166,7 +166,7 @@ struct ToolWorkspace: View {
             muteReview?.request != .init(inputs: draft.inputs, options: draft.options.mute)
                 || muteReview?.permitsExport != true
         case .videoToGIF:
-            draft.options.videoGIF.engineIssue != nil
+            draft.options.videoGIF.engineIssue != nil || draft.options.videoGIF.settingsIssue != nil
         case .mergeVideos:
             videoMergeReview?.request.inputs != draft.inputs || videoMergeReview?.request.options != draft.options.videoMerge
                 || videoMergeReview?.permitsExport != true

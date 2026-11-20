@@ -35,6 +35,20 @@ public struct VideoGIFOptions: Equatable, Sendable {
         ffmpegExecutable.map(ExternalTool.isExecutable) == true ? nil : "Choose an FFmpeg executable to create GIFs."
     }
 
+    package var settingsIssue: String? {
+        guard start.isFinite, start >= 0,
+              end.map({ $0.isFinite && $0 > start }) != false else {
+            return "Enter an in point before the out point."
+        }
+        guard (16...1_280).contains(width), (5...30).contains(fps) else {
+            return "Choose a width from 16 to 1,280 pixels and a frame rate from 5 to 30 fps."
+        }
+        guard loop != .repeatCount || (1...99).contains(repetitions) else {
+            return "Choose between 1 and 99 repeats."
+        }
+        return nil
+    }
+
     var loopValue: Int {
         switch loop {
         case .once: -1
@@ -66,12 +80,7 @@ public enum VideoGIF {
     }
 
     package static func plan(in bounds: Range<Double>, options: VideoGIFOptions) throws -> VideoGIFPlan {
-        guard (16...1_280).contains(options.width), (5...30).contains(options.fps) else {
-            throw ToolError.invalid("Choose a width from 16 to 1,280 pixels and a frame rate from 5 to 30 fps.")
-        }
-        guard options.loop != .repeatCount || (1...99).contains(options.repetitions) else {
-            throw ToolError.invalid("Choose between 1 and 99 repeats.")
-        }
+        if let issue = options.settingsIssue { throw ToolError.invalid(issue) }
         let start = options.start == 0 ? bounds.lowerBound : options.start
         guard bounds.contains(start) else {
             throw ToolError.invalid("Choose an in point within the visible video.")

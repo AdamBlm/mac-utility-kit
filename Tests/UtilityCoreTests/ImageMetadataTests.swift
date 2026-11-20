@@ -86,6 +86,33 @@ func metadataExifToolRemovesOnlyRequestedGroupsAndPreservesAppearance() async th
     #expect(xmp.after.groups[.camera]?.isEmpty == false)
 }
 
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_EXIFTOOL_TEST"] != nil))
+func metadataExifToolPublishesIndependentCopiesForSymbolicLinkInputs() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_EXIFTOOL_TEST"])
+    let folder = try metadataFixtureFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try metadataFixture(in: folder)
+    let bytes = try Data(contentsOf: source)
+    let link = folder.appending(path: "link.jpg")
+    try FileManager.default.createSymbolicLink(at: link, withDestinationURL: source)
+    var options = ImageMetadataOptions()
+    options.exifToolExecutable = URL(fileURLWithPath: executable)
+    options.groups = [.xmp]
+    let output = folder.appending(path: "clean.jpg")
+    let result = try await ImageMetadata.remove(link, to: output, options: options)
+    #expect(result.before.groups[.xmp]?.isEmpty ?? true)
+    #expect(try output.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false)
+    let updated = folder.appending(path: "no-gps.jpg")
+    options.groups = [.location]
+    let removal = try await ImageMetadata.remove(link, to: updated, options: options)
+    #expect(removal.before.groups[.location]?.isEmpty == false)
+    #expect(removal.after.groups[.location]?.isEmpty ?? true)
+    #expect(try updated.resourceValues(forKeys: [.isSymbolicLinkKey]).isSymbolicLink == false)
+    #expect(try Data(contentsOf: source) == bytes)
+    try FileManager.default.removeItem(at: source)
+    #expect(try Data(contentsOf: output) == bytes)
+}
+
 private func metadataFixtureFolder() throws -> URL {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
