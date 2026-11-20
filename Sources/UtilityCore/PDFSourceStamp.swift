@@ -1,7 +1,7 @@
 import Darwin
 import Foundation
 
-public struct PDFSourceStamp: Equatable, Sendable {
+public struct PDFSourceStamp: Hashable, Sendable {
     package let resolved: URL
     private let stamp: DuplicateFileStamp
 

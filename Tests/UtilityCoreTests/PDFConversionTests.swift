@@ -284,6 +284,39 @@ private func conversionPDF(in folder: URL) throws -> URL {
     #expect(PDFCrop.visibleSize(for: resultPage) == CGSize(width: 180, height: 270))
 }
 
+@Test func PDFToImagesBindsPlansAndPublicationToReviewedBytes() async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try conversionPDF(in: folder)
+    let bytes = try Data(contentsOf: source)
+    let exports = try folder.subdirectory("exports")
+    var options = PDFToImagesOptions()
+    options.reviewedSource = try PDFSourceStamp.read(source)
+    try bytes.write(to: source, options: .atomic)
+    #expect(throws: ToolError.self) { try PDFToImages.plans(source, options: options) }
+    await #expect(throws: ToolError.self) {
+        try await PDFToImages.preview(source, pageNumber: 1, options: options)
+    }
+    await #expect(throws: ToolError.self) {
+        try await PDFToImages.export(source, into: exports, options: options) { _ in }
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
+    options.reviewedSource = try PDFSourceStamp.read(source)
+    #expect(try PDFToImages.plans(source, options: options).count == 2)
+    do {
+        _ = try await PDFToImages.export(source, into: exports, options: options) { progress in
+            if progress == 2.0 / 3.0 {
+                do { try bytes.write(to: source, options: .atomic) }
+                catch { Issue.record("Could not replace the PDF source: \(error)") }
+            }
+        }
+        Issue.record("PDF to Images published output after the source changed.")
+    } catch {
+        #expect(error.localizedDescription.contains("Refresh the page preview"))
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
+}
+
 @Test(arguments: ["reader", ""])
 func PDFToImagesHonorsCopyrightRestrictionsAndCanEncodeHEIC(readerPassword: String) async throws {
     let folder = try conversionFolder()

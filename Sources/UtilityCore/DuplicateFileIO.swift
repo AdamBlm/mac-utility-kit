@@ -7,7 +7,7 @@ struct DuplicateFileIdentity: Hashable, Sendable {
     let inode: ino_t
 }
 
-struct DuplicateFileStamp: Equatable, Sendable {
+struct DuplicateFileStamp: Hashable, Sendable {
     let identity: DuplicateFileIdentity
     let bytes: Int64
     let allocatedBytes: Int64

@@ -124,6 +124,7 @@ struct PDFEditingSettings: View {
         case .organizePDF: $options.pdfOrganize.reviewedSource
         case .deletePDFPages: $options.pdfDelete.reviewedSource
         case .extractPDFPages: $options.pdfExtract.reviewedSource
+        case .pdfToImages: $options.pdfToImages.reviewedSource
         default: nil
         }
     }

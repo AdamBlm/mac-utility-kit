@@ -40,6 +40,7 @@ public struct PDFToImagesOptions: Hashable, Sendable {
     public var quality = 0.85
     public var transparent = false
     public var filenamePattern = "{name}-{page}"
+    package var reviewedSource: PDFSourceStamp?
 
     public init() {}
 }
@@ -54,13 +55,18 @@ public struct PDFPageRasterPlan: Identifiable, Sendable {
 
 public enum PDFToImages {
     public static func plans(_ input: URL, options: PDFToImagesOptions) throws -> [PDFPageRasterPlan] {
-        try plans(input, document: open(input, password: options.password), options: options)
+        let source = try reviewedInput(input, expected: options.reviewedSource)
+        let result = try plans(input, document: open(source.resolved, password: options.password), options: options)
+        try verifySource(input, expected: source)
+        return result
     }
 
     package static func preview(_ input: URL, pageNumber: Int, options: PDFToImagesOptions) async throws -> CGImage {
         try Task.checkCancellation()
-        let document = try open(input, password: options.password)
-        guard pageNumber > 0, let page = document.page(at: pageNumber - 1), let reference = page.pageRef else {
+        let source = try reviewedInput(input, expected: options.reviewedSource)
+        let document = try open(source.resolved, password: options.password)
+        guard pageNumber > 0, pageNumber <= document.pageCount,
+              let page = document.page(at: pageNumber - 1), let reference = page.pageRef else {
             throw ToolError.invalid("Choose an available page to preview.")
         }
         var scaled = options
@@ -68,7 +74,10 @@ public enum PDFToImages {
         scaled.maxWidth = 420
         scaled.maxHeight = 420
         let (width, height) = try dimensions(of: reference, options: scaled)
-        return try rasterize(page, width: width, height: height, transparent: options.transparent, pageNumber: pageNumber)
+        let image = try rasterize(page, width: width, height: height, transparent: options.transparent, pageNumber: pageNumber)
+        try Task.checkCancellation()
+        try verifySource(input, expected: source)
+        return image
     }
 
     public static func export(
@@ -76,7 +85,8 @@ public enum PDFToImages {
         progress: @Sendable (Double) async -> Void
     ) async throws -> [URL] {
         try Task.checkCancellation()
-        let document = try open(input, password: options.password)
+        let source = try reviewedInput(input, expected: options.reviewedSource)
+        let document = try open(source.resolved, password: options.password)
         let plans = try plans(input, document: document, options: options)
         let staging = try PDFConversionStaging.create(in: directory)
         let manager = FileManager.default
@@ -93,6 +103,8 @@ public enum PDFToImages {
             try render(page, plan: plan, options: options, to: staging.appendingPathComponent(plan.filename))
             await progress(Double(index + 1) / Double(plans.count + 1))
         }
+        try Task.checkCancellation()
+        try verifySource(input, expected: source)
         var published: [URL] = []
         do {
             for output in outputs {
@@ -106,6 +118,18 @@ public enum PDFToImages {
         }
         await progress(1)
         return outputs
+    }
+
+    private static func reviewedInput(_ input: URL, expected: PDFSourceStamp?) throws -> PDFSourceStamp {
+        guard let expected else { return try PDFSourceStamp.read(input) }
+        try verifySource(input, expected: expected)
+        return expected
+    }
+
+    private static func verifySource(_ input: URL, expected: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == expected else {
+            throw ToolError.invalid("The source PDF changed. Refresh the page preview before exporting images.")
+        }
     }
 
     private static func open(_ input: URL, password: String) throws -> PDFDocument {
