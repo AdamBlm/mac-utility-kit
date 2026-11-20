@@ -80,6 +80,33 @@ struct PDFRedactionTests {
     }
 
     @Test
+    func preservesAReplacementAtTheConfirmedRedactionDestination() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = folder.appending(path: "source.pdf")
+        let output = folder.appending(path: "redacted.pdf")
+        try Self.makePDF(at: input, rotation: 0)
+        let source = try await PDFRedaction.open(input)
+        let marks = try await PDFRedaction.search("private passphrase", in: source)
+        try Data("confirmed initial output".utf8).write(to: output)
+        let confirmed = try PDFFormDestination(output, preserving: input)
+        let replacement = Data("unrelated replacement".utf8)
+        do {
+            _ = try await PDFRedaction.export(source, marks: marks, fill: .black, destination: confirmed) { progress in
+                if progress < 1 {
+                    do { try replacement.write(to: output, options: .atomic) }
+                    catch { Issue.record("Could not replace the destination fixture: \(error)") }
+                }
+            }
+            Issue.record("Redaction overwrote an unrelated destination.")
+        } catch {
+            #expect(error.localizedDescription.contains("destination file changed"))
+        }
+        #expect(try Data(contentsOf: output) == replacement)
+        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: folder.path)) == ["source.pdf", "redacted.pdf"])
+    }
+
+    @Test
     func rejectsSourceOverwriteAndOutOfPageMarks() async throws {
         let folder = try Self.folder()
         defer { try? FileManager.default.removeItem(at: folder) }

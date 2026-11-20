@@ -6,8 +6,9 @@ package struct PDFFormDestination: Sendable {
     private let parentIdentity: DuplicateFileIdentity
     private let name: String
     private let existing: DuplicateFileStamp?
+    package var url: URL { parent.appendingPathComponent(name) }
 
-    package init(_ destination: URL, preserving source: URL) throws {
+    package init(_ destination: URL, preserving source: URL, allowsReplacement: Bool = true) throws {
         guard destination.isFileURL else { throw ToolError.invalid("Choose a local destination.") }
         parent = destination.deletingLastPathComponent().resolvingSymlinksInPath().standardizedFileURL
         name = destination.lastPathComponent
@@ -19,9 +20,27 @@ package struct PDFFormDestination: Sendable {
         defer { close(fd) }
         parentIdentity = try Self.identity(fd)
         existing = try Self.file(named: name, in: fd)
+        guard allowsReplacement || existing == nil else {
+            throw ToolError.invalid("Choose a new local PDF filename.")
+        }
     }
 
     package func publish(_ data: Data) throws {
+        try publish { try $0.write(contentsOf: data) }
+    }
+
+    package func publish(file: URL) throws {
+        try publish { output in
+            let input = try FileHandle(forReadingFrom: file)
+            defer { try? input.close() }
+            while let chunk = try input.read(upToCount: 1024 * 1024), !chunk.isEmpty {
+                try Task.checkCancellation()
+                try output.write(contentsOf: chunk)
+            }
+        }
+    }
+
+    private func publish(write: (FileHandle) throws -> Void) throws {
         try Task.checkCancellation()
         let fd = try Self.openParent(parent)
         defer { close(fd) }
@@ -34,7 +53,7 @@ package struct PDFFormDestination: Sendable {
         guard output >= 0 else { throw Self.posix(errno) }
         defer { _ = unlinkat(fd, temporary, 0) }
         let handle = FileHandle(fileDescriptor: output, closeOnDealloc: true)
-        try handle.write(contentsOf: data)
+        try write(handle)
         try handle.close()
         try Task.checkCancellation()
 

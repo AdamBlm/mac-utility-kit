@@ -282,8 +282,11 @@ struct RedactPDFView: View {
         panel.allowedContentTypes = [.pdf]
         panel.nameFieldStringValue = loaded.url.deletingPathExtension().lastPathComponent + "-redacted.pdf"
         guard panel.runModal() == .OK, let destination = panel.url else { return }
-        guard destination.resolvingSymlinksInPath().standardizedFileURL != loaded.url.resolvingSymlinksInPath().standardizedFileURL else {
-            issue = "Choose a separate file for the redacted copy."
+        let confirmed: PDFFormDestination
+        do {
+            confirmed = try PDFFormDestination(destination, preserving: loaded.source.url)
+        } catch {
+            issue = error.localizedDescription
             return
         }
         let marks = draft.marks
@@ -297,12 +300,11 @@ struct RedactPDFView: View {
             defer { work = nil; operation = nil }
             do {
                 let result = try await PDFRedaction.export(
-                    loaded.source, marks: marks, fill: fill, to: destination,
-                    replacingExisting: FileManager.default.fileExists(atPath: destination.path)
+                    loaded.source, marks: marks, fill: fill, destination: confirmed
                 ) { fraction in
                     await MainActor.run { progress = fraction }
                 }
-                saved = destination
+                saved = confirmed.url
                 let suffix = result.markedPageCount == 1 ? "page" : "pages"
                 status = "Saved the redacted copy with marks on \(result.markedPageCount) \(suffix)."
             } catch {

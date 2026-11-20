@@ -100,9 +100,17 @@ public enum PDFRedaction {
         _ source: PDFRedactionSource, marks: [PDFRedactionMark], fill: PDFRedactionFill, to output: URL,
         replacingExisting: Bool = false, progress: @escaping @Sendable (Double) async -> Void = { _ in }
     ) async throws -> PDFRedactionResult {
+        let destination = try PDFFormDestination(output, preserving: source.url, allowsReplacement: replacingExisting)
+        return try await export(source, marks: marks, fill: fill, destination: destination, progress: progress)
+    }
+
+    package static func export(
+        _ source: PDFRedactionSource, marks: [PDFRedactionMark], fill: PDFRedactionFill,
+        destination: PDFFormDestination, progress: @escaping @Sendable (Double) async -> Void = { _ in }
+    ) async throws -> PDFRedactionResult {
         let manager = FileManager.default
-        guard output.isFileURL, !isSource(output, source: source.url),
-              replacingExisting || !manager.fileExists(atPath: output.path) else {
+        let output = destination.url
+        guard !isSource(output, source: source.url) else {
             throw ToolError.invalid("Choose a separate local file for the redacted copy.")
         }
         guard !marks.isEmpty else { throw ToolError.invalid("Mark some content before exporting.") }
@@ -142,11 +150,7 @@ public enum PDFRedaction {
         guard !isSource(output, source: source.url) else {
             throw ToolError.invalid("Choose a separate local file for the redacted copy.")
         }
-        if replacingExisting, manager.fileExists(atPath: output.path) {
-            _ = try manager.replaceItemAt(output, withItemAt: candidate)
-        } else {
-            try manager.moveItem(at: candidate, to: output)
-        }
+        try destination.publish(file: candidate)
         await progress(1)
         return PDFRedactionResult(pageCount: document.pageCount, markedPageCount: grouped.count, marks: marks.count)
     }
