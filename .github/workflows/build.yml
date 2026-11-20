@@ -23,6 +23,18 @@ jobs:
             printf 'MAC_UTILITY_FFPROBE_TEST=%s\n' "$ffmpeg_directory/ffprobe"
             printf 'MAC_UTILITY_MAGICK_TEST=%s\n' "$magick"
           } >> "$GITHUB_ENV"
+      - name: Install document engines for integration tests
+        shell: bash
+        run: |
+          brew install qpdf pandoc
+          qpdf="$(brew --prefix qpdf)/bin/qpdf"
+          pandoc="$(brew --prefix pandoc)/bin/pandoc"
+          "$qpdf" --version
+          "$pandoc" --version
+          {
+            printf 'MAC_UTILITY_QPDF_TEST=%s\n' "$qpdf"
+            printf 'MAC_UTILITY_PANDOC_TEST=%s\n' "$pandoc"
+          } >> "$GITHUB_ENV"
       - name: Set up the PDF forms integration test
         shell: bash
         run: |
