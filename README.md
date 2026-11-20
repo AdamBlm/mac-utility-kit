@@ -191,3 +191,7 @@ The optional `clean-link` tool is also available. The server uses the client pro
 Run `./scripts/build-dmg.sh` after building the app to create a verified local preview disk image. The build uses an ad hoc signature by default. For an authorized distribution build, set `MUK_CODESIGN_IDENTITY` to the Developer ID Application identity when running both build scripts. Set `MUK_NOTARY_PROFILE` for the DMG script to submit the final disk image using an authorized Keychain notary profile. The script checks acceptance and staples and validates the ticket before saving the requested disk image. Publication is a separate release step. [Apple notarization workflow](https://developer.apple.com/documentation/security/customizing-the-notarization-workflow)
 
 When building a release, set `MUK_BUNDLE_ID` to the distribution bundle identifier, `MUK_RELEASE_VERSION` to the three-part version users see, and `MUK_BUILD_VERSION` to an incrementing build number. `build-app.sh` applies this metadata before signing. Local builds use the preview identifier and version by default. [Apple bundle version documentation](https://developer.apple.com/documentation/bundleresources/information-property-list/cfbundleshortversionstring)
+
+## License
+
+Mac Utility Kit's original code and documentation are available under the [MIT License](LICENSE). Third-party components and assets retain their own licenses. See [third-party notices](licenses/) and the [engine release plan](docs/plan/engine-release.md) for bundled and optional tools.
