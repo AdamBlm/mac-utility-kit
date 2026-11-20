@@ -63,6 +63,32 @@ struct ArchiveToolsTests {
         await #expect(throws: ToolError.self) { try await ArchiveTools.create([source], to: zip) }
     }
 
+    @Test func refusesToPublishWhenTheExtractionDestinationWasReplaced() async throws {
+        let stage = try staging()
+        let manager = FileManager.default
+        defer { try? manager.removeItem(at: stage) }
+        let member = stage.appending(path: "member.txt")
+        try Data("Archive contents".utf8).write(to: member)
+        let zip = stage.appending(path: "sample.zip")
+        try await ArchiveTools.create([member], to: zip)
+
+        let destination = stage.appending(path: "Destination")
+        let original = stage.appending(path: "Former destination")
+        try destination.ensureDirectory()
+        try Data("Keep".utf8).write(to: destination.appending(path: "existing.txt"))
+        do {
+            _ = try ArchiveTools.extract(zip, to: destination, selected: nil, password: nil, conflicts: .rename, expected: nil) {
+                try manager.moveItem(at: destination, to: original)
+                try destination.ensureDirectory()
+            }
+            Issue.record("Extraction published into a destination that was moved during staging.")
+        } catch {
+            #expect(error.localizedDescription.contains("extraction destination changed"))
+        }
+        #expect(try manager.contentsOfDirectory(atPath: original.path) == ["existing.txt"])
+        #expect(try manager.contentsOfDirectory(atPath: destination.path).isEmpty)
+    }
+
     @Test(arguments: [false, true])
     func reviewedArchiveRejectsChangedContentsWithTheSameEntryIDs(inPlace: Bool) async throws {
         let stage = try staging()

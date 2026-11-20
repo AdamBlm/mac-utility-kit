@@ -66,14 +66,16 @@ public enum ArchiveTools {
                     conflicts: conflicts, expected: listing.stamp)
     }
 
-    private static func extract(
+    static func extract(
         _ archive: URL, to destination: URL, selected: Set<ArchiveEntry.ID>?,
-        password: String?, conflicts: ArchiveConflictPolicy, expected: DuplicateFileStamp?
+        password: String?, conflicts: ArchiveConflictPolicy, expected: DuplicateFileStamp?,
+        beforePublishing: () throws -> Void = {}
     ) throws -> ArchiveExtractionSummary {
         guard destination.isFileURL else { throw ToolError.invalid("Choose a local destination folder.") }
         guard selected?.isEmpty != true else { throw ToolError.invalid("Choose at least one archive entry.") }
         let destinationFD = try ArchivePublication.directory(destination)
         defer { close(destinationFD) }
+        let destinationIdentity = try ArchivePublication.identity(".", in: destinationFD)
         let staging = try ArchiveStage(in: destinationFD)
         defer { staging.remove() }
         var remaining = selected ?? []
@@ -112,8 +114,9 @@ public enum ArchiveTools {
         }
         guard remaining.isEmpty else { throw ToolError.invalid("Archive entries changed. Read the contents again.") }
         try Task.checkCancellation()
+        try beforePublishing()
         return try publish(topLevel.sorted(), from: staging.fd, to: destination,
-                           destinationFD: destinationFD, conflicts: conflicts)
+                           destinationFD: destinationFD, destinationIdentity: destinationIdentity, conflicts: conflicts)
     }
 
     private static func writeMember(_ reader: OpaquePointer, to name: String, in parent: Int32, total: inout Int64) throws {
@@ -137,17 +140,20 @@ public enum ArchiveTools {
     }
 
     private static func publish(
-        _ names: [String], from stageFD: Int32, to destination: URL, destinationFD: Int32, conflicts: ArchiveConflictPolicy
+        _ names: [String], from stageFD: Int32, to destination: URL, destinationFD: Int32,
+        destinationIdentity: ArchivePublication.Identity, conflicts: ArchiveConflictPolicy
     ) throws -> ArchiveExtractionSummary {
         var published: [(source: String, destination: String, identity: ArchivePublication.Identity)] = []
         var skipped: [String] = []
         do {
+            try checkDestination(destination, identity: destinationIdentity)
             for name in names {
                 try Task.checkCancellation()
                 let identity = try ArchivePublication.identity(name, in: stageFD)
                 let result = try publishItem(name, from: stageFD, to: destinationFD, conflicts: conflicts)
                 if let result { published.append((name, result, identity)) } else { skipped.append(name) }
             }
+            try checkDestination(destination, identity: destinationIdentity)
         } catch {
             var recovery: [String] = []
             for item in published.reversed() {
@@ -167,6 +173,12 @@ public enum ArchiveTools {
         })
         return ArchiveExtractionSummary(published: published.map { destination.appending(path: $0.destination) },
                                         skipped: skipped, renamed: renamed)
+    }
+
+    private static func checkDestination(_ url: URL, identity: ArchivePublication.Identity) throws {
+        guard (try? ArchivePublication.identity(url.path, in: AT_FDCWD)) == identity else {
+            throw ToolError.invalid("The extraction destination changed. Choose the folder again.")
+        }
     }
 
     private static func publishItem(
