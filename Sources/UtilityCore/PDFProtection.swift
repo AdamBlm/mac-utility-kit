@@ -82,7 +82,9 @@ public enum PDFProtection {
         let preview = folder.appendingPathComponent("Preview.pdf")
         _ = try await remove(input, to: preview, options: options)
         try Task.checkCancellation()
-        return try Data(contentsOf: preview)
+        // Map the verified local file so PDFKit can read pages on demand after the
+        // private temporary copy is unlinked.
+        return try Data(contentsOf: preview, options: .alwaysMapped)
     }
 
     private static func unlockedPageCount(_ input: URL, password: String) throws -> Int {
