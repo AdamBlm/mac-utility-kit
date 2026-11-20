@@ -38,10 +38,24 @@ enum MarkdownSyntax {
 }
 
 public enum MarkdownPDF {
+    private static let maximumInputBytes = 2 * 1_024 * 1_024
+
+    package static func loadUTF8(_ url: URL) async throws -> String {
+        let data: Data
+        do {
+            data = try await PlainTextDecoding.loadVerifiedBytes(url, maximumBytes: maximumInputBytes)
+        } catch PlainTextDecoding.ReadIssue.tooLarge {
+            throw ToolError.invalid("Choose a UTF-8 Markdown file up to 2 MiB.")
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw ToolError.invalid("Could not read this file as UTF-8 Markdown.")
+        }
+        return text
+    }
 
     public static func prepare(_ markdown: String, options: MarkdownPDFOptions = .init()) async throws -> MarkdownPDFDocument {
         let bytes = markdown.utf8.count
-        guard bytes > 0, bytes <= 2_097_152,
+        guard bytes > 0, bytes <= maximumInputBytes,
               !markdown.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
             throw ToolError.invalid("Enter Markdown text up to 2 MB.")
         }

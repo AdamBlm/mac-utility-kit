@@ -29,6 +29,10 @@ struct MarkdownPDFView: View {
         }
     }
 
+    private var inputTypes: [UTType] {
+        [UTType(filenameExtension: "md") ?? .plainText, .plainText]
+    }
+
     var body: some View {
         let request = Request(markdown: draft.markdown, options: draft.options)
         InteractiveToolLayout(tool: .markdownToPDF) { palette in
@@ -42,10 +46,10 @@ struct MarkdownPDFView: View {
                     .accessibilityLabel("Markdown source")
                 HStack {
                     Button("Open Markdown…", systemImage: "folder") {
-                        let type = UTType(filenameExtension: "md") ?? .plainText
-                        if let url = DeveloperToolFiles.choose(allowedTypes: [type, .plainText]) { open(url) }
+                        if let url = DeveloperToolFiles.choose(allowedTypes: inputTypes) { open(url) }
                     }
-                    Button("Paste", systemImage: "doc.on.clipboard") {
+                    ClipboardFileButton(allowedTypes: inputTypes, buttonOnlyTitle: "Paste File", onPasteFile: open)
+                    Button("Paste Text", systemImage: "doc.on.clipboard") {
                         if let text = NSPasteboard.general.string(forType: .string) {
                             draft.markdown = text
                             draft.source = nil
@@ -159,12 +163,7 @@ struct MarkdownPDFView: View {
         task = Task {
             defer { task = nil }
             do {
-                let values = try source.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-                guard values.isRegularFile == true, (values.fileSize ?? Int.max) <= 2_097_152 else {
-                    throw ToolError.invalid("Choose a UTF-8 Markdown file up to 2 MB.")
-                }
-                let data = try await DeveloperToolFiles.read(source)
-                let text = try DeveloperToolFiles.utf8(data)
+                let text = try await MarkdownPDF.loadUTF8(source)
                 try Task.checkCancellation()
                 draft.markdown = text
                 draft.source = source
@@ -172,6 +171,7 @@ struct MarkdownPDFView: View {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled else { return }
                 fileError = error.localizedDescription
             }
         }

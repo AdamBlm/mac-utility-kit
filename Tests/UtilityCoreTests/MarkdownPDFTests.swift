@@ -7,6 +7,22 @@ import UniformTypeIdentifiers
 import UtilityCore
 
 @Suite struct MarkdownPDFTests {
+    @Test func readsVerifiedUTF8MarkdownAndRejectsOversizedFiles() async throws {
+        let source = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".md")
+        defer { try? FileManager.default.removeItem(at: source) }
+        let text = "# café\r\n\r\n東京\n"
+        try Data(text.utf8).write(to: source)
+        let loaded = try await MarkdownPDF.loadUTF8(source)
+        #expect(loaded.utf8.elementsEqual(text.utf8))
+        let document = try await MarkdownPDF.prepare(loaded)
+        #expect(document.html.contains("café") && document.html.contains("東京"))
+
+        let file = try FileHandle(forWritingTo: source)
+        try file.truncate(atOffset: 2 * 1_024 * 1_024 + 1)
+        try file.close()
+        await #expect(throws: ToolError.self) { try await MarkdownPDF.loadUTF8(source) }
+    }
+
     @Test func parsesGFMAndOmitsActiveContent() async throws {
         let document = try await MarkdownPDF.prepare("""
         # Heading — café
