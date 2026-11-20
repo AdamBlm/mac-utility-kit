@@ -21,6 +21,7 @@ struct ToolWorkspace: View {
     @State private var pdfEditorReady = false
     @State private var trimReview: TrimVideoReview?
     @State private var extractionReview = AudioExtractionReview()
+    @State private var audioTrimReview: AudioTrimReview?
     @State private var replaceAudioReview = ReplaceAudioReview()
     @State private var changeSpeedReview: ChangeSpeedReview?
     @State private var videoMergeReview: VideoMergeReview?
@@ -182,6 +183,9 @@ struct ToolWorkspace: View {
         case .extractAudio:
             draft.options.extraction.validationIssue != nil || extractionReview.inputs != draft.inputs
                 || !extractionReview.permitsExport(options: draft.options.extraction)
+        case .trimAudio:
+            audioTrimReview?.inputs != draft.inputs
+                || audioTrimReview?.issues(options: draft.options.audioTrim).count == draft.inputs.count
         case .mergePDFs:
             draft.mergePages?.isEmpty != false || (try? PDFMergePlan.outputFilename(draft.outputName)) == nil
         case .convertDocuments:
@@ -313,7 +317,8 @@ struct ToolWorkspace: View {
                         case .extractAudio:
                             extractionControls(review: $extractionReview)
                         case .trimAudio:
-                            AudioTrimControls(inputs: draft.inputs, options: $draft.options.audioTrim)
+                            AudioTrimControls(inputs: draft.inputs, options: $draft.options.audioTrim,
+                                              review: $audioTrimReview)
                         case .convertAudio:
                             AudioConvertControls(inputs: draft.inputs, options: $draft.options.audioConvert)
                         case .cleanUpAudio:

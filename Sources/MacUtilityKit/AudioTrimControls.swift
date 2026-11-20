@@ -2,9 +2,27 @@ import AVFoundation
 import SwiftUI
 import UtilityCore
 
+struct AudioTrimReview {
+    let inputs: [URL]
+    let sources: [Result<AudioTrimSource, any Error>]
+
+    func issues(options: AudioTrimOptions) -> [(index: Int, error: any Error)] {
+        sources.enumerated().compactMap { index, source in
+            do {
+                _ = try AudioTrimSelection.plan(source.get(), options: options)
+                return nil
+            } catch {
+                return (index, error)
+            }
+        }
+    }
+}
+
 struct AudioTrimControls: View {
     let inputs: [URL]
     @Binding var options: AudioTrimOptions
+    @Binding var review: AudioTrimReview?
+    @State private var refreshID = UUID()
     @State private var loaded: Loaded?
     @State private var player: AVAudioPlayer?
     @State private var previewError: String?
@@ -20,6 +38,8 @@ struct AudioTrimControls: View {
 
     var body: some View {
         let active = loaded?.url == input ? loaded : nil
+        let activeReview = review?.inputs == inputs ? review : nil
+        let issues = activeReview?.issues(options: options) ?? []
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Method") {
                 Picker("Method", selection: Binding(get: { options.mode }, set: { selectMode($0) })) {
@@ -45,16 +65,67 @@ struct AudioTrimControls: View {
                 case .success(let waveform):
                     waveformEditor(waveform)
                 case .failure(let error):
-                    Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                    if !issues.contains(where: { $0.index == 0 && $0.error.localizedDescription == error.localizedDescription }) {
+                        Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                    }
                 }
             } else if input != nil {
                 ProgressView("Reading waveform…").controlSize(.small)
             }
+            if activeReview != nil {
+                if !issues.isEmpty {
+                    if issues.count < inputs.count {
+                        Text("Compatible files can export. Files that still fail these checks will appear as failures in the export report.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                    ForEach(issues, id: \.index) { issue in
+                        Text("\(issue.index + 1). \(inputs[issue.index].lastPathComponent) · \(issue.error.localizedDescription)")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                Button("Recheck Audio") {
+                    stopPlayback()
+                    review = nil
+                    loaded = nil
+                    refreshID = UUID()
+                }
+            } else if input != nil {
+                ProgressView("Checking audio selections…").controlSize(.small)
+            }
         }
-        .task(id: input) { await load(input) }
+        .task(id: WaveformRequest(url: input, revision: refreshID)) { await load(input) }
+        .task(id: ReviewRequest(inputs: inputs, revision: refreshID)) { await inspect(inputs) }
         .task(id: looping) { await followPlayback() }
         .onChange(of: options) { stopPlayback() }
-        .onDisappear { stopPlayback() }
+        .onDisappear {
+            stopPlayback()
+            review = nil
+        }
+    }
+
+    private struct WaveformRequest: Equatable {
+        let url: URL?
+        let revision: UUID
+    }
+
+    private struct ReviewRequest: Equatable {
+        let inputs: [URL]
+        let revision: UUID
+    }
+
+    private func inspect(_ inputs: [URL]) async {
+        guard !inputs.isEmpty else { return }
+        let worker = Task.detached(priority: .userInitiated) {
+            var sources: [Result<AudioTrimSource, any Error>] = []
+            for input in inputs {
+                if Task.isCancelled { break }
+                sources.append(Result { try AudioTrim.source(input) })
+            }
+            return sources
+        }
+        let sources = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+        guard !Task.isCancelled else { return }
+        review = AudioTrimReview(inputs: inputs, sources: sources)
     }
 
     @ViewBuilder
@@ -112,8 +183,6 @@ struct AudioTrimControls: View {
                 Spacer()
                 Text("Selection · \(Self.timecode(seconds))").monospacedDigit().foregroundStyle(.secondary)
             }
-        } else if case .failure(let error) = selection {
-            Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
         }
         if let previewError { Text(previewError).font(.callout).foregroundStyle(.secondary) }
     }

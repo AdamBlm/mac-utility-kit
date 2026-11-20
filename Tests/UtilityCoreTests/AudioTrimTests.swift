@@ -76,6 +76,34 @@ struct AudioTrimTests {
         #expect(throws: ToolError.self) { try AudioTrimSelection.plan(source, options: options) }
     }
 
+    @Test
+    func mixedBatchPublishesOnlyCompatibleLosslessTrim() async throws {
+        let folder = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let aiff = folder.appending(path: "first.aiff")
+        let wav = folder.appending(path: "second.wav")
+        try Self.makeSource(aiff, format: .aiff, allSamplesEqual: false)
+        try Self.makeSource(wav, format: .wav, allSamplesEqual: false)
+
+        var options = ToolOptions()
+        options.audioTrim.mode = .lossless
+        options.audioTrim.start = 0.125
+        options.audioTrim.end = 0.625
+        let selection = try AudioTrimSelection.plan(AudioTrim.source(wav), options: options.audioTrim)
+        #expect(throws: ToolError.self) {
+            try AudioTrimSelection.plan(AudioTrim.source(aiff), options: options.audioTrim)
+        }
+
+        let report = try await ToolRunner.run(.trimAudio, inputs: [aiff, wav], destination: folder,
+                                              imageSize: 0, options: options) { _ in }
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("matching output format") == true)
+        #expect(report.outputs.count == 1)
+        let output = try #require(report.outputs.first)
+        let source = try Self.samples(in: wav)
+        #expect(try Self.samples(in: output) == Array(source[Int(selection.firstFrame)..<Int(selection.endFrame)]))
+    }
+
     private static func makeDirectory() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
