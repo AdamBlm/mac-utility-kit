@@ -5,8 +5,9 @@ struct VideoCropControls: View {
     let inputs: [URL]
     @Binding var options: VideoCropOptions
 
+    @State private var selected: URL?
     @State private var source: SourcePreview?
-    @State private var sourceIssue: String?
+    @State private var sourceIssue: (url: URL, message: String)?
     @State private var rendered: RenderedPreview?
 
     private struct SourcePreview {
@@ -25,8 +26,15 @@ struct VideoCropControls: View {
         let result: Result<CGImage, any Error>
     }
 
+    private var previewInputs: [URL] {
+        var seen = Set<URL>()
+        return inputs.filter { seen.insert($0).inserted }
+    }
+
     var body: some View {
-        let request = PreviewInput(url: inputs.first, options: options)
+        let previews = previewInputs
+        let input = selected.flatMap { previews.contains($0) ? $0 : nil } ?? previews.first
+        let request = PreviewInput(url: input, options: options)
         VStack(alignment: .leading, spacing: 13) {
             SettingRow("Crop ratio") {
                 Picker("Crop ratio", selection: Binding(get: { options.aspect }, set: { aspect in
@@ -49,15 +57,28 @@ struct VideoCropControls: View {
                 Toggle("Flip horizontally", isOn: $options.mirrorsHorizontally)
                 Toggle("Flip vertically", isOn: $options.mirrorsVertically)
             }
-            if let source, source.url == inputs.first {
+            if previews.count > 1 {
+                SettingRow("Preview video") {
+                    Picker("Preview video", selection: Binding(get: { input }, set: { selected = $0 })) {
+                        ForEach(previews, id: \.self) { url in
+                            let name = url.lastPathComponent
+                            let duplicateName = previews.contains { $0 != url && $0.lastPathComponent == name }
+                            Text(duplicateName ? url.path : name).tag(Optional(url))
+                        }
+                    }
+                    .labelsHidden()
+                    .help(input?.path ?? "")
+                }
+            }
+            if let source, source.url == input {
                 cropEditor(source, request: request)
-            } else if let sourceIssue {
-                Text(sourceIssue).font(.callout).foregroundStyle(.secondary)
-            } else if inputs.first != nil {
+            } else if let sourceIssue, sourceIssue.url == input {
+                Text(sourceIssue.message).font(.callout).foregroundStyle(.secondary)
+            } else if input != nil {
                 ProgressView("Loading frame…").controlSize(.small)
             }
         }
-        .task(id: inputs.first) { await loadSource(inputs.first) }
+        .task(id: input) { await loadSource(input) }
         .task(id: request) { await render(request) }
     }
 
@@ -80,7 +101,7 @@ struct VideoCropControls: View {
             }
         }
         if inputs.count > 1 {
-            Text("Showing \(source.url.lastPathComponent). Crop coordinates apply to each video.")
+            Text("Crop coordinates apply to each video in the batch.")
                 .font(.callout).foregroundStyle(.secondary)
         }
         switch layout {
@@ -132,6 +153,7 @@ struct VideoCropControls: View {
     }
 
     private func loadSource(_ url: URL?) async {
+        guard !Task.isCancelled else { return }
         source = nil
         sourceIssue = nil
         guard let url else { return }
@@ -142,7 +164,7 @@ struct VideoCropControls: View {
             try Task.checkCancellation()
             source = loaded
         } catch {
-            if !Task.isCancelled { sourceIssue = error.localizedDescription }
+            if !Task.isCancelled { sourceIssue = (url, error.localizedDescription) }
         }
     }
 
