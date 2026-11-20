@@ -31,6 +31,20 @@ struct HiddenSettingsTests {
         #expect(stored == .managed)
     }
 
+    @Test func recognizesCurrentHostOverrideAndRefusesToWriteAroundIt() {
+        let enabled = NSNumber(value: true)
+        let disabled = NSNumber(value: false)
+        #expect(HiddenSettings.storedValue(currentHost: nil, anyHost: enabled) == .enabled)
+        #expect(HiddenSettings.storedValue(currentHost: disabled, anyHost: enabled) == .hostOverride)
+        #expect(HiddenSettings.storedValue(currentHost: "Unrecognized" as NSString, anyHost: nil) == .hostOverride)
+        #expect(throws: ToolError.self) {
+            try HiddenSettings.apply(.enabled, expecting: .systemDefault, read: { .hostOverride }) { _ in
+                Issue.record("A host override must prevent the any-host write.")
+            }
+        }
+        #expect(!HiddenSettingValue.hostOverride.canChange)
+    }
+
     @Test func refusesChangedManagedAndUnexpectedValues() {
         #expect(throws: ToolError.self) {
             try HiddenSettings.apply(.enabled, expecting: .disabled, read: { .managed }) { _ in

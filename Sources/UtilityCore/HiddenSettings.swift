@@ -77,21 +77,28 @@ public enum HiddenSettingValue: String, CaseIterable, Identifiable, Sendable {
     case disabled = "Disabled"
     case unavailable = "Unavailable"
     case managed = "Managed by macOS"
+    case hostOverride = "Override on this Mac"
 
     public var id: Self { self }
-    public var canChange: Bool { self != .managed && self != .unavailable }
+    public var canChange: Bool { self != .managed && self != .unavailable && self != .hostOverride }
 }
 
 public enum HiddenSettings {
     public static func read(_ setting: HiddenSetting) -> HiddenSettingValue {
         let domain = setting.application.domain
         let key = setting.key as CFString
-        guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else { return .unavailable }
+        guard CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost),
+              CFPreferencesSynchronize(domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else { return .unavailable }
         guard !CFPreferencesAppValueIsForced(key, setting.application.managementDomain) else { return .managed }
-        guard let stored = CFPreferencesCopyValue(key, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost) else {
-            return .systemDefault
-        }
-        return interpreted(stored)
+        return storedValue(
+            currentHost: CFPreferencesCopyValue(key, domain, kCFPreferencesCurrentUser, kCFPreferencesCurrentHost),
+            anyHost: CFPreferencesCopyValue(key, domain, kCFPreferencesCurrentUser, kCFPreferencesAnyHost)
+        )
+    }
+
+    static func storedValue(currentHost: CFPropertyList?, anyHost: CFPropertyList?) -> HiddenSettingValue {
+        if currentHost != nil { return .hostOverride }
+        return anyHost.map(interpreted) ?? .systemDefault
     }
 
     public static func apply(_ next: HiddenSettingValue, to setting: HiddenSetting, expecting prior: HiddenSettingValue) throws {

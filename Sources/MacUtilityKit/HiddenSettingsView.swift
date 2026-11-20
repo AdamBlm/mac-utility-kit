@@ -23,6 +23,10 @@ struct HiddenSettingsView: View {
                             Text(setting.title).font(.headline)
                             Text(setting.effect).font(.callout).foregroundStyle(.secondary)
                             LabeledContent("Saved value", value: value.rawValue)
+                            if value == .hostOverride {
+                                Text("A setting specific to this Mac takes priority here.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                            }
                             if value.canChange {
                                 HStack {
                                     Picker("New value", selection: Binding(
