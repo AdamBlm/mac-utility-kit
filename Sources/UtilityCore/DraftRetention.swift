@@ -42,6 +42,7 @@ package final class DraftRetention {
 
     nonisolated private static let supportedToolIDs = Set([Tool.wordCounter.id, Tool.caseConverter.id])
     private let maximumAge: TimeInterval = 7 * 24 * 60 * 60
+    private let maximumStoredBytes = 4 * 1_024 * 1_024
     private static let storedFile = URL.applicationSupportDirectory
         .appending(path: "Mac Utility Kit", directoryHint: .isDirectory)
         .appending(path: "Drafts", directoryHint: .isDirectory)
@@ -164,8 +165,14 @@ package final class DraftRetention {
         guard records == nil else { return }
         let cutoff = now().addingTimeInterval(-maximumAge)
         let size = try? file.resourceValues(forKeys: [.fileSizeKey]).fileSize
-        let encoded = size.flatMap { (0...4_194_304).contains($0) ? try? Data(contentsOf: file) : nil }
-        let disk = encoded.flatMap { try? JSONDecoder().decode(StoredRecords.self, from: $0) }
+        if let size, size > maximumStoredBytes {
+            try? clear()
+            return
+        }
+        let encoded = size.flatMap { _ in try? readStoredDrafts() }
+        let disk = encoded.flatMap {
+            $0.count <= maximumStoredBytes ? try? JSONDecoder().decode(StoredRecords.self, from: $0) : nil
+        }
         if encoded != nil, disk == nil {
             try? clear()
             return
@@ -175,6 +182,12 @@ package final class DraftRetention {
         }
         if let disk, disk.count != records?.count { persist() }
         else { scheduleExpiration() }
+    }
+
+    private func readStoredDrafts() throws -> Data {
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        return try handle.read(upToCount: maximumStoredBytes + 1) ?? Data()
     }
 
     private func scheduleExpiration() {

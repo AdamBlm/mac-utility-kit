@@ -103,6 +103,25 @@ struct DraftRetentionTests {
         #expect(fixture.store().retained(for: .wordCounter) == "fresh draft")
     }
 
+    @Test func oversizedDraftFileIsRemovedWithoutLoadingAndRetentionCanResume() throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        fixture.defaults.set(true, forKey: DraftRetention.preference)
+        try Data().write(to: fixture.file)
+        let handle = try FileHandle(forWritingTo: fixture.file)
+        try handle.truncate(atOffset: 4 * 1_024 * 1_024 + 1)
+        try handle.close()
+
+        let store = fixture.store()
+        store.start()
+        #expect(!FileManager.default.fileExists(atPath: fixture.file.path))
+        #expect(store.retained(for: .wordCounter) == nil)
+
+        store.record("fresh draft", for: .wordCounter)
+        store.persist()
+        #expect(fixture.store().retained(for: .wordCounter) == "fresh draft")
+    }
+
     @Test func expiredDraftStaysUnavailableWhileDeletionIsRetried() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
