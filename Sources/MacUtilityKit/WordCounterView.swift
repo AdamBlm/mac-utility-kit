@@ -10,8 +10,8 @@ struct WordCounterDraft {
 
 struct WordCounterView: View {
     @Binding var draft: WordCounterDraft
-    @State private var count = WordCount.empty
-    @State private var isCounting = false
+    @State private var analysis: (input: AnalysisInput, count: WordCount)?
+    @State private var analysisError: (input: AnalysisInput, message: String)?
     @State private var importError: String?
     @State private var importTask: Task<Void, Never>?
 
@@ -22,6 +22,9 @@ struct WordCounterView: View {
 
     var body: some View {
         let input = AnalysisInput(text: draft.text, options: draft.options)
+        let analyzedCount = analysis?.input == input ? analysis?.count : nil
+        let count: WordCount? = input.text.isEmpty ? .empty : analyzedCount
+        let error = analysisError?.input == input ? analysisError?.message : nil
         InteractiveToolLayout(tool: .wordCounter) { palette in
             WorkspaceSection("Text", palette: palette) {
                 TextEditor(text: Binding(get: { draft.text }, set: { replaceText($0) }))
@@ -33,7 +36,8 @@ struct WordCounterView: View {
                     .accessibilityLabel("Text to count")
                 HStack {
                     Button("Open text file…", systemImage: "folder") { chooseFile() }
-                    Button("Paste", systemImage: "doc.on.clipboard") {
+                    ClipboardFileButton(allowedTypes: [.plainText], buttonOnlyTitle: "Paste File", onPasteFile: loadFile)
+                    Button("Paste Text", systemImage: "doc.on.clipboard") {
                         if let text = NSPasteboard.general.string(forType: .string) {
                             replaceText(text)
                         }
@@ -49,18 +53,20 @@ struct WordCounterView: View {
                 }
             }
             WorkspaceSection("Counts", palette: palette) {
-                if isCounting {
+                if let error {
+                    Text(error).font(.callout).foregroundStyle(.red)
+                } else if count == nil {
                     ProgressView("Counting…").controlSize(.small)
                 }
                 Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 16) {
                     GridRow {
-                        statistic("Words", count.words.formatted())
-                        statistic("Characters", count.characters.formatted())
-                        statistic("Sentences", count.sentences.formatted())
+                        statistic("Words", count?.words.formatted() ?? "—")
+                        statistic("Characters", count?.characters.formatted() ?? "—")
+                        statistic("Sentences", count?.sentences.formatted() ?? "—")
                     }
                     GridRow {
-                        statistic("Paragraphs", count.paragraphs.formatted())
-                        statistic("Reading time", readingTime)
+                        statistic("Paragraphs", count?.paragraphs.formatted() ?? "—")
+                        statistic("Reading time", count.map { readingTime($0.readingSeconds) } ?? "—")
                     }
                 }
                 Divider()
@@ -76,7 +82,7 @@ struct WordCounterView: View {
                     }
                 }
             }
-            if !count.frequentWords.isEmpty {
+            if let count, !count.frequentWords.isEmpty {
                 WorkspaceSection("Frequent words", palette: palette) {
                     ForEach(count.frequentWords) { item in
                         HStack {
@@ -95,29 +101,29 @@ struct WordCounterView: View {
             return true
         }
         .task(id: input) {
-            guard !input.text.isEmpty else {
-                isCounting = false
-                count = .empty
-                return
-            }
-            isCounting = true
+            guard !Task.isCancelled else { return }
+            analysis = nil
+            analysisError = nil
+            guard !input.text.isEmpty else { return }
             do {
                 try await Task.sleep(for: .milliseconds(120))
                 let result = try await WordCounter.analyze(input.text, options: input.options)
-                guard !Task.isCancelled else { return }
-                count = result
-                isCounting = false
+                try Task.checkCancellation()
+                analysis = (input, result)
+            } catch is CancellationError {
+                return
             } catch {
-                if !Task.isCancelled { isCounting = false }
+                guard !Task.isCancelled else { return }
+                analysisError = (input, error.localizedDescription)
             }
         }
         .onDisappear { importTask?.cancel() }
     }
 
-    private var readingTime: String {
-        if count.readingSeconds < 60 { return "\(count.readingSeconds.formatted()) s" }
-        let minutes = count.readingSeconds / 60
-        let seconds = count.readingSeconds % 60
+    private func readingTime(_ readingSeconds: Int) -> String {
+        if readingSeconds < 60 { return "\(readingSeconds.formatted()) s" }
+        let minutes = readingSeconds / 60
+        let seconds = readingSeconds % 60
         return seconds == 0 ? "\(minutes.formatted()) min" : "\(minutes.formatted()) min \(seconds.formatted()) s"
     }
 
