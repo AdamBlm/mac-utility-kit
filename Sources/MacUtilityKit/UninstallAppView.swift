@@ -8,7 +8,8 @@ struct UninstallAppDraft {
     var report: UninstallApp.Report?
     var selected: Set<URL> = []
     var result: UninstallApp.Result?
-    var removing = false
+    var removalTask: Task<Void, Never>?
+    var removing: Bool { removalTask != nil }
 }
 
 struct UninstallAppView: View {
@@ -76,7 +77,12 @@ struct UninstallAppView: View {
                     Button("Cancel") { reviewTask?.cancel() }
                 }
             }
-            if draft.removing { ProgressView("Rechecking and moving items…").controlSize(.small) }
+            if let removalTask = draft.removalTask {
+                HStack {
+                    ProgressView("Rechecking and moving items…").controlSize(.small)
+                    Button("Stop") { removalTask.cancel() }
+                }
+            }
             if let error { Text(error).font(.callout).foregroundStyle(.red).textSelection(.enabled) }
         }
     }
@@ -132,7 +138,8 @@ struct UninstallAppView: View {
 
     private func results(_ result: UninstallApp.Result) -> some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("\(result.moved.count) item\(result.moved.count == 1 ? "" : "s") moved to Trash.")
+            let count = result.moved.count
+            Text((result.wasCancelled ? "Stopped. " : "") + "\(count) item\(count == 1 ? "" : "s") moved to Trash.")
             ForEach(result.issues) { issue in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(issue.url.path).lineLimit(1).truncationMode(.middle).help(issue.url.path)
@@ -179,10 +186,9 @@ struct UninstallAppView: View {
     private func moveSelection() {
         guard !busy, let report = draft.report, !draft.selected.isEmpty else { return }
         let selected = draft.selected
-        draft.removing = true
         error = nil
-        Task {
-            defer { draft.removing = false }
+        draft.removalTask = Task {
+            defer { draft.removalTask = nil }
             let result = await UninstallApp.trash(selected, from: report)
             draft.result = result
             draft.report = nil

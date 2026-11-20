@@ -58,6 +58,7 @@ public enum UninstallApp {
     public struct Result: Sendable {
         public let moved: [URL]
         public let issues: [StorageScanIssue]
+        public let wasCancelled: Bool
     }
 
     enum Snapshot: Sendable {
@@ -120,12 +121,12 @@ public enum UninstallApp {
                 try move(item.url)
                 moved.append(item.url)
             } catch is CancellationError {
-                break
+                return Result(moved: moved, issues: issues, wasCancelled: true)
             } catch {
                 issues.append(StorageScanIssue(url: item.url, reason: error.localizedDescription))
             }
         }
-        return Result(moved: moved, issues: issues)
+        return Result(moved: moved, issues: issues, wasCancelled: false)
     }
 
     private static func recheck(

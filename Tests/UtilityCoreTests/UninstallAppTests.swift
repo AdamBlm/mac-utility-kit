@@ -70,6 +70,30 @@ struct UninstallAppTests {
         #expect(running.moved.isEmpty && running.issues.count == 1)
     }
 
+    @Test func stoppingAfterFirstMoveKeepsPartialResultAndLeavesTheApp() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let cache = try fixture.create(.cache)
+        let report = try await UninstallApp.review(fixture.app, environment: fixture.environment)
+        let app = fixture.app
+        let environment = fixture.environment
+        let movedCache = fixture.home.appending(path: "Moved cache")
+        let operation = Task.detached {
+            await UninstallApp.trash([app, cache], from: report, environment: environment) { item in
+                #expect(item == cache)
+                try FileManager.default.moveItem(at: item, to: movedCache)
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+
+        let result = await operation.value
+        #expect(result.wasCancelled)
+        #expect(result.moved == [cache])
+        #expect(result.issues.isEmpty)
+        #expect(FileManager.default.fileExists(atPath: app.path))
+        #expect(try Data(contentsOf: movedCache.appending(path: "data.txt")) == Data("original".utf8))
+    }
+
     @Test func refusesSystemIdentifierSelfAndAppsOutsideKnownApplicationRoots() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }
