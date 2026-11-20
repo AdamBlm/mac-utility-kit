@@ -106,6 +106,8 @@ struct ToolWorkspace: View {
         case .jwtDecoder: JWTDecoderView(draft: $draft.jwtDecoder)
         case .summarize: SummarizeView(draft: $draft.summarize)
         case .caseConverter: CaseConverterView(draft: $draft.caseConverter)
+        case .batchFindReplace: BatchFindReplaceView(inputs: $draft.inputs, draft: $draft.batchFindReplace)
+        case .extractSubtitles: ExtractSubtitlesView(inputs: $draft.inputs)
         case .translate: TranslateView(draft: $draft.translate)
         case .askDocument: AskDocumentView(draft: $draft.askDocument)
         case .passwordGenerator: PasswordGeneratorView()
@@ -183,6 +185,8 @@ struct ToolWorkspace: View {
         case .extractAudio:
             draft.options.extraction.validationIssue != nil || extractionReview.inputs != draft.inputs
                 || !extractionReview.permitsExport(options: draft.options.extraction)
+        case .mergeAudio:
+            !(2...100).contains(draft.inputs.count) || draft.options.audioMerge.validationIssue != nil
         case .trimAudio:
             audioTrimReview?.inputs != draft.inputs
                 || audioTrimReview?.issues(options: draft.options.audioTrim).count == draft.inputs.count
@@ -316,6 +320,8 @@ struct ToolWorkspace: View {
                             inspectionControls()
                         case .extractAudio:
                             extractionControls(review: $extractionReview)
+                        case .mergeAudio:
+                            AudioMergeControls(inputs: $draft.inputs, options: $draft.options.audioMerge)
                         case .trimAudio:
                             AudioTrimControls(inputs: draft.inputs, options: $draft.options.audioTrim,
                                               review: $audioTrimReview)
@@ -354,7 +360,7 @@ struct ToolWorkspace: View {
                             PDFCompressionControls(inputs: draft.inputs, options: $draft.options.pdfCompression)
                         case .extractText:
                             TextExtractionSettings(inputs: draft.inputs, options: $draft.options.textExtraction)
-                        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
+                        case .batchFindReplace, .extractSubtitles, .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                             EmptyView()
                         case .mergePDFs:
                             PDFMergeOrderView(draft: $draft)

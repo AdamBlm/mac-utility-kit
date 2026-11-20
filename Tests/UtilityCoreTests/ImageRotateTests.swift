@@ -6,6 +6,71 @@ import UniformTypeIdentifiers
 import UtilityCore
 
 struct ImageRotateTests {
+    @Test func cropsTheSelectedCornerAfterRotationWithMatchingPreview() throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appending(path: "Source.png")
+        let output = directory.appending(path: "Crop.png")
+        try Self.writeFixture(input, format: .png, orientation: 1)
+        let original = try Data(contentsOf: input)
+        var options = ImageRotateOptions()
+        options.turn = .clockwise
+        options.crop = ImageCropOptions()
+        options.crop?.ratio = .square
+        options.crop?.scale = 0.5
+        options.crop?.horizontalPosition = 1
+        options.crop?.verticalPosition = 0
+        let preview = try ImageRotate.preview(input, options: options)
+        _ = try ImageRotate.export(input, to: output, options: options)
+        let (image, orientation) = try Self.read(output)
+        #expect(image.width == 4 && image.height == 4 && orientation == 1)
+        #expect(preview.outputWidth == 4 && preview.outputHeight == 4)
+        #expect(try Self.corners(image) == [.red, .red, .red, .red])
+        #expect(try Self.corners(preview.after) == Self.corners(image))
+        #expect(try Data(contentsOf: input) == original)
+        options.crop?.scale = .nan
+        #expect(throws: ToolError.self) { try ImageRotate.preview(input, options: options) }
+    }
+
+    @Test func croppingOmitsEmbeddedSourceImageFromCustomXMP() throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let pixels = directory.appending(path: "Fixture.png")
+        try Self.writeFixture(pixels, format: .png, orientation: 1)
+        let (image, _) = try Self.read(pixels)
+        let originalPreview = try Data(contentsOf: pixels).base64EncodedString()
+        let xmp = """
+        <x:xmpmeta xmlns:x="adobe:ns:meta/">
+        <rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#">
+        <rdf:Description rdf:about="" xmlns:custom="https://example.invalid/custom/">
+        <custom:OriginalPreview>\(originalPreview)</custom:OriginalPreview>
+        </rdf:Description>
+        </rdf:RDF>
+        </x:xmpmeta>
+        """
+        let metadata = try #require(CGImageMetadataCreateFromXMPData(Data(xmp.utf8) as CFData))
+        let input = directory.appending(path: "Source.png")
+        let writer = try #require(CGImageDestinationCreateWithURL(input as CFURL, UTType.png.identifier as CFString, 1, nil))
+        CGImageDestinationAddImageAndMetadata(writer, image, metadata, nil)
+        try #require(CGImageDestinationFinalize(writer))
+        func retainsFullPreview(_ url: URL) throws -> Bool {
+            let read = try #require(CGImageSourceCreateWithURL(url as CFURL, nil))
+            guard let metadata = CGImageSourceCopyMetadataAtIndex(read, 0, nil),
+                  let data = CGImageMetadataCreateXMPData(metadata, nil) as Data? else { return false }
+            return String(decoding: data, as: UTF8.self).contains(originalPreview)
+        }
+        #expect(try retainsFullPreview(input))
+        var options = ImageRotateOptions()
+        options.preserveMetadata = true
+        let rotated = directory.appending(path: "Rotated.png")
+        _ = try ImageRotate.export(input, to: rotated, options: options)
+        #expect(try retainsFullPreview(rotated))
+        options.crop = ImageCropOptions()
+        let cropped = directory.appending(path: "Cropped.png")
+        _ = try ImageRotate.export(input, to: cropped, options: options)
+        #expect(try !retainsFullPreview(cropped))
+    }
+
     @Test(arguments: ImageRotateOptions.Turn.allCases)
     func transformsPhysicalPNGCornerPixelsAndRetainsTransparency(turn: ImageRotateOptions.Turn) throws {
         let directory = try Self.directory()

@@ -22,7 +22,7 @@ struct Workspace: View {
     private var visibleGroups: [ToolGroup] {
         let matches = Tool.allCases.filter {
             search.isEmpty || $0.title.localizedCaseInsensitiveContains(search)
-                || $0.category.localizedCaseInsensitiveContains(search)
+                || $0.category.localizedCaseInsensitiveContains(search) || $0.matchesCapability(search)
         }
         let grouped = Dictionary(grouping: matches, by: \.group)
         return ToolCategory.allCases.compactMap { category in

@@ -32,6 +32,7 @@ public struct ImageRotateOptions: Equatable, Sendable {
     public var turn = Turn.none
     public var flipHorizontally = false
     public var flipVertically = false
+    public var crop: ImageCropOptions?
     public var output = Output.original
     public var preserveMetadata = true
     public var quality = 0.95
@@ -76,14 +77,17 @@ public enum ImageRotate {
         ] as CFDictionary) else {
             throw ToolError.invalid("Could not load the image preview.")
         }
-        let after = try render(before, orientations: edits(options))
         let swapsAxes = orientation.rawValue >= 5
         let displayedWidth = swapsAxes ? height : width
         let displayedHeight = swapsAxes ? width : height
-        return Preview(before: before, after: after, sourceWidth: displayedWidth, sourceHeight: displayedHeight,
-                       outputWidth: options.turn.swapsAxes ? displayedHeight : displayedWidth,
-                       outputHeight: options.turn.swapsAxes ? displayedWidth : displayedHeight,
-                       format: outputFormat)
+        let orientedWidth = options.turn.swapsAxes ? displayedHeight : displayedWidth
+        let orientedHeight = options.turn.swapsAxes ? displayedWidth : displayedHeight
+        let oriented = try render(before, orientations: edits(options))
+        let cropped = try options.crop?.crop(oriented, sourceWidth: orientedWidth, sourceHeight: orientedHeight)
+        let crop = try options.crop?.pixelRect(width: orientedWidth, height: orientedHeight)
+        return Preview(before: before, after: cropped ?? oriented, sourceWidth: displayedWidth, sourceHeight: displayedHeight,
+                       outputWidth: crop.map { Int($0.width) } ?? orientedWidth,
+                       outputHeight: crop.map { Int($0.height) } ?? orientedHeight, format: outputFormat)
     }
 
     public static func export(_ input: URL, to output: URL, options: ImageRotateOptions) throws -> String {
@@ -105,13 +109,14 @@ public enum ImageRotate {
             throw ToolError.invalid("Could not decode the source image.")
         }
         let orientation = sourceOrientation(properties)
-        let rendered = try render(image, orientations: [orientation] + edits(options))
+        let oriented = try render(image, orientations: [orientation] + edits(options))
+        let rendered = try options.crop?.crop(oriented, sourceWidth: oriented.width, sourceHeight: oriented.height) ?? oriented
 
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appending(path: ".rotate-\(UUID().uuidString)", directoryHint: .isDirectory)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: staging) }
-        let candidate = staging.appending(path: "Rotated." + outputFormat.rawValue)
+        let candidate = staging.appending(path: "Edited." + outputFormat.rawValue)
         try ImageConversion.encode(rendered, to: candidate, format: outputFormat, source: source, options: encoding)
         try Task.checkCancellation()
         guard let written = CGImageSourceCreateWithURL(candidate as CFURL, nil),
@@ -121,7 +126,7 @@ public enum ImageRotate {
         let verified = try ImageConversion.imageProperties(written)
         let (width, height) = try ImageConversion.validatedDimensions(verified)
         guard width == rendered.width, height == rendered.height, sourceOrientation(verified) == .up else {
-            throw ToolError.invalid("The encoded pixels or orientation do not match the rotated image.")
+            throw ToolError.invalid("The encoded pixels or orientation do not match the edited image.")
         }
         if outputFormat == .png || outputFormat == .tiff || ImageConversion.imageContainsAlpha(image) {
             guard let decoded = CGImageSourceCreateImageAtIndex(written, CGImageSourceGetPrimaryImageIndex(written), nil),
@@ -146,7 +151,7 @@ public enum ImageRotate {
     ) throws -> ImageConversionOptions {
         var encoding = ImageConversionOptions()
         encoding.format = try format(source, options: options)
-        encoding.preserveMetadata = options.preserveMetadata
+        encoding.preserveMetadata = options.crop == nil && options.preserveMetadata
         encoding.quality = options.quality
         if let issue = ImageConversion.optionIssue(encoding) { throw ToolError.invalid(issue) }
         return encoding

@@ -42,6 +42,7 @@ public struct PDFPageEdit: Identifiable, Hashable, Sendable {
 
 public struct PDFOrganizeOptions: Sendable {
     public var pages: [PDFPageEdit]?
+    public var pageNumbers: PDFPageNumberOptions?
     public var password = ""
     package var reviewedSource: PDFSourceStamp?
 
@@ -241,9 +242,14 @@ public enum PDFPageEditing {
     ) async throws {
         try Task.checkCancellation()
         let source = try reviewedInput(input, expected: options.reviewedSource)
-        let original = try open(source.resolved, password: options.password)
+        let original = try open(source.resolved, password: options.password, needsCommenting: options.pageNumbers != nil)
         let pages = options.pages ?? (1...original.pageCount).map { PDFPageEdit(pageNumber: $0) }
-        try writeCopy(pages, from: original, to: output) { try verifySource(input, expected: source) }
+        if options.pageNumbers != nil, !original.allowsCommenting {
+            throw ToolError.invalid("This PDF requires its owner password to add page numbers.")
+        }
+        try writeCopy(pages, from: original, to: output, pageNumbers: options.pageNumbers) {
+            try verifySource(input, expected: source)
+        }
         await progress(1)
     }
 
@@ -277,11 +283,11 @@ public enum PDFPageEditing {
         }
     }
 
-    private static func open(_ input: URL, password: String) throws -> PDFDocument {
+    private static func open(_ input: URL, password: String, needsCommenting: Bool = false) throws -> PDFDocument {
         guard input.isFileURL, let document = PDFDocument(url: input) else {
             throw ToolError.invalid("Could not open \(input.lastPathComponent) as a PDF.")
         }
-        let needsOwnerPassword = document.isEncrypted && !document.allowsDocumentAssembly && !password.isEmpty
+        let needsOwnerPassword = document.isEncrypted && (!document.allowsDocumentAssembly || (needsCommenting && !document.allowsCommenting)) && !password.isEmpty
         if (document.isLocked || needsOwnerPassword), !document.unlock(withPassword: password) {
             throw ToolError.invalid("Enter the correct PDF password.")
         }
@@ -301,7 +307,7 @@ public enum PDFPageEditing {
     }
 
     private static func writeCopy(_ pages: [PDFPageEdit], from original: PDFDocument, to output: URL,
-                                  beforePublish: () throws -> Void = {}) throws {
+                                  pageNumbers: PDFPageNumberOptions? = nil, beforePublish: () throws -> Void = {}) throws {
         let manager = FileManager.default
         guard output.isFileURL, !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a local output PDF path that does not already exist.")
@@ -309,7 +315,7 @@ public enum PDFPageEditing {
         let staging = try stagingFolder(in: output.deletingLastPathComponent())
         defer { try? manager.removeItem(at: staging) }
         let stagedOutput = staging.appendingPathComponent("Output.pdf")
-        try writePages(pages, from: original, to: stagedOutput)
+        try writePages(pages, from: original, to: stagedOutput, pageNumbers: pageNumbers)
         try Task.checkCancellation()
         try beforePublish()
         try manager.moveItem(at: stagedOutput, to: output)
@@ -355,28 +361,39 @@ public enum PDFPageEditing {
         if outputRoot.numberOfChildren > 0 { output.outlineRoot = outputRoot }
     }
 
-    private static func writePages(_ pages: [PDFPageEdit], from original: PDFDocument, to output: URL) throws {
+    package static func editedPage(_ edit: PDFPageEdit, from original: PDFDocument) throws -> PDFPage {
+        guard edit.pageNumber > 0, edit.pageNumber <= original.pageCount,
+              let source = original.page(at: edit.pageNumber - 1),
+              let page = source.copy() as? PDFPage else {
+            throw ToolError.invalid("Could not read PDF page \(edit.pageNumber).")
+        }
+        let originalRotation = page.rotation
+        guard originalRotation.isMultiple(of: 90) else {
+            throw ToolError.invalid("PDF page \(edit.pageNumber) has an unsupported rotation.")
+        }
+        let rotation = ((originalRotation % 360 + (edit.quarterTurns % 4) * 90) % 360 + 360) % 360
+        if rotation != originalRotation { page.rotation = rotation }
+        return page
+    }
+
+    private static func writePages(_ pages: [PDFPageEdit], from original: PDFDocument, to output: URL,
+                                   pageNumbers: PDFPageNumberOptions? = nil) throws {
         guard !pages.isEmpty else { throw ToolError.invalid("Leave at least one page in the PDF.") }
         guard Set(pages.map(\.pageNumber)).count == pages.count else {
             throw ToolError.invalid("Each page can appear only once in an output PDF.")
         }
+        let labels = try pageNumbers.map { try PDFPageNumbers.labels(pageCount: pages.count, options: $0) } ?? [:]
         let document = PDFDocument()
         var rotations: [Int] = []
-        for edit in pages {
+        var numberedBounds: [Int: CGRect] = [:]
+        for (index, edit) in pages.enumerated() {
             try Task.checkCancellation()
-            guard (1...original.pageCount).contains(edit.pageNumber),
-                  let source = original.page(at: edit.pageNumber - 1),
-                  let page = source.copy() as? PDFPage else {
-                throw ToolError.invalid("Could not read PDF page \(edit.pageNumber).")
-            }
-            let originalRotation = page.rotation
-            guard originalRotation.isMultiple(of: 90) else {
-                throw ToolError.invalid("PDF page \(edit.pageNumber) has an unsupported rotation.")
-            }
-            let rotation = ((originalRotation % 360 + (edit.quarterTurns % 4) * 90) % 360 + 360) % 360
-            if rotation != originalRotation { page.rotation = rotation }
+            let page = try editedPage(edit, from: original)
             document.insert(page, at: document.pageCount)
-            rotations.append(rotation)
+            rotations.append(page.rotation)
+            if let pageNumbers, let label = labels[index] {
+                numberedBounds[index] = try PDFPageNumbers.add(label, to: page, placement: pageNumbers.placement).bounds
+            }
         }
         try copyBookmarks(from: original, to: document, using: pages)
         try Task.checkCancellation()
@@ -384,6 +401,17 @@ public enum PDFPageEditing {
               exported.pageCount == pages.count,
               rotations.enumerated().allSatisfy({ exported.page(at: $0.offset)?.rotation == $0.element }) else {
             throw ToolError.invalid("Could not verify the page count and rotation of the exported PDF.")
+        }
+        for (index, label) in labels {
+            try Task.checkCancellation()
+            guard exported.page(at: index)?.annotations.contains(where: {
+                guard let bounds = numberedBounds[index] else { return false }
+                return $0.type == "FreeText" && $0.contents == label && $0.shouldPrint
+                    && abs($0.bounds.minX - bounds.minX) < 0.01 && abs($0.bounds.minY - bounds.minY) < 0.01
+                    && abs($0.bounds.width - bounds.width) < 0.01 && abs($0.bounds.height - bounds.height) < 0.01
+            }) == true else {
+                throw ToolError.invalid("Could not verify the page number on output page \(index + 1).")
+            }
         }
     }
 }

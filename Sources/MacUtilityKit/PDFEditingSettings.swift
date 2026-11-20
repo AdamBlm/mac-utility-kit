@@ -50,6 +50,26 @@ struct PDFEditingSettings: View {
                         }
                     case .organizePDF:
                         PDFOrganizerView(document: document, pages: $options.pdfOrganize.pages, history: $organizerHistory)
+                        Toggle("Add page numbers", isOn: Binding(get: { options.pdfOrganize.pageNumbers != nil }, set: { enabled in
+                            passwordError = false
+                            options.pdfOrganize.pageNumbers = enabled ? PDFPageNumberOptions() : nil
+                        }))
+                        if let numbers = Binding($options.pdfOrganize.pageNumbers) {
+                            if document.allowsCommenting {
+                                PDFPageNumberControls(document: document, edits: options.pdfOrganize.pages, options: numbers)
+                            } else {
+                                Text("This PDF requires its owner password to add page numbers.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                                HStack {
+                                    SecureField("Owner password", text: password)
+                                    Button("Unlock page numbering") { unlock() }
+                                }
+                                if passwordError {
+                                    Text("That password did not grant permission to add page numbers.")
+                                        .font(.callout).foregroundStyle(.secondary)
+                                }
+                            }
+                        }
                     case .deletePDFPages:
                         PDFDeletionSettings(document: document, range: $options.pdfDelete.range)
                     case .extractPDFPages:
@@ -89,7 +109,10 @@ struct PDFEditingSettings: View {
             else { return false }
             return (try? PDFPageEditing.splitFilenames(input, groups: groups, pattern: options.pdfSplit.filenamePattern)) != nil
         case .organizePDF:
-            return options.pdfOrganize.pages?.isEmpty != true
+            guard options.pdfOrganize.pages?.isEmpty != true else { return false }
+            guard let numbers = options.pdfOrganize.pageNumbers else { return true }
+            let count = options.pdfOrganize.pages?.count ?? document.pageCount
+            return document.allowsCommenting && (try? PDFPageNumbers.labels(pageCount: count, options: numbers)) != nil
         case .deletePDFPages:
             guard !options.pdfDelete.range.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
                   let removed = try? PageSelection.indices(options.pdfDelete.range, pageCount: document.pageCount)
@@ -175,12 +198,14 @@ struct PDFEditingSettings: View {
             return
         }
         passwordError = !hasPermission(unlocked)
+            || (tool == .organizePDF && options.pdfOrganize.pageNumbers != nil && !unlocked.allowsCommenting)
         document = unlocked
     }
 
     private func clearPageEdits() {
         if tool == .organizePDF {
             options.pdfOrganize.pages = nil
+            options.pdfOrganize.pageNumbers = nil
             organizerHistory = PDFOrganizerHistory()
         } else if tool == .deletePDFPages {
             options.pdfDelete.range = ""

@@ -20,12 +20,12 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     case splitPDF, organizePDF, deletePDFPages, extractPDFPages, imagesToPDF, pdfToImages
 
-    case signPDF, extractText, wordCounter, summarize, caseConverter, translate, askDocument
+    case signPDF, extractText, wordCounter, summarize, caseConverter, batchFindReplace, translate, askDocument
     case qrCode, batchRename, keepAwake, jsonFormatter, base64, hashGenerator, uuidGenerator, cleanLinks, timestampConverter, loremIpsum, unicodeInspector, diffChecker, regexTester, csvJSON, coordinatePicker, jwtDecoder, passwordGenerator, batteryHealth, diskSpeedTest, deadPixelTest, ejectAllDisks, presentationMode, networkSpeedTest, storageExplorer, clipboardHistory, resetPermissions, appDamageDiagnosis, loginBackgroundItems, hiddenSettings, cleanKeyboard, wifiPasswordQR, uninstallApp, displayControl, mouseFixes, organizeDownloads, findDuplicates, zipUnzip
-    case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles
+    case changeSpeed, extractFrames, trimVideo, muteVideo, resizeVideo, videoToGIF, cropRotateVideo, mergeVideos, replaceAudio, burnSubtitles, extractSubtitles
     case scanDocument, fillFlattenForms, pdfToWord, makePDFSearchable, markdownToPDF, webPageToPDF, addPassword, removePassword, compressPDF, cropPDF, redactPDF, convertDocuments, wordToPDF, powerPointToPDF, excelToPDF
     case recordScreen, downloadVideo
-    case trimAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
+    case trimAudio, mergeAudio, convertAudio, transcribe, cleanUpAudio, captureText, textToSpeech, recordAudio
 
     public var officePDFKind: OfficePDFKind? {
         switch self {
@@ -38,7 +38,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
 
     public var usesInteractiveEditor: Bool {
         switch self {
-        case .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
+        case .batchFindReplace, .extractSubtitles, .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: true
         default: false
         }
     }
@@ -90,6 +90,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .wordCounter: "Word Counter"
         case .summarize: "Summarize"
         case .caseConverter: "Case Converter"
+        case .batchFindReplace: "Batch Find & Replace"
         case .translate: "Translate"
         case .askDocument: "Ask a Document"
         case .transcribe: "Transcribe"
@@ -148,11 +149,13 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .mergeVideos: "Merge Videos"
         case .replaceAudio: "Replace Audio"
         case .burnSubtitles: "Burn In Subtitles"
+        case .extractSubtitles: "Extract Subtitles"
         case .compressVideo: "Compress Video"
         case .convertVideo: "Convert Video"
         case .mediaInfo: "Media Info"
         case .extractAudio: "Extract Audio"
         case .trimAudio: "Trim Audio"
+        case .mergeAudio: "Merge Audio"
         case .convertAudio: "Convert Audio"
         case .cleanUpAudio: "Clean Up Audio"
         }
@@ -164,12 +167,12 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         switch self {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .screenshot, .redactImage, .annotateScreenshot, .removeBackground, .colorPicker, .watermark: .images
         case .mergePDFs, .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .imagesToPDF, .pdfToImages, .signPDF, .makePDFSearchable, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF, .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF, .scanDocument, .pdfToWord, .fillFlattenForms: .documents
-        case .extractText, .wordCounter, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech: .text
+        case .batchFindReplace, .extractText, .wordCounter, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech: .text
         case .qrCode, .batchRename, .findDuplicates, .zipUnzip, .organizeDownloads: .files
         case .keepAwake, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes: .mac
         case .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator: .developer
-        case .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
-        case .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
+        case .extractSubtitles, .compressVideo, .convertVideo, .mediaInfo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles, .recordScreen, .downloadVideo: .video
+        case .mergeAudio, .extractAudio, .trimAudio, .convertAudio, .cleanUpAudio, .recordAudio: .audio
         }
     }
 
@@ -178,7 +181,7 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .resizeImages, .convertImages, .compressImages, .removeMetadata, .rotateImages, .beautifyScreenshot, .blurFaces, .redactImage, .annotateScreenshot, .removeBackground, .imagesToPDF: [.image]
         case .mergePDFs, .extractText: [.pdf, .image]
         case .watermark: [.image, .pdf, .movie]
-        case .wordCounter: [.plainText]
+        case .wordCounter, .batchFindReplace: [.plainText]
         case .translate: TranslationDocument.acceptedInputTypes
         case .textToSpeech, .summarize, .askDocument: [.plainText, .rtf, .pdf]
         case .excelToPDF:
@@ -201,9 +204,9 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .jsonFormatter: [.json]
         case .keepAwake, .captureText, .recordAudio, .screenshot, .recordScreen, .downloadVideo, .colorPicker: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF, .makePDFSearchable, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF: [.pdf]
-        case .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
+        case .extractSubtitles, .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
         case .mediaInfo, .transcribe, .cleanUpAudio: [.movie, .audio]
-        case .trimAudio, .convertAudio: [.audio]
+        case .mergeAudio, .trimAudio, .convertAudio: [.audio]
         }
     }
 }

@@ -94,6 +94,7 @@ public struct ToolOptions: Sendable {
     public var burnSubtitles = BurnSubtitlesOptions()
     public var inspection = MediaInspectionOptions()
     public var extraction = AudioExtractionOptions()
+    public var audioMerge = AudioMergeOptions()
     public var audioTrim = AudioTrimOptions()
     public var audioConvert = AudioConvertOptions()
     public var audioCleanup = AudioCleanupOptions()

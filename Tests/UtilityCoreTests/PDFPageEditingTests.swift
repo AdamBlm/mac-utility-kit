@@ -338,3 +338,39 @@ private func pdfRotations(_ url: URL) throws -> [Int] {
         try #require(document.page(at: index)).rotation
     }
 }
+
+@Test func organizePDFNumbersSelectedOutputPagesAfterReorderingAndRotation() async throws {
+    try await withPDFEditingFixture { source, directory in
+        let original = try Data(contentsOf: source)
+        let output = directory.appendingPathComponent("Numbered.pdf")
+        var options = PDFOrganizeOptions()
+        options.pages = [.init(pageNumber: 4), .init(pageNumber: 1), .init(pageNumber: 2, quarterTurns: 1)]
+        options.pageNumbers = PDFPageNumberOptions()
+        options.pageNumbers?.range = "3, 1"
+        options.pageNumbers?.startNumber = 12
+        options.pageNumbers?.placement = .topRight
+        try await PDFPageEditing.organize(source, to: output, options: options) { _ in }
+
+        #expect(try Data(contentsOf: source) == original)
+        #expect(try pdfPageNumbers(output) == [4, 1, 2])
+        let exported = try #require(PDFDocument(url: output))
+        #expect(exported.page(at: 1)?.annotations.first?.contents == "Source annotation")
+        for (index, label) in [(0, "12"), (2, "13")] {
+            let page = try #require(exported.page(at: index))
+            let number = try #require(page.annotations.first { $0.type == "FreeText" })
+            #expect(number.contents == label)
+            #expect(number.shouldPrint)
+            let geometry = try PDFRedactionGeometry(page)
+            let location = try #require(geometry.normalized(number.bounds))
+            #expect(location.midX > 0.5)
+            #expect(location.midY < 0.5)
+        }
+
+        options.pageNumbers?.range = "4"
+        let invalid = directory.appendingPathComponent("Invalid Range.pdf")
+        await #expect(throws: ToolError.self) {
+            try await PDFPageEditing.organize(source, to: invalid, options: options) { _ in }
+        }
+        #expect(!FileManager.default.fileExists(atPath: invalid.path))
+    }
+}

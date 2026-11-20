@@ -1,11 +1,11 @@
 # Mac Utility Kit
 
-Working name for an open-source macOS utility suite with its own interface. The current build has 102 tools across images, PDFs, media, files, macOS, and development.
+Working name for an open-source macOS utility suite with its own interface. The current build has 105 tools across images, PDFs, media, files, macOS, and development.
 
-- [Feature inventory](docs/feature-inventory.md) — 102 published tools and shared app behavior.
+- [Feature inventory](docs/feature-inventory.md) — 105 tools and shared app behavior.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
-- [Open-source reuse map](docs/reuse/README.md) — upstream candidates, licenses, and implementation gaps for each of the 102 tools.
-- [Development plan and tool specifications](docs/plan/README.md) — release milestones, controls, outputs, and acceptance checks for all 102 tools.
+- [Open-source reuse map](docs/reuse/README.md) — upstream candidates, licenses, and implementation gaps for each of the 105 tools.
+- [Development plan and tool specifications](docs/plan/README.md) — release milestones, controls, outputs, and acceptance checks for all 105 tools.
 
 ## Run locally
 
@@ -24,6 +24,8 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 ### Media tools
 
 - **Record Screen** records a display, window, or single-display region with optional system and microphone audio. Set resolution and frame rate, then pause, resume, or stop from the menu bar.
+- **Extract Subtitles** exports a selected embedded text track to SRT or WebVTT with FFmpeg.
+- **Merge Audio** joins clips in the selected order with straight cuts, silent gaps, or crossfades.
 - **Download Video** inspects a URL using a managed, Homebrew, or manually selected yt-dlp executable. Preview builds include a copyable Homebrew setup command. Choose a stream and output format, then download with separate video, audio, and finishing progress and cancellation. Stream merging and conversion require FFmpeg.
 
 - **Convert Video** converts to MP4, MOV, and M4V with AVFoundation. A user-selected FFmpeg adds WebM export and resolution and frame rate options. Passthrough requires streams compatible with the destination container. WebM results identify observed codecs and report dropped tracks.
@@ -66,7 +68,7 @@ Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the externa
 - **Redact Image** flattens adjustable solid, blurred, or pixelated regions into PNG. Review at full resolution with undo and redo. Source metadata is stripped by default, with optional retention of title, author, and copyright.
 - **Blur Faces** suggests face masks with Apple Vision. Add or adjust coverage, review the flattened preview, and export PNG with solid cover, blur, or pixelation.
 - **Beautify Screenshot** adds a solid or gradient background, padding, rounded corners, and shadow. Choose a canvas aspect ratio, preview the full-resolution composition, and export PNG or JPEG.
-- **Rotate Images** previews quarter-turns and horizontal or vertical flips. Export a PNG or keep a supported original format with normalized orientation metadata.
+- **Rotate Images** previews freeform or fixed-ratio crops, quarter-turns, and horizontal or vertical flips. Export a PNG or keep a supported original format with normalized orientation metadata.
 - **Convert Images** exports the primary image to JPEG, PNG, HEIC, or TIFF using Image I/O. A user-selected ImageMagick executable adds WebP. The tool applies orientation and can preserve supported metadata or flatten transparency against a chosen color.
 - **Compress Images** uses the same encoding pipeline. **Preview Compression** compares one queued image with a temporary result and shows the measured sizes before export. Compare opens the original and result side by side with linked zoom and position. Pixel zoom uses full detail for images up to 24 megapixels and 8,192 pixels per edge, with reduced previews labeled for larger images. Animated and multi-image sources require an explicit conversion workflow.
 - **Remove Metadata** accepts batches of JPEG and PNG and lets you inspect each file before exporting. The native path removes supported location metadata. A user-selected ExifTool executable enables camera, dates, IPTC, and XMP groups. The tool verifies selected fields and checks dimensions, orientation, and color profile before publishing a copy.
@@ -86,7 +88,7 @@ In **Merge PDFs**, use **Paste Image or PDF** to add copied content to the sourc
 
 ### PDF page tools
 
-**Split PDF** exports individual pages, fixed-size groups, or named ranges with filename previews. **Organize PDF** supports reordering, rotation, removal, restoration, and in-session undo and redo. **Delete Pages** takes a typed range or thumbnail selections and previews the marked and remaining pages.
+**Split PDF** exports individual pages, fixed-size groups, or named ranges with filename previews. **Organize PDF** supports reordering, rotation, removal, restoration, in-session undo and redo, and customizable page numbering. **Delete Pages** takes a typed range or thumbnail selections and previews the marked and remaining pages.
 
 Each tool operates on one PDF at a time and writes new copies. These page edits preserve tested page content and rotation. Document-level outlines, tags, and form structure may be omitted. Exported copies of encrypted PDFs are unencrypted.
 

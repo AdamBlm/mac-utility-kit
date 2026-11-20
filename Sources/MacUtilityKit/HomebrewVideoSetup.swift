@@ -6,29 +6,43 @@ struct HomebrewVideoTools {
     var deno: URL?
     var ffmpeg: URL?
 
-    static func discover() -> Self {
+    private static var prefixes: [String] {
         #if arch(arm64)
-        let prefixes = ["/opt/homebrew", "/usr/local"]
+        ["/opt/homebrew", "/usr/local"]
         #else
-        let prefixes = ["/usr/local", "/opt/homebrew"]
+        ["/usr/local", "/opt/homebrew"]
         #endif
-        func executable(_ path: String) -> URL? {
-            let url = URL(fileURLWithPath: path)
-            guard FileManager.default.isExecutableFile(atPath: path),
-                  (try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
-                return nil
-            }
-            return url
-        }
+    }
+
+    static func discover() -> Self {
         for prefix in prefixes {
             guard let downloader = executable(prefix + "/bin/yt-dlp") else { continue }
-            let ffmpeg = ["/opt/ffmpeg-full/bin", "/bin"].lazy.compactMap { path -> URL? in
-                guard executable(prefix + path + "/ffprobe") != nil else { return nil }
-                return executable(prefix + path + "/ffmpeg")
-            }.first
-            return Self(downloader: downloader, deno: executable(prefix + "/bin/deno"), ffmpeg: ffmpeg)
+            return Self(downloader: downloader, deno: executable(prefix + "/bin/deno"),
+                        ffmpeg: ffmpegPair(in: prefix)?.ffmpeg)
         }
         return Self()
+    }
+
+    static func ffmpegPair() -> (ffmpeg: URL, ffprobe: URL)? {
+        prefixes.lazy.compactMap { ffmpegPair(in: $0) }.first
+    }
+
+    private static func ffmpegPair(in prefix: String) -> (ffmpeg: URL, ffprobe: URL)? {
+        for path in ["/opt/ffmpeg-full/bin", "/bin"] {
+            guard let ffmpeg = executable(prefix + path + "/ffmpeg"),
+                  let ffprobe = executable(prefix + path + "/ffprobe") else { continue }
+            return (ffmpeg, ffprobe)
+        }
+        return nil
+    }
+
+    private static func executable(_ path: String) -> URL? {
+        let url = URL(fileURLWithPath: path)
+        guard FileManager.default.isExecutableFile(atPath: path),
+              (try? url.resolvingSymlinksInPath().resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            return nil
+        }
+        return url
     }
 }
 

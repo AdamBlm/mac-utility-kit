@@ -2,12 +2,13 @@
 
 The 33 rows follow the [feature inventory](../feature-inventory.md). **Direct** means a source app implements the core workflow. **Building block** means a library or command can perform the operation and needs app integration. **Partial** means a capability still needs separate engineering. License notes refer to the upstream sources, and the mappings were reviewed from code and documentation without runtime tests.
 
-## Video (15)
+## Video (16)
 
 | Feature | Open-source repository and license | Reuse and remaining work |
 | --- | --- | --- |
 | Download Video | [yt-dlp](https://github.com/yt-dlp/yt-dlp#license) (Unlicense source, release binaries vary) | **Building block.** Wrap the CLI's metadata and format selection for available audio languages, progress, and audio-only output. Install or detect FFmpeg for post-processing. |
 | Burn In Subtitles | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent), [whisper.cpp](https://github.com/ggml-org/whisper.cpp) (MIT) | **Building blocks.** Generate timed subtitles locally when the user provides none, then render supplied or generated SRT via FFmpeg's [subtitles filter](https://ffmpeg.org/ffmpeg-filters.html#subtitles-1). Confirm libass is enabled. |
+| Extract Subtitles | [FFprobe and FFmpeg](https://ffmpeg.org/documentation.html) (LGPL/GPL, build-dependent) | Inspect and explicitly map a single text subtitle stream to SRT or WebVTT. |
 | Change Speed | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent) | **Building block.** Use setpts and atempo for timing and pitch-preserving audio. Build synchronized preview and track handling. |
 | Extract Frames | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent), [ImageMagick](https://github.com/ImageMagick/ImageMagick) (ImageMagick License) | **Building blocks.** Decode selected frames with FFmpeg. ImageMagick can supply HEIC export with the appropriate delegate. Build frame selection and thumbnails. |
 | Record Screen | [OBS Studio](https://github.com/obsproject/obs-studio) (GPL-2.0-or-later) | **Native reference.** OBS has macOS ScreenCaptureKit and audio capture. Build the region picker and click indicators separately. |
@@ -22,13 +23,14 @@ The 33 rows follow the [feature inventory](../feature-inventory.md). **Direct** 
 | Replace Audio | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent) | **Building block.** Stream-map a replacement or mix it through the [amix filter](https://ffmpeg.org/ffmpeg-filters.html#amix). Set durations, looping, gains, and track selection in the app. |
 | Video to GIF | [Gifski for macOS](https://github.com/sindresorhus/Gifski) (MIT application wrapper) | **Direct reference.** Adapt clip selection, frame rate, sizing, and progress. Verify licenses for the actual encoder and other dependencies before redistribution. |
 
-## Audio (5)
+## Audio (6)
 
 | Feature | Open-source repository and license | Reuse and remaining work |
 | --- | --- | --- |
 | Clean Up Audio | [RNNoise](https://github.com/xiph/rnnoise) (BSD-3-Clause), [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent) | **Building blocks.** Use RNNoise for speech noise suppression and FFmpeg's [audio filtering](https://ffmpeg.org/ffmpeg-filters.html#Audio-Filters) for hum removal, track extraction, and remuxing. Tune filters separately for speech and music. |
 | Record Audio | [Audacity](https://github.com/audacity/audacity) (GPL-3.0) | **Direct reference.** Study cross-platform microphone recording and level monitoring. Add macOS-native capture UI and use whisper.cpp from the transcription row for optional transcription. |
 | Trim Audio | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent), [Audacity](https://github.com/audacity/audacity) (GPL-3.0) | **Engine and reference.** Use FFmpeg for trimming and Audacity as an editor reference. Expose the precision tradeoff between stream copy and re-encoding. |
+| Merge Audio | [FFmpeg audio filters](https://ffmpeg.org/ffmpeg-filters.html#Audio-Filters) (LGPL/GPL, build-dependent) | Reuse concat, apad, and acrossfade to join clips with verified timing and normalized sample and channel formats. |
 | Extract Audio | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent) | **Building block.** Map the chosen audio stream to an independent file and copy or transcode for the requested container. |
 | Convert Audio | [FFmpeg](https://github.com/FFmpeg/FFmpeg) (LGPL/GPL, build-dependent) | **Building block.** Verify MP3, M4A, WAV, FLAC, and AIFF encoders in the selected build. |
 

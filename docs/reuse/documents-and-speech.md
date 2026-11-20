@@ -30,7 +30,7 @@ The map covers 23 document tools and 9 text and speech tools. **Direct** covers 
 | Web Page to PDF | [Playwright](https://github.com/microsoft/playwright) (Apache-2.0, browser components have separate notices) | **Partial.** Chromium's [page.pdf API](https://playwright.dev/docs/api/class-page#page-pdf) provides paginated printing. Continuous-page export needs sizing and testing against very long pages. |
 | Markdown to PDF | [Pandoc](https://github.com/jgm/pandoc) (GPL-2.0-or-later), [WeasyPrint](https://github.com/Kozea/WeasyPrint) (BSD-3-Clause) | **Direct.** Convert Markdown using Pandoc, either through a supported PDF engine or via HTML rendered by WeasyPrint. |
 
-## Text & Speech (9)
+## Text & Speech (10)
 
 | Feature | Repository and license | Fit and integration |
 | --- | --- | --- |
@@ -42,4 +42,5 @@ The map covers 23 document tools and 9 text and speech tools. **Direct** covers 
 | Text to Speech | [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (Apache-2.0) | **Building block.** Use a local TTS pipeline to synthesize audio. Add document extraction, playback, voices, and export. Check voice model licenses. |
 | Ask a Document | [MLX Swift LM](https://github.com/ml-explore/mlx-swift-lm) (MIT), [MuPDF](https://github.com/ArtifexSoftware/mupdf) (AGPL-3.0 or commercial) | **Building blocks.** Extract text per page and use local inference. Build retrieval, citation checking, and the page-linked answer interface. |
 | Word Counter | [retext](https://github.com/retextjs/retext) (MIT), [reading-time](https://github.com/ngryman/reading-time) (MIT) | **Building block.** Use or adapt text tokenization and reading-speed estimates. Compute word frequencies and Unicode-aware character, sentence, and paragraph counts in the application. |
+| Batch Find & Replace | [ICU](https://unicode-org.github.io/icu/userguide/strings/regexp.html) and [VS Code search](https://code.visualstudio.com/docs/editing/codebasics#_search-and-replace) | Reuse the app’s bounded ICU evaluator for regex and Foundation for literal matching. Preview changes for each file and export verified copies without overwriting the sources. |
 | Case Converter | [change-case](https://github.com/blakeembrey/change-case) (MIT) | **Direct for identifier styles.** Reuse its case rules or port them to Swift with attribution. Use locale-aware upper/lower transformations and define title-case rules for prose. |

@@ -31,6 +31,7 @@ struct ToolDraft {
     var coordinatePicker = CoordinatePickerDraft()
     var jwtDecoder = JWTDecoderDraft()
     var summarize = SummarizeDraft()
+    var batchFindReplace = BatchFindReplaceDraft()
     var caseConverter = CaseConverterDraft()
     var translate = TranslateDraft()
     var askDocument = AskDocumentDraft()

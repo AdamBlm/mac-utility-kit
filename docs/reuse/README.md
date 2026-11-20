@@ -1,14 +1,14 @@
 # Open-source reuse map
 
-Each advertised tool in the [Feature inventory](../feature-inventory.md) has a row with established upstream candidates or a native implementation path. The rows record licenses and the remaining work.
+Each advertised tool in the [feature inventory](../feature-inventory.md) has a row with established upstream candidates or a native implementation path. The rows record licenses and the remaining work.
 
 | Area | Features |
 | --- | ---: |
-| [Video, audio, and images](media.md) | 33 |
-| [Documents, text, and speech](documents-and-speech.md) | 32 |
+| [Video, audio, and images](media.md) | 35 |
+| [Documents, text, and speech](documents-and-speech.md) | 33 |
 | [Files and Mac utilities](files-and-mac.md) | 23 |
 | [Developer tools](developer.md) | 14 |
-| **Total** | **102** |
+| **Total** | **105** |
 
 A repository can supply a ready-made operation, an implementation to study, or a building block. Some rows require original macOS integration, and some candidates overlap with only part of the feature. The license labels describe the upstream projects. Before adopting a dependency, check the license of the specific revision, optional dependencies, bundled data or models, and the planned distribution method. The project has yet to select an app license.
 

@@ -13,8 +13,8 @@ def check(binary):
     inventory = re.findall(r"^- \*\*(.+?)\*\*", inventory_file.read_text(encoding="utf-8"), re.MULTILINE)
     catalog = json.loads(subprocess.check_output([binary, "catalog"], timeout=10))
     titles = [entry["title"] for entry in catalog]
-    if len(titles) != 102 or len(inventory) != 102:
-        raise SystemExit(f"Expected 102 tools. Found {len(titles)} in the catalog and {len(inventory)} in the inventory.")
+    if len(titles) != 105 or len(inventory) != 105:
+        raise SystemExit(f"Expected 105 tools. Found {len(titles)} in the catalog and {len(inventory)} in the inventory.")
     if len({entry["id"] for entry in catalog}) != len(catalog):
         raise SystemExit("The packaged catalog contains duplicate tool IDs.")
     if sorted(titles) != sorted(inventory):
@@ -86,7 +86,7 @@ def check(binary):
             if result.returncode == 0 or "Choose an existing destination folder." not in result.stderr:
                 raise SystemExit(f"{tool} did not enforce its cataloged destination prerequisite.")
     check_table_conversion(binary)
-    print("The packaged catalog matches all 102 roadmap tools.")
+    print("The packaged catalog matches all 105 roadmap tools.")
 
 
 def check_table_conversion(binary):

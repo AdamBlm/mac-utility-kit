@@ -94,7 +94,8 @@ struct ToolLauncherView: View {
         let titles = Tool.allCases.filter { search.isEmpty || $0.title.localizedStandardContains(search) }
         guard !search.isEmpty else { return titles }
         return titles + Tool.allCases.filter {
-            !$0.title.localizedStandardContains(search) && $0.category.localizedStandardContains(search)
+            !$0.title.localizedStandardContains(search)
+                && ($0.category.localizedStandardContains(search) || $0.matchesCapability(search))
         }
     }
 

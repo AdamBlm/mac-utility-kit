@@ -6,11 +6,11 @@ Build an original, local-first SwiftUI app for Apple silicon on macOS 15 and lat
 
 | Area | Planned tools |
 | --- | ---: |
-| [Video, audio, and images](media.md) | 33 |
-| [Documents, text, and speech](documents-and-speech.md) | 32 |
+| [Video, audio, and images](media.md) | 35 |
+| [Documents, text, and speech](documents-and-speech.md) | 33 |
 | [Files and macOS utilities](files-and-mac.md) | 23 |
 | [Developer tools](developer.md) | 14 |
-| **Total** | **102** |
+| **Total** | **105** |
 
 Each row specifies user controls, results, and acceptance checks. Use the [feature inventory](../feature-inventory.md) as the scope baseline and the [reuse map](../reuse/README.md) to evaluate upstream components.
 

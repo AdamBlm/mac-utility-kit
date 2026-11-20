@@ -70,6 +70,15 @@ struct WorkspaceSection<Content: View>: View {
 }
 
 extension Tool {
+    func matchesCapability(_ search: String) -> Bool {
+        let capabilities: [String] = switch self {
+        case .rotateImages: ["Crop Images", "Image Crop"]
+        case .organizePDF: ["Add PDF Page Numbers", "PDF Numbering"]
+        default: []
+        }
+        return capabilities.contains { $0.localizedStandardContains(search) }
+    }
+
     var symbol: String {
         switch self {
         case .resizeImages: "photo.on.rectangle"
@@ -131,6 +140,7 @@ extension Tool {
         case .jwtDecoder: "person.text.rectangle"
         case .summarize: "text.alignleft"
         case .caseConverter: "textformat"
+        case .batchFindReplace: "text.magnifyingglass"
         case .translate: "character.bubble"
         case .askDocument: "doc.text.magnifyingglass"
         case .passwordGenerator: "key"
@@ -167,11 +177,13 @@ extension Tool {
         case .mergeVideos: "film.stack"
         case .replaceAudio: "waveform.badge.plus"
         case .burnSubtitles: "captions.bubble"
+        case .extractSubtitles: "captions.bubble.fill"
         case .compressVideo: "film"
         case .convertVideo: "arrow.triangle.2.circlepath"
         case .mediaInfo: "info.circle"
         case .extractAudio: "waveform"
         case .trimAudio: "waveform.path"
+        case .mergeAudio: "waveform.path.badge.plus"
         case .convertAudio: "arrow.triangle.2.circlepath"
         case .cleanUpAudio: "waveform.badge.minus"
         }
@@ -181,7 +193,7 @@ extension Tool {
         switch self {
         case .resizeImages: "Change the dimensions of one image or a whole batch."
         case .convertImages: "Change image formats and control transparency."
-        case .rotateImages: "Rotate and flip images with a before-and-after preview."
+        case .rotateImages: "Crop, rotate, and flip images with a before-and-after preview."
         case .beautifyScreenshot: "Frame an image with a background, padding, and shadow."
         case .blurFaces: "Suggest face masks and review coverage before exporting."
         case .redactImage: "Hide selected areas and export a flattened image."
@@ -194,7 +206,7 @@ extension Tool {
         case .removeMetadata: "Inspect and remove private details from image copies."
         case .mergePDFs: "Choose and combine pages from PDFs and images."
         case .splitPDF: "Save pages or page groups as separate PDFs."
-        case .organizePDF: "Reorder, rotate, and remove pages from a PDF copy."
+        case .organizePDF: "Reorder, rotate, remove, and number pages in a PDF copy."
         case .deletePDFPages: "Mark the pages to remove and save a new PDF."
         case .extractPDFPages: "Save only the pages you select in a new PDF."
         case .imagesToPDF: "Arrange images and save them as a PDF."
@@ -238,6 +250,7 @@ extension Tool {
         case .jwtDecoder: "Inspect token claims and optionally verify an HMAC signature."
         case .summarize: "Summarize text and selected document pages on your Mac."
         case .caseConverter: "Convert prose and identifiers between text cases."
+        case .batchFindReplace: "Review and replace text across multiple files."
         case .translate: "Translate text or subtitles and review the result."
         case .askDocument: "Ask questions and inspect the cited source passages."
         case .passwordGenerator: "Generate random passwords and passphrases."
@@ -274,11 +287,13 @@ extension Tool {
         case .mergeVideos: "Join video clips in the order you choose."
         case .replaceAudio: "Replace or mix the audio in a video."
         case .burnSubtitles: "Render subtitles directly onto the video."
+        case .extractSubtitles: "Export a subtitle track as SRT or WebVTT."
         case .compressVideo: "Make videos smaller while keeping their resolution."
         case .convertVideo: "Save a video in another format."
         case .mediaInfo: "Inspect the streams and properties of a media file."
         case .extractAudio: "Save a selected audio track from a video."
         case .trimAudio: "Trim an audio selection, preview it on a loop, and add fades."
+        case .mergeAudio: "Join audio clips with optional gaps or crossfades."
         case .convertAudio: "Convert audio files and choose their sample rate and channels."
         case .cleanUpAudio: "Reduce noise and hum in an audio file or video track."
         }
@@ -295,11 +310,11 @@ extension Tool {
         case .extractText: "or drop images and PDFs anywhere in this pane"
         case .wordCounter: "or drop a text file anywhere in this pane"
         case .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF: "or drop documents anywhere in this pane"
-        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: ""
+        case .batchFindReplace, .extractSubtitles, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: ""
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "or drop videos anywhere in this pane"
         case .convertVideo, .extractAudio: "or drop videos anywhere in this pane"
         case .mediaInfo, .cleanUpAudio: "or drop audio or video anywhere in this pane"
-        case .trimAudio, .convertAudio: "or drop audio files anywhere in this pane"
+        case .mergeAudio, .trimAudio, .convertAudio: "or drop audio files anywhere in this pane"
         }
     }
 
@@ -314,11 +329,11 @@ extension Tool {
         case .extractText: "Drop images or PDFs here"
         case .wordCounter: "Drop a text file here"
         case .convertDocuments, .wordToPDF, .powerPointToPDF, .excelToPDF: "Drop documents here"
-        case .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: ""
+        case .batchFindReplace, .extractSubtitles, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF: ""
         case .compressVideo, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: "Drop videos here"
         case .convertVideo, .extractAudio: "Drop videos here"
         case .mediaInfo, .cleanUpAudio: "Drop media files here"
-        case .trimAudio, .convertAudio: "Drop audio files here"
+        case .mergeAudio, .trimAudio, .convertAudio: "Drop audio files here"
         }
     }
 }

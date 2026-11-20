@@ -2,10 +2,11 @@
 
 Tool catalog organized by category.
 
-## Video (15)
+## Video (16)
 
 - **Download Video** — Save web videos or audio from supported sites, with a choice of audio language where available.
 - **Burn In Subtitles** — Render captions permanently into video using SRT or automatic transcription.
+- **Extract Subtitles** — Export an embedded text subtitle track as SRT or WebVTT.
 - **Change Speed** — Adjust playback speed while preserving voice pitch.
 - **Extract Frames** — Export video stills as PNG, JPEG, or HEIC.
 - **Record Screen** — Record a display, window, or region with audio and optional click indicators.
@@ -20,11 +21,12 @@ Tool catalog organized by category.
 - **Replace Audio** — Replace a soundtrack or mix narration or music into it.
 - **Video to GIF** — Export a clip as an animated GIF.
 
-## Audio (5)
+## Audio (6)
 
 - **Clean Up Audio** — Reduce noise and hum in recorded audio or video.
 - **Record Audio** — Capture microphone audio and optionally transcribe it locally.
 - **Trim Audio** — Cut a recording to a selected segment.
+- **Merge Audio** — Reorder and join audio files with optional gaps or crossfades.
 - **Extract Audio** — Export a video soundtrack as a separate file.
 - **Convert Audio** — Convert among MP3, M4A, WAV, FLAC, and AIFF.
 
@@ -37,7 +39,7 @@ Tool catalog organized by category.
 - **Convert Images** — Export images as JPEG, PNG, HEIC, TIFF, or WebP.
 - **Compress Images** — Reduce image file size.
 - **Resize Images** — Rescale by percentage, longest edge, or exact dimensions.
-- **Rotate Images** — Rotate or mirror batches of images.
+- **Rotate Images** — Rotate or mirror batches of images. Mac Utility Kit also supports cropping.
 - **Remove Metadata** — Strip embedded camera, date, and location information.
 - **Color Picker** — Sample screen colors and copy values such as HEX, RGB, and HSL.
 - **Redact Image** — Conceal selected regions using blur, pixelation, or solid masks.
@@ -54,7 +56,7 @@ Tool catalog organized by category.
 - **Sign PDF** — Type or draw a signature and position it on the page.
 - **Merge PDFs** — Combine PDFs and images into one document.
 - **Split PDF** — Create separate files from individual pages or ranges.
-- **Organize PDF** — Reorder, rotate, or remove pages.
+- **Organize PDF** — Reorder, rotate, or remove pages. Mac Utility Kit also supports page numbering.
 - **Delete Pages** — Delete selected pages from a document.
 - **Extract Pages** — Copy selected pages into a separate PDF.
 - **Images to PDF** — Combine photos or scans into a PDF.
@@ -70,7 +72,7 @@ Tool catalog organized by category.
 - **Web Page to PDF** — Export a webpage as paginated or continuous PDF.
 - **Markdown to PDF** — Render formatted Markdown to PDF.
 
-## Text & Speech (9)
+## Text & Speech (10)
 
 - **Transcribe** — Generate timestamped transcripts from audio or video.
 - **Summarize** — Summarize text and documents with on-device Apple Intelligence.
@@ -80,6 +82,7 @@ Tool catalog organized by category.
 - **Text to Speech** — Read text, documents, and PDFs aloud and export audio.
 - **Ask a Document** — Ask questions about a document locally and get answers with page references.
 - **Word Counter** — Count words, characters, sentences, and paragraphs, and estimate reading time and word frequency.
+- **Batch Find & Replace** — Preview literal or regular expression edits across text files and export copies.
 - **Case Converter** — Convert text case and identifier styles including camelCase, snake_case, and kebab-case.
 
 ## Files (5)

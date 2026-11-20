@@ -8,6 +8,7 @@ struct ImageRotateControls: View {
     @State private var preview: PreviewResult?
     @State private var reviewedInputs: [URL] = []
     @State private var supportsQuality = false
+    @State private var cropExpanded = true
 
     private var previewInputs: [URL] {
         var seen = Set<URL>()
@@ -38,6 +39,14 @@ struct ImageRotateControls: View {
                 Toggle("Flip horizontally", isOn: $options.flipHorizontally)
                 Toggle("Flip vertically", isOn: $options.flipVertically)
             }
+            Toggle("Crop images", isOn: Binding(get: { options.crop != nil }, set: { enabled in
+                options.crop = enabled ? ImageCropOptions() : nil
+            }))
+            if let crop = Binding($options.crop) {
+                DisclosureGroup("Crop Settings", isExpanded: $cropExpanded) {
+                    cropControls(crop)
+                }
+            }
             SettingRow("Format") {
                 Picker("Output format", selection: $options.output) {
                     ForEach(ImageRotateOptions.Output.allCases) { Text($0.rawValue).tag($0) }
@@ -53,7 +62,12 @@ struct ImageRotateControls: View {
                         .frame(width: 42, alignment: .trailing)
                 }
             }
-            Toggle("Preserve compatible metadata", isOn: $options.preserveMetadata)
+            if options.crop == nil {
+                Toggle("Preserve compatible metadata", isOn: $options.preserveMetadata)
+            } else {
+                Text("Cropped copies omit source metadata and embedded previews.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
             if previewInputs.count > 1 {
                 SettingRow("Preview file") {
                     Picker("Preview file", selection: Binding(get: { input }, set: { selected = $0 })) {
@@ -72,7 +86,7 @@ struct ImageRotateControls: View {
                 case .success(let pair):
                     HStack(alignment: .top, spacing: 12) {
                         tile("Original", image: pair.before, width: pair.sourceWidth, height: pair.sourceHeight)
-                        tile("Rotated · " + pair.format.title, image: pair.after, width: pair.outputWidth, height: pair.outputHeight)
+                        tile("Result · " + pair.format.title, image: pair.after, width: pair.outputWidth, height: pair.outputHeight)
                     }
                 case .failure(let error):
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
@@ -92,6 +106,35 @@ struct ImageRotateControls: View {
                 try Task.checkCancellation()
                 preview = PreviewResult(request: request, result: result)
             } catch {}
+        }
+    }
+
+    private func cropControls(_ crop: Binding<ImageCropOptions>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SettingRow("Aspect ratio") {
+                Picker("Aspect ratio", selection: crop.ratio) {
+                    ForEach(ImageCropOptions.Ratio.allCases) { Text($0.rawValue).tag($0) }
+                }
+                .labelsHidden()
+            }
+            if crop.wrappedValue.ratio == .freeform {
+                cropSlider("Width", value: crop.width, range: 0.01...1)
+                cropSlider("Height", value: crop.height, range: 0.01...1)
+            } else {
+                cropSlider("Crop size", value: crop.scale, range: 0.01...1)
+            }
+            cropSlider("Left to right", value: crop.horizontalPosition, range: 0...1)
+            cropSlider("Top to bottom", value: crop.verticalPosition, range: 0...1)
+        }
+        .padding(.top, 5)
+    }
+
+    private func cropSlider(_ label: String, value: Binding<Double>, range: ClosedRange<Double>) -> some View {
+        SettingRow(label) {
+            Slider(value: value, in: range, step: 0.01) { Text(label) }.labelsHidden()
+            Text(value.wrappedValue.formatted(.percent.precision(.fractionLength(0))))
+                .font(.callout.monospacedDigit())
+                .frame(width: 42, alignment: .trailing)
         }
     }
 
