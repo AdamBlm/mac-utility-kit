@@ -5,6 +5,17 @@ import Testing
 import UtilityCore
 
 @Suite struct CaptureTextTests {
+    @Test func capturedResultPreservesSourceAndRecognizedText() {
+        let source = URL(filePath: "/tmp/Captured Text.png")
+        let text = "Café 東京\n\nSecond line"
+        let captured = ExtractedTextFile.captured(source: source, text: text)
+        #expect(captured.source == source)
+        #expect(captured.result.text == text)
+        #expect(captured.result.pages.map(\.text) == [text])
+        #expect(captured.result.pages.first?.pageNumber == nil)
+        #expect(captured.result.pages.first?.error == nil)
+    }
+
     @Test func convertsAppKitCoordinatesForDisplaysAboveAndLeft() {
         let primary = CGRect(x: 0, y: 0, width: 1_440, height: 900)
         let selected = CGRect(x: -60, y: 860, width: 260, height: 130)

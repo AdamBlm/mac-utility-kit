@@ -14,6 +14,11 @@ public struct JobReport: Sendable {
 public struct ExtractedTextFile: Sendable {
     public let source: URL
     public let result: TextExtractionResult
+
+    package static func captured(source: URL, text: String) -> Self {
+        let image = TextExtractionPage(pageNumber: nil, text: text, error: nil)
+        return Self(source: source, result: TextExtractionResult(pages: [image], text: text))
+    }
 }
 
 public struct MediaInspectionResult: Sendable {

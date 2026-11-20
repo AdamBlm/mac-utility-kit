@@ -6,8 +6,9 @@ import UtilityCore
 /// Owns the temporary image while a workspace draft or export uses it.
 final class CaptureTextAttachment {
     let url: URL
+    let recognizedText: String?
 
-    init(image: CGImage, filename: String = "Captured Text.png") throws {
+    init(image: CGImage, filename: String = "Captured Text.png", recognizedText: String? = nil) throws {
         let manager = FileManager.default
         let directory = manager.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         try manager.createDirectory(at: directory, withIntermediateDirectories: false,
@@ -23,6 +24,7 @@ final class CaptureTextAttachment {
             throw ToolError.invalid("Could not save the temporary image.")
         }
         url = file
+        self.recognizedText = recognizedText
     }
 
     deinit {

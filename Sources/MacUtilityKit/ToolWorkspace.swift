@@ -15,7 +15,7 @@ struct ToolWorkspace: View {
     let openOutput: (URL) -> Void
     let openTranscription: (URL) -> Void
     let openCaptionBurn: (URL, String) -> Void
-    let openCapturedText: (CGImage, String?) -> Void
+    let openCapturedText: (CGImage, String, String?) -> Void
     let openAnnotation: (CGImage) -> Void
     @State private var dropTarget: Tool?
     @State private var pdfEditorReady = false
@@ -374,6 +374,17 @@ struct ToolWorkspace: View {
                         Label(error, systemImage: "info.circle")
                             .foregroundStyle(.secondary)
                             .textSelection(.enabled)
+                    }
+                    if tool == .extractText, session.reports[tool] == nil {
+                        let captures = draft.captureAttachments.filter { $0.recognizedText != nil && draft.inputs.contains($0.url) }
+                        if !captures.isEmpty {
+                            WorkspaceSection("Captured Text", palette: palette) {
+                                ForEach(captures, id: \.url) { capture in
+                                    TextExtractionResultView(file: .captured(source: capture.url, text: capture.recognizedText ?? ""),
+                                                             password: "", expanded: true)
+                                }
+                            }
+                        }
                     }
                     if let report = session.reports[tool] {
                         WorkspaceSection("Results", palette: palette) {

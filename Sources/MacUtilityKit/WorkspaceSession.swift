@@ -265,6 +265,22 @@ final class WorkspaceSession {
         return directory
     }
 
+    func openCapturedText(_ attachment: CaptureTextAttachment, language: String?) throws {
+        guard runningTool != .extractText else {
+            throw ToolError.invalid("Wait for the current text extraction to finish.")
+        }
+        var draft = drafts[.extractText, default: ToolDraft()]
+        draft.inputs = [attachment.url]
+        draft.captureAttachments = [attachment]
+        draft.options.textExtraction.language = language
+        draft.options.textExtraction.range = ""
+        draft.options.textExtraction.region = nil
+        draft.options.textExtraction.password = ""
+        drafts[.extractText] = draft
+        reports[.extractText] = nil
+        errors[.extractText] = nil
+    }
+
     func start(_ tool: Tool, draft: ToolDraft, preview: Bool = false, recheckVideoInputs: Set<Int> = []) {
         guard !isRunning, reports[tool]?.videoReviews.isEmpty != false else { return }
         runningTool = tool

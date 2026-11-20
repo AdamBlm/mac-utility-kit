@@ -236,16 +236,10 @@ struct Workspace: View {
         selection = .tool(.burnSubtitles)
     }
 
-    private func openCapturedText(_ image: CGImage, language: String?) {
+    private func openCapturedText(_ image: CGImage, text: String, language: String?) {
         do {
-            let attachment = try CaptureTextAttachment(image: image)
-            var draft = session.drafts[.extractText, default: ToolDraft()]
-            draft.inputs = [attachment.url]
-            draft.captureAttachments = [attachment]
-            draft.options.textExtraction.language = language
-            draft.options.textExtraction.range = ""
-            draft.options.textExtraction.region = nil
-            session.drafts[.extractText] = draft
+            let attachment = try CaptureTextAttachment(image: image, recognizedText: text)
+            try session.openCapturedText(attachment, language: language)
             selection = .tool(.extractText)
         } catch {
             captureHandoffError = error.localizedDescription

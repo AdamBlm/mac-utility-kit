@@ -126,9 +126,10 @@ struct TextExtractionResultView: View {
     let file: ExtractedTextFile
     let password: String
     @State private var selectedPage: Int?
+    @State var expanded = false
 
     var body: some View {
-        DisclosureGroup {
+        DisclosureGroup(isExpanded: $expanded) {
             VStack(alignment: .leading, spacing: 10) {
                 if file.result.pages.count > 1 {
                     Picker("Page", selection: $selectedPage) {

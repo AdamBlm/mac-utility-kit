@@ -11,7 +11,7 @@ struct CaptureTextDraft {
 
 struct CaptureTextView: View {
     @Binding var draft: CaptureTextDraft
-    let onHandoff: (CGImage, String?) -> Void
+    let onHandoff: (CGImage, String, String?) -> Void
 
     @State private var selector = ScreenRegionSelector()
     @State private var task: Task<Void, Never>?
@@ -82,7 +82,7 @@ struct CaptureTextView: View {
                         }
                         .disabled(draft.text.isEmpty)
                         Button("Open in Extract Text", systemImage: "arrow.turn.up.right") {
-                            onHandoff(image, draft.language)
+                            onHandoff(image, draft.text, draft.language)
                         }
                         Spacer()
                         Button("Clear") {
