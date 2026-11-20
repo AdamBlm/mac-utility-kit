@@ -30,6 +30,17 @@ struct TextToSpeechTests {
         #expect(try await SpeechDocument.load(pdf).contains("Readable text"))
     }
 
+    @Test func loadsOnlyRequestedPDFPagesForSpeech() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let pdf = folder.appending(path: "Sections.pdf")
+        try Self.makePDF(at: pdf, pages: ["First section", "Middle section", "Last section"])
+        #expect(try await SpeechDocument.loadForSpeech(pdf, pages: "3, 2, 2") == "Middle section\n\nLast section")
+        for invalid in ["none", "0", "4", "one"] {
+            await #expect(throws: ToolError.self) { try await SpeechDocument.loadForSpeech(pdf, pages: invalid) }
+        }
+    }
+
     @Test func importsReadableMarkdownContentForSpeech() async throws {
         let folder = try Self.folder()
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -109,16 +120,18 @@ struct TextToSpeechTests {
         return folder
     }
 
-    private static func makePDF(at url: URL) throws {
+    private static func makePDF(at url: URL, pages: [String] = ["Readable text"]) throws {
         var rectangle = CGRect(x: 0, y: 0, width: 250, height: 100)
         let context = try #require(CGContext(url as CFURL, mediaBox: &rectangle, nil))
-        context.beginPDFPage(nil)
-        context.textPosition = CGPoint(x: 20, y: 30)
-        let text = NSAttributedString(string: "Readable text", attributes: [
-            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 18, nil)
-        ])
-        CTLineDraw(CTLineCreateWithAttributedString(text), context)
-        context.endPDFPage()
+        for page in pages {
+            context.beginPDFPage(nil)
+            context.textPosition = CGPoint(x: 20, y: 30)
+            let text = NSAttributedString(string: page, attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 18, nil)
+            ])
+            CTLineDraw(CTLineCreateWithAttributedString(text), context)
+            context.endPDFPage()
+        }
         context.closePDF()
     }
 }

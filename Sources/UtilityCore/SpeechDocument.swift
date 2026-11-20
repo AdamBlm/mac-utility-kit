@@ -9,11 +9,11 @@ public enum SpeechDocument {
         try await load(url, renderMarkdown: false)
     }
 
-    public static func loadForSpeech(_ url: URL) async throws -> String {
-        try await load(url, renderMarkdown: true)
+    public static func loadForSpeech(_ url: URL, pages: String = "") async throws -> String {
+        try await load(url, renderMarkdown: true, pages: pages)
     }
 
-    private static func load(_ url: URL, renderMarkdown: Bool) async throws -> String {
+    private static func load(_ url: URL, renderMarkdown: Bool, pages: String = "") async throws -> String {
         try Task.checkCancellation()
         guard url.isFileURL else { throw ToolError.invalid("Choose a local document.") }
         let values = try url.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
@@ -24,7 +24,7 @@ public enum SpeechDocument {
         let markdown = ["md", "markdown"].contains(url.pathExtension.lowercased())
         let text: String
         if type?.conforms(to: .pdf) == true {
-            text = try extractPDF(url)
+            text = try extractPDF(url, range: pages)
         } else if type?.conforms(to: .rtf) == true {
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
             text = try readRTF(data)
@@ -53,7 +53,7 @@ public enum SpeechDocument {
         return text
     }
 
-    private static func extractPDF(_ url: URL) throws -> String {
+    private static func extractPDF(_ url: URL, range: String) throws -> String {
         guard let pdf = PDFDocument(url: url), !pdf.isLocked else {
             throw ToolError.invalid("Could not open the PDF. Unlock protected PDFs before opening them here.")
         }
@@ -62,12 +62,14 @@ public enum SpeechDocument {
         }
         var pages: [String] = []
         var bytes = 0
-        for index in 0..<pdf.pageCount {
+        let selected = try PageSelection.indices(range, pageCount: pdf.pageCount).sorted()
+        guard !selected.isEmpty else { throw ToolError.invalid("Choose at least one PDF page to speak.") }
+        for index in selected {
             try Task.checkCancellation()
             guard let text = pdf.page(at: index)?.string, !text.isEmpty else { continue }
             bytes += text.utf8.count
             guard bytes <= 2 * 1024 * 1024 else {
-                throw ToolError.invalid("Open a PDF with less than 2 MB of extracted text.")
+                throw ToolError.invalid("Choose PDF pages with less than 2 MB of extracted text.")
             }
             pages.append(text)
         }
