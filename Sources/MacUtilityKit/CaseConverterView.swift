@@ -30,7 +30,7 @@ struct CaseConverterView: View {
     var body: some View {
         InteractiveToolLayout(tool: .caseConverter) { palette in
             WorkspaceSection("Text", palette: palette) {
-                TextEditor(text: Binding(get: { draft.input }, set: replaceText), selection: $selection)
+                TextEditor(text: Binding(get: { draft.input }, set: { replaceText($0) }), selection: $selection)
                     .font(.body.monospaced())
                     .frame(minHeight: 100)
                     .scrollContentBackground(.hidden)

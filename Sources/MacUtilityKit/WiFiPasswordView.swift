@@ -43,7 +43,7 @@ struct WiFiPasswordView: View {
         InteractiveToolLayout(tool: .wifiPasswordQR) { palette in
             WorkspaceSection("Network", palette: palette) {
                 HStack {
-                    Picker("Source", selection: Binding(get: { selectedID }, set: selectNetwork)) {
+                    Picker("Source", selection: Binding(get: { selectedID }, set: { selectNetwork($0) })) {
                         Text("Enter manually").tag(WiFiPassword.SavedNetwork.ID?.none)
                         ForEach(networks) { network in
                             Text(networkLabel(network)).tag(Optional(network.id))
