@@ -90,6 +90,7 @@ public enum CoordinateBatchLookup {
     }
 
     private static func looksLikeCoordinates(_ line: String) -> Bool {
+        if MapCoordinate.hasGeoScheme(line) { return true }
         if line.contains("°") { return true }
         if line.wholeMatch(of: /[+−\-]?[0-9.]+\s*[,; ]\s*[+−\-]?[0-9.]+/) != nil { return true }
         if line.wholeMatch(of: /[+−\-]?[0-9.]+\s*[,;]\s*/) != nil { return true }

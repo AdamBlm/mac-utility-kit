@@ -73,7 +73,7 @@ struct CoordinatePickerView: View {
                 }
                 HStack {
                     TextField("Latitude and longitude", text: $draft.input)
-                        .help("Decimal degrees, degrees and decimal minutes, or degrees, minutes, and seconds")
+                        .help("Decimal degrees, degrees and decimal minutes, degrees, minutes and seconds, or a geo URI. Geo URIs import latitude and longitude.")
                         .onSubmit { enterCoordinates() }
                     Button("Set Point", action: enterCoordinates)
                 }
@@ -95,6 +95,7 @@ struct CoordinatePickerView: View {
                                 Button("Copy degrees, minutes, seconds") {
                                     DeveloperToolFiles.copy(marker.coordinate.degreesMinutesSeconds)
                                 }
+                                Button("Copy Geo URI") { DeveloperToolFiles.copy(marker.coordinate.geoURI) }
                                 Button("Remove") {
                                     draft.markers.removeAll { $0.id == marker.id }
                                     if selectedMarker == marker.id { selectedMarker = nil }

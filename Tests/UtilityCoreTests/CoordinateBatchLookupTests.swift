@@ -74,4 +74,18 @@ struct CoordinateBatchLookupTests {
         #expect(try accepted.outcome == .accepted(MapCoordinate(latitude: 33.5, longitude: -122.25)))
         #expect(rejected.outcome == .rejected(.invalidCoordinate))
     }
+
+    @Test func resolvesGeoURIsWithoutPlaceSearch() async throws {
+        let entries = try CoordinateBatchLookup.prepare("GEO:13.7563,100.5018;u=20\ngeo:94,0\ngeo:bad")
+        var outcomes: [CoordinateBatchLookup.Outcome] = []
+        for entry in entries {
+            let row = try await CoordinateBatchLookup.resolve(entry) { _ in
+                Issue.record("A geo URI should be parsed locally.")
+                return nil
+            }
+            outcomes.append(row.outcome)
+        }
+        let point = try MapCoordinate(latitude: 13.7563, longitude: 100.5018)
+        #expect(outcomes == [.accepted(point), .rejected(.invalidCoordinate), .rejected(.invalidCoordinate)])
+    }
 }

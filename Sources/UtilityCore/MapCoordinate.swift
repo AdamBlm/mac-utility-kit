@@ -21,8 +21,13 @@ public struct MapCoordinate: Hashable, Sendable {
         Self.dms(latitude, positive: "N", negative: "S") + ", " + Self.dms(longitude, positive: "E", negative: "W")
     }
 
+    public var geoURI: String {
+        "geo:" + decimal.replacingOccurrences(of: ", ", with: ",")
+    }
+
     public static func parse(_ input: String) throws -> Self {
         let trimmed = input.trimmingCharacters(in: .whitespacesAndNewlines)
+        if hasGeoScheme(trimmed) { return try parseGeoURI(trimmed.dropFirst(4)) }
         let normalized = trimmed.replacingOccurrences(of: "−", with: "-")
         if let pair = normalized.wholeMatch(of: /([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))\s*[,; ]\s*([+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))/),
            let latitude = Double(pair.1), let longitude = Double(pair.2) {
@@ -46,6 +51,41 @@ public struct MapCoordinate: Hashable, Sendable {
     public func distance(to other: Self) -> Double {
         CLLocation(latitude: latitude, longitude: longitude)
             .distance(from: CLLocation(latitude: other.latitude, longitude: other.longitude))
+    }
+
+    static func hasGeoScheme(_ input: String) -> Bool {
+        input.prefix(4).lowercased() == "geo:"
+    }
+
+    private static func parseGeoURI(_ path: Substring) throws -> Self {
+        let malformed = ToolError.invalid("Enter a valid geo URI with decimal latitude and longitude.")
+        var parts = path.split(separator: ";", omittingEmptySubsequences: false)[...]
+        guard let coordinates = parts.popFirst() else { throw malformed }
+        let values = coordinates.split(separator: ",", omittingEmptySubsequences: false)
+        guard (2...3).contains(values.count), values.allSatisfy({
+            $0.wholeMatch(of: /-?[0-9]+(?:\.[0-9]+)?/) != nil
+        }), let latitude = Double(values[0]), let longitude = Double(values[1]),
+              values.count == 2 || Double(values[2])?.isFinite == true else { throw malformed }
+
+        if let crs = parts.first, crs.lowercased().hasPrefix("crs=") {
+            guard crs.lowercased() == "crs=wgs84" else {
+                throw ToolError.invalid("Coordinate Picker supports only WGS 84 geo coordinates.")
+            }
+            parts = parts.dropFirst()
+        }
+        if let uncertainty = parts.first, uncertainty.lowercased().hasPrefix("u=") {
+            let metres = uncertainty.dropFirst(2)
+            guard metres.wholeMatch(of: /[0-9]+(?:\.[0-9]+)?/) != nil,
+                  Double(metres)?.isFinite == true else { throw malformed }
+            parts = parts.dropFirst()
+        }
+        for parameter in parts {
+            let name = parameter.prefix(while: { $0 != "=" }).lowercased()
+            guard name != "crs", name != "u",
+                  parameter.wholeMatch(of: /[A-Za-z0-9-]+(?:=(?:[A-Za-z0-9_.!~*'()\[\]:&+$-]|%[0-9A-Fa-f]{2})+)?/) != nil
+            else { throw malformed }
+        }
+        return try Self(latitude: latitude, longitude: longitude)
     }
 
     private static func parseAngle(

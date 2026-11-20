@@ -30,4 +30,18 @@ struct MapCoordinateTests {
         #expect(throws: ToolError.self) { try MapCoordinate.parse("122° W 33° N") }
         #expect(throws: ToolError.self) { try MapCoordinate.parse("33° N 180° 0.1′ E") }
     }
+
+    @Test func importsRFC5870HorizontalCoordinatesAndCopiesRoundTrippableGeoURI() throws {
+        let point = try MapCoordinate(latitude: -33.856784, longitude: 151.215297)
+        #expect(try MapCoordinate.parse(" GEO:-33.856784,151.215297,-5;CRS=WGS84;U=12.5;name=a%20b ") == point)
+        #expect(point.geoURI == "geo:-33.856784,151.215297")
+        #expect(try MapCoordinate.parse(point.geoURI) == point)
+    }
+
+    @Test(arguments: ["geo:94,0", "geo:0,181", "geo:0,0;crs=other",
+                      "geo:0,0;u=-3", "geo:0,0;u=2;u=3", "geo:0,0;name=abc;crs=wgs84",
+                      "geo:0,0;name=%zz", "geo:0%2C0", "geo:0,0#fragment", "geo:+4,7"])
+    func rejectsInvalidGeoURIs(_ input: String) {
+        #expect(throws: ToolError.self) { try MapCoordinate.parse(input) }
+    }
 }
