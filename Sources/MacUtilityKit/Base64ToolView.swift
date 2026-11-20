@@ -20,17 +20,20 @@ struct Base64ToolView: View {
     @State private var outputInput: Input?
     @State private var exportTask: Task<Void, Never>?
     @State private var exportedFile: URL?
+    @State private var fileRevision = UUID()
 
     private struct Input: Equatable, Sendable {
+        static let previewByteLimit = 1_048_576
         let text: String
         let decoding: Bool
         let format: ByteEncoding
         let padded: Bool
         let lineWidth: Int
         let file: URL?
+        let fileRevision: UUID?
 
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.file == rhs.file && lhs.decoding == rhs.decoding && lhs.format == rhs.format &&
+            lhs.file == rhs.file && lhs.fileRevision == rhs.fileRevision && lhs.decoding == rhs.decoding && lhs.format == rhs.format &&
                 lhs.padded == rhs.padded && lhs.lineWidth == rhs.lineWidth &&
                 lhs.text.utf8.elementsEqual(rhs.text.utf8)
         }
@@ -39,15 +42,19 @@ struct Base64ToolView: View {
             guard let file else { return false }
             let values = try? file.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
             guard values?.isRegularFile == true, let size = values?.fileSize else { return true }
-            return size > 1_048_576
+            return size > Self.previewByteLimit
         }
 
         func convert() async throws -> Output {
             let source: Data
+            let sourceVersion: PlainTextDecoding.FileVersion?
             if let file {
-                source = try await DeveloperToolFiles.read(file)
+                let snapshot = try await PlainTextDecoding.loadVerifiedFile(file, maximumBytes: Self.previewByteLimit)
+                source = snapshot.bytes
+                sourceVersion = snapshot.version
             } else {
                 source = Data(text.utf8)
+                sourceVersion = nil
             }
             let work = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()
@@ -57,10 +64,11 @@ struct Base64ToolView: View {
                     let printable = text?.unicodeScalars.allSatisfy {
                         $0.properties.generalCategory != .control || [9, 10, 13].contains($0.value)
                     } ?? false
-                    return Output(data: decoded, text: printable ? text : nil, filename: printable ? "decoded.txt" : "decoded.bin")
+                    return Output(data: decoded, text: printable ? text : nil,
+                                  filename: printable ? "decoded.txt" : "decoded.bin", sourceVersion: sourceVersion)
                 }
                 let encoded = format.encode(source, padded: padded, wrapAt: lineWidth)
-                return Output(data: Data(encoded.utf8), text: encoded, filename: "encoded.txt")
+                return Output(data: Data(encoded.utf8), text: encoded, filename: "encoded.txt", sourceVersion: sourceVersion)
             }
             return try await withTaskCancellationHandler {
                 try await work.value
@@ -74,11 +82,13 @@ struct Base64ToolView: View {
         let data: Data
         let text: String?
         let filename: String
+        let sourceVersion: PlainTextDecoding.FileVersion?
     }
 
     var body: some View {
         let input = Input(text: draft.text, decoding: draft.decoding, format: draft.format, padded: draft.padded,
-                          lineWidth: draft.lineWidth, file: draft.file)
+                          lineWidth: draft.lineWidth, file: draft.file,
+                          fileRevision: draft.file == nil ? nil : fileRevision)
         InteractiveToolLayout(tool: .base64) { palette in
             WorkspaceSection("Conversion", palette: palette) {
                 Picker("Operation", selection: $draft.decoding) {
@@ -109,7 +119,12 @@ struct Base64ToolView: View {
             }
             WorkspaceSection("Input", palette: palette) {
                 if let file = draft.file {
-                    Label(file.lastPathComponent, systemImage: "doc")
+                    HStack {
+                        Label(file.lastPathComponent, systemImage: "doc")
+                        Spacer()
+                        Button("Reload File", systemImage: "arrow.clockwise") { selectFile(file) }
+                            .disabled(exportTask != nil)
+                    }
                 } else {
                     TextEditor(text: $draft.text)
                         .font(.system(.body, design: .monospaced))
@@ -121,10 +136,10 @@ struct Base64ToolView: View {
                 }
                 HStack {
                     Button("Open file…", systemImage: "folder") {
-                        if let url = DeveloperToolFiles.choose() { draft.file = url }
+                        if let url = DeveloperToolFiles.choose() { selectFile(url) }
                     }
                     ClipboardFileButton(allowedTypes: [.data], buttonOnlyTitle: "Paste File",
-                                        onPasteFile: { draft.file = $0 })
+                                        onPasteFile: selectFile)
                     Button("Paste", systemImage: "doc.on.clipboard") {
                         if let text = NSPasteboard.general.string(forType: .string) {
                             draft.file = nil
@@ -173,7 +188,7 @@ struct Base64ToolView: View {
                         }
                         Button("Export…", systemImage: "square.and.arrow.up") {
                             if let file = input.file {
-                                export(input, file: file, filename: result.filename)
+                                export(input, file: file, filename: result.filename, expectedSource: result.sourceVersion)
                             } else {
                                 do { try DeveloperToolFiles.save(result.data, as: result.filename) }
                                 catch { exportError = error.localizedDescription }
@@ -228,7 +243,16 @@ struct Base64ToolView: View {
         exportTask = nil
     }
 
-    private func export(_ input: Input, file: URL, filename: String? = nil) {
+    private func selectFile(_ file: URL) {
+        var refreshed = file
+        refreshed.removeAllCachedResourceValues()
+        draft.file = refreshed
+        fileRevision = UUID()
+    }
+
+    private func export(
+        _ input: Input, file: URL, filename: String? = nil, expectedSource: PlainTextDecoding.FileVersion? = nil
+    ) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = filename ?? (input.decoding ? "decoded.bin" : "encoded.txt")
         guard panel.runModal() == .OK, let destination = panel.url else { return }
@@ -237,7 +261,8 @@ struct Base64ToolView: View {
         exportTask = Task {
             do {
                 try await input.format.convertFile(file, to: destination, decoding: input.decoding,
-                                                   padded: input.padded, wrapAt: input.lineWidth)
+                                                   padded: input.padded, wrapAt: input.lineWidth,
+                                                   expectedSource: expectedSource)
                 if !Task.isCancelled { exportedFile = destination }
             } catch {
                 if !Task.isCancelled { exportError = error.localizedDescription }

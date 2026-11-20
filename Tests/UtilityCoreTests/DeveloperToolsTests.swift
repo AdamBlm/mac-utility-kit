@@ -105,6 +105,33 @@ import Testing
 }
 
 @Suite struct ByteEncodingTests {
+    @Test func exportUsesTheVerifiedPreviewVersionAndRefusesSamePathReplacement() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = directory.appending(path: "input.bin")
+        let output = directory.appending(path: "encoded.txt")
+        let original = Data("old".utf8)
+        try original.write(to: source)
+        let preview = try await PlainTextDecoding.loadVerifiedFile(source, maximumBytes: 1024)
+        #expect(preview.bytes == original)
+        try await ByteEncoding.hex.convertFile(source, to: output, decoding: false, padded: true, wrapAt: 0,
+                                               expectedSource: preview.version)
+        #expect(try Data(contentsOf: output) == Data("6f6c64".utf8))
+
+        try Data("new".utf8).write(to: source, options: .atomic)
+        let failure = await #expect(throws: ToolError.self) {
+            try await ByteEncoding.hex.convertFile(source, to: output, decoding: false, padded: true, wrapAt: 0,
+                                                   expectedSource: preview.version)
+        }
+        #expect(failure?.localizedDescription.contains("changed after preview") == true)
+        #expect(try Data(contentsOf: output) == Data("6f6c64".utf8))
+        let refreshed = try await PlainTextDecoding.loadVerifiedFile(source, maximumBytes: 1024)
+        try await ByteEncoding.hex.convertFile(source, to: output, decoding: false, padded: true, wrapAt: 0,
+                                               expectedSource: refreshed.version)
+        #expect(try Data(contentsOf: output) == Data("6e6577".utf8))
+    }
+
     @Test(arguments: ByteEncoding.allCases, [false, true])
     func fileConversionMatchesInMemoryAcrossChunks(format: ByteEncoding, padded: Bool) async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)

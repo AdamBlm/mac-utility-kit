@@ -3,11 +3,13 @@ import Foundation
 
 extension ByteEncoding {
     package func convertFile(
-        _ input: URL, to output: URL, decoding: Bool, padded: Bool, wrapAt: Int
+        _ input: URL, to output: URL, decoding: Bool, padded: Bool, wrapAt: Int,
+        expectedSource: PlainTextDecoding.FileVersion? = nil
     ) async throws {
         try Task.checkCancellation()
         let task = Task.detached(priority: .userInitiated) {
-            try writeConversion(input, to: output, decoding: decoding, padded: padded, wrapAt: wrapAt)
+            try writeConversion(input, to: output, decoding: decoding, padded: padded, wrapAt: wrapAt,
+                                expectedSource: expectedSource)
         }
         try await withTaskCancellationHandler {
             try await task.value
@@ -17,7 +19,8 @@ extension ByteEncoding {
     }
 
     private func writeConversion(
-        _ input: URL, to output: URL, decoding: Bool, padded: Bool, wrapAt: Int
+        _ input: URL, to output: URL, decoding: Bool, padded: Bool, wrapAt: Int,
+        expectedSource: PlainTextDecoding.FileVersion?
     ) throws {
         guard input.isFileURL, output.isFileURL else { throw ToolError.invalid("Choose local files.") }
         try Task.checkCancellation()
@@ -30,6 +33,9 @@ extension ByteEncoding {
             throw ToolError.invalid("Choose a regular input file.")
         }
         let stamp = DuplicateFileStamp(info)
+        if let expectedSource, expectedSource.stamp != stamp {
+            throw ToolError.invalid("The input file changed after preview. Reload the preview before exporting.")
+        }
         try validateDestination(output, source: stamp)
         let originalDestination = try destinationStamp(output)
 

@@ -14,7 +14,15 @@ package enum PlainTextDecoding {
         }
     }
 
+    package struct FileVersion: Sendable {
+        let stamp: DuplicateFileStamp
+    }
+
     package static func loadVerifiedBytes(_ input: URL, maximumBytes: Int) async throws -> Data {
+        try await loadVerifiedFile(input, maximumBytes: maximumBytes).bytes
+    }
+
+    package static func loadVerifiedFile(_ input: URL, maximumBytes: Int) async throws -> (bytes: Data, version: FileVersion) {
         try Task.checkCancellation()
         let work = Task.detached(priority: .userInitiated) {
             guard input.isFileURL else { throw ReadIssue.nonLocal }
@@ -29,12 +37,12 @@ package enum PlainTextDecoding {
             guard input.resolvingSymlinksInPath().standardizedFileURL.path == resolved.path else {
                 throw ReadIssue.changed
             }
-            return bytes
+            return (bytes, FileVersion(stamp: stamp))
         }
         return try await withTaskCancellationHandler {
-            let bytes = try await work.value
+            let file = try await work.value
             try Task.checkCancellation()
-            return bytes
+            return file
         } onCancel: {
             work.cancel()
         }
