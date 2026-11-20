@@ -64,6 +64,7 @@ package final class ClipboardHistoryController {
     ]
 
     private static let imageTypes: [NSPasteboard.PasteboardType] = [.png, .tiff, .init(UTType.jpeg.identifier), .init(UTType.gif.identifier)]
+    private static let declaredSource = NSPasteboard.PasteboardType("org.nspasteboard.source")
 
     package init(
         pasteboard: @escaping () -> NSPasteboard = { .general },
@@ -119,7 +120,8 @@ package final class ClipboardHistoryController {
         guard let appID = app.id, appID == previousApp,
               !excludedApps.contains(appID.lowercased()),
               let items = board.pasteboardItems, !items.isEmpty,
-              items.allSatisfy({ Self.ignoredTypes.isDisjoint(with: $0.types) })
+              items.allSatisfy({ Self.ignoredTypes.isDisjoint(with: $0.types) }),
+              !items.contains(where: hasExcludedSource)
         else { return }
 
         let captured = items.prefix(25).compactMap { item in
@@ -137,6 +139,12 @@ package final class ClipboardHistoryController {
             }
         }
         trimHistory()
+    }
+
+    private func hasExcludedSource(_ item: NSPasteboardItem) -> Bool {
+        guard item.types.contains(Self.declaredSource), let source = item.string(forType: Self.declaredSource) else { return false }
+        // A declared source supplements the foreground-app check. It cannot override it.
+        return excludedApps.contains(source.trimmingCharacters(in: .whitespacesAndNewlines).lowercased())
     }
 
     @discardableResult

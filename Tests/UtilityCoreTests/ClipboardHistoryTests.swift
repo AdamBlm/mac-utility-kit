@@ -70,6 +70,40 @@ struct ClipboardHistoryTests {
         #expect(history.entries.isEmpty)
     }
 
+    @Test func declaredSourceCanExcludeButCannotOverrideForegroundExclusion() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let history = ClipboardHistoryController(pasteboard: { board }, foregroundApp: { ("example.foreground", "Example") })
+        history.start()
+        defer { history.disable() }
+        history.exclude("example.background")
+
+        let sourceType = NSPasteboard.PasteboardType("org.nspasteboard.source")
+        let hidden = NSPasteboardItem()
+        hidden.setString("background fixture", forType: .string)
+        hidden.setString("Example.Background", forType: sourceType)
+        let regular = NSPasteboardItem()
+        regular.setString("ordinary fixture", forType: .string)
+        board.clearContents()
+        #expect(board.writeObjects([regular, hidden]))
+        history.poll()
+        #expect(history.entries.isEmpty)
+
+        history.exclude("example.foreground")
+        let markedAllowed = NSPasteboardItem()
+        markedAllowed.setString("foreground fixture", forType: .string)
+        markedAllowed.setString("example.allowed", forType: sourceType)
+        board.clearContents()
+        #expect(board.writeObjects([markedAllowed]))
+        history.poll()
+        #expect(history.entries.isEmpty)
+
+        history.allow("example.foreground")
+        write("permitted fixture", on: board)
+        history.poll()
+        #expect(history.entries.map(\.content) == [.text("permitted fixture")])
+    }
+
     @Test func recopyRefreshesRetentionOrderWithoutLosingIdentityOrPin() throws {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }
