@@ -2,18 +2,23 @@ import SwiftUI
 import UtilityCore
 
 struct FrameExtractionSettings: View {
-    let input: URL?
+    let inputs: [URL]
     @Binding var options: FrameExtractionOptions
     @State private var seconds = 0.0
-    @State private var loaded: LoadedVideo?
+    @State private var selected: URL?
+    @State private var reviewedInputs: [URL] = []
+    @State private var loaded: [URL: LoadedVideo] = [:]
     @State private var timestampText: String?
     @State private var intervalText: String?
     @State private var rendered: Rendered?
 
     private struct LoadedVideo {
-        let input: URL
         let bounds: Range<Double>?
         let error: String?
+
+        func plan(_ options: FrameExtractionOptions) -> Result<Int, Error>? {
+            bounds.map { bounds in Result { try FrameExtraction.times(in: bounds, options: options).count } }
+        }
     }
 
     private struct PreviewRequest: Equatable {
@@ -26,7 +31,16 @@ struct FrameExtractionSettings: View {
         let result: Result<CGImage, Error>
     }
 
-    private var activeVideo: LoadedVideo? { loaded?.input == input ? loaded : nil }
+    private var previewInputs: [URL] {
+        var seen = Set<URL>()
+        return inputs.filter { seen.insert($0).inserted }
+    }
+
+    private var input: URL? { selected.flatMap { inputs.contains($0) ? $0 : nil } ?? inputs.first }
+    private var activeVideo: LoadedVideo? {
+        guard reviewedInputs == inputs, let input else { return nil }
+        return loaded[input]
+    }
 
     private var request: PreviewRequest? {
         guard let input, let bounds = activeVideo?.bounds, seconds.isFinite,
@@ -51,8 +65,20 @@ struct FrameExtractionSettings: View {
             .labelsHidden()
             .pickerStyle(.segmented)
         }
-        .task(id: input) { await load(input) }
+        .task(id: inputs) { await load(inputs) }
+        if previewInputs.count > 1 {
+            SettingRow("Preview file") {
+                Picker("Preview file", selection: Binding(get: { input }, set: { selected = $0 })) {
+                    ForEach(previewInputs, id: \.self) { url in
+                        Text(previewLabel(for: url)).tag(Optional(url))
+                    }
+                }
+                .labelsHidden()
+                .help(input?.path ?? "")
+            }
+        }
         previewControls
+            .onChange(of: input) { adjustPreviewTime() }
         if options.selection == .timestamps {
             timestampControls
         } else {
@@ -68,19 +94,7 @@ struct FrameExtractionSettings: View {
                     .help("Seconds, MM:SS, or HH:MM:SS")
             }
         }
-        if let bounds = activeVideo?.bounds {
-            let plan = Result { try FrameExtraction.times(in: bounds, options: options) }
-            switch plan {
-            case .success(let times):
-                let count = times.count
-                Text(count == 1 ? "1 frame planned" : "\(count) frames planned")
-                    .font(.callout).foregroundStyle(.secondary)
-            case .failure(let error):
-                Text(error.localizedDescription).font(.callout).foregroundStyle(.red)
-            }
-        } else if let error = activeVideo?.error {
-            Text(error).font(.callout).foregroundStyle(.red)
-        }
+        framePlan
         SettingRow("Image format") {
             Picker("Image format", selection: $options.format) {
                 ForEach(FrameImageFormat.allCases) { Text($0.rawValue).tag($0) }
@@ -102,6 +116,54 @@ struct FrameExtractionSettings: View {
             }
             .labelsHidden()
             .pickerStyle(.segmented)
+        }
+    }
+
+    @ViewBuilder
+    private var framePlan: some View {
+        if !inputs.isEmpty {
+            if reviewedInputs == inputs, inputs.allSatisfy({ loaded[$0] != nil }) {
+                let rows = inputs.map { url -> (input: URL, count: Int?, issue: String?) in
+                    guard let video = loaded[url], let plan = video.plan(options) else {
+                        return (url, nil, loaded[url]?.error)
+                    }
+                    switch plan {
+                    case .success(let count): return (url, count, nil)
+                    case .failure(let error): return (url, nil, error.localizedDescription)
+                    }
+                }
+                let total = rows.compactMap(\.count).reduce(0, +)
+                let skipped = rows.count { $0.issue != nil }
+                if inputs.count > 1 || skipped == 0 {
+                    Text(total == 1 ? "1 frame planned" : "\(total) frames planned")
+                        .font(.callout.weight(.medium)).foregroundStyle(.secondary)
+                }
+                if inputs.count > 1 {
+                    DisclosureGroup("Per-file estimate") {
+                        ForEach(Array(rows.enumerated()), id: \.offset) { index, row in
+                            HStack(alignment: .firstTextBaseline) {
+                                Text("\(index + 1). \(row.input.lastPathComponent)")
+                                    .lineLimit(1).truncationMode(.middle).help(row.input.path)
+                                Spacer()
+                                if let count = row.count {
+                                    Text(count == 1 ? "1 frame" : "\(count) frames").foregroundStyle(.secondary)
+                                } else {
+                                    Text(row.issue ?? "Unavailable").foregroundStyle(.red)
+                                }
+                            }
+                            .font(.callout)
+                        }
+                    }
+                    if skipped > 0 {
+                        Text(skipped == 1 ? "1 video cannot use these settings." : "\(skipped) videos cannot use these settings.")
+                            .font(.callout).foregroundStyle(.red)
+                    }
+                } else if let issue = rows.first?.issue {
+                    Text(issue).font(.callout).foregroundStyle(.red)
+                }
+            } else {
+                ProgressView("Checking frame counts…").controlSize(.small)
+            }
         }
     }
 
@@ -192,26 +254,42 @@ struct FrameExtractionSettings: View {
         return activeVideo?.bounds?.contains(time) == true
     }
 
+    private func previewLabel(for url: URL) -> String {
+        let name = url.lastPathComponent
+        let sharesName = previewInputs.contains { $0 != url && $0.lastPathComponent == name }
+        return sharesName ? url.path : name
+    }
+
     private func scrubMaximum(_ bounds: Range<Double>) -> Double {
         let duration = bounds.upperBound - bounds.lowerBound
         return min(bounds.upperBound.nextDown, bounds.upperBound - min(0.001, duration * 0.000_001))
     }
 
-    private func load(_ url: URL?) async {
+    private func adjustPreviewTime() {
         rendered = nil
-        loaded = nil
-        guard let url else { return }
-        do {
-            let bounds = try await FrameExtraction.timeBounds(of: url)
-            guard !Task.isCancelled else { return }
-            if let time = enteredTimestamp, bounds.contains(time) {
-                seconds = time
-            } else if !bounds.contains(seconds) {
-                seconds = bounds.lowerBound
+        guard let bounds = activeVideo?.bounds else { return }
+        if let time = enteredTimestamp, bounds.contains(time) {
+            seconds = time
+        } else if !bounds.contains(seconds) {
+            seconds = bounds.lowerBound
+        }
+    }
+
+    private func load(_ inputs: [URL]) async {
+        guard !Task.isCancelled else { return }
+        rendered = nil
+        reviewedInputs = inputs
+        loaded = [:]
+        for url in inputs where loaded[url] == nil {
+            let video: LoadedVideo
+            do {
+                video = LoadedVideo(bounds: try await FrameExtraction.timeBounds(of: url), error: nil)
+            } catch {
+                video = LoadedVideo(bounds: nil, error: error.localizedDescription)
             }
-            loaded = LoadedVideo(input: url, bounds: bounds, error: nil)
-        } catch {
-            if !Task.isCancelled { loaded = LoadedVideo(input: url, bounds: nil, error: error.localizedDescription) }
+            guard !Task.isCancelled else { return }
+            loaded[url] = video
+            if url == input { adjustPreviewTime() }
         }
     }
 

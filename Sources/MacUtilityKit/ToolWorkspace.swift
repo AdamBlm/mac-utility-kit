@@ -294,7 +294,7 @@ struct ToolWorkspace: View {
                         case .changeSpeed:
                             ChangeSpeedControls(inputs: draft.inputs, options: $draft.options.speed, review: $changeSpeedReview)
                         case .extractFrames:
-                            FrameExtractionSettings(input: draft.inputs.first, options: $draft.options.frames)
+                            FrameExtractionSettings(inputs: draft.inputs, options: $draft.options.frames)
                         case .trimVideo:
                             TrimVideoSettings(inputs: draft.inputs, review: $trimReview, options: $draft.options.trim)
                         case .muteVideo:
