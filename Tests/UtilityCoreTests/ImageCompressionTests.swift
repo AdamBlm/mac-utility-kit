@@ -201,8 +201,8 @@ func imageCompressionUsesActualMinimumWebPQualityForSizeGoal() async throws {
     #expect(image.width == 256 && image.height == 192)
 }
 
-@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
-func imageCompressionUsesImageMagickForTransparentLosslessWebP() async throws {
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil), arguments: [ImageCompressionMode.lossless, .automatic])
+func imageCompressionUsesImageMagickForTransparentLosslessWebP(_ mode: ImageCompressionMode) async throws {
     let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
     let directory = try compressionDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -211,7 +211,7 @@ func imageCompressionUsesImageMagickForTransparentLosslessWebP() async throws {
     try writeCompressionFixture(to: source, format: .png, withAlpha: true)
 
     var settings = ImageCompressionOptions()
-    settings.mode = .lossless
+    settings.mode = mode
     settings.format = .webp
     settings.imageMagickExecutable = URL(fileURLWithPath: executable)
     let summary = try await ImageCompression.compress(source, to: output, options: settings)

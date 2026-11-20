@@ -3,7 +3,7 @@ import CoreText
 import Foundation
 import PDFKit
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 struct PDFCompressionTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"] != nil))
@@ -105,6 +105,40 @@ struct PDFCompressionTests {
             widths.append(try #require(Self.imageWidths(output).max()))
         }
         #expect(widths[0] < widths[1] && widths[1] < widths[2])
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"] != nil
+        && ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"] != nil))
+    func automaticSelectsByDocumentAndFallsBackWhenImageRewriteFails() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let text = directory.appending(path: "Text.pdf")
+        try Self.minimalPDF().write(to: text)
+        let scanFolder = directory.appending(path: "Scan")
+        try FileManager.default.createDirectory(at: scanFolder, withIntermediateDirectories: false)
+        let scan = try Self.linkedPDF(in: scanFolder, count: 1, links: false, raster: true)
+        let linkedFolder = directory.appending(path: "Linked")
+        try FileManager.default.createDirectory(at: linkedFolder, withIntermediateDirectories: false)
+        let linked = try Self.linkedPDF(in: linkedFolder, count: 1, raster: true)
+        var options = PDFCompressionOptions.recommended
+        options.qpdfExecutable = try Self.qpdf()
+        options.ghostscriptExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"]))
+        let scanDocument = try #require(PDFDocument(url: scan))
+        let linkedDocument = try #require(PDFDocument(url: linked))
+        #expect(try PDFCompressionEngines.candidates(for: scanDocument, options: options).map(\.engine) == [.qpdf, .ghostscript])
+        #expect(try PDFCompressionEngines.candidates(for: linkedDocument, options: options).map(\.engine) == [.qpdf])
+        #expect(try await PDFCompression.sample(text, options: options).engine == .qpdf)
+
+        options.qpdfExecutable = nil
+        #expect(try await PDFCompression.sample(scan, options: options).engine == .ghostscript)
+
+        options.qpdfExecutable = try Self.qpdf()
+        options.ghostscriptExecutable = URL(fileURLWithPath: "/usr/bin/false")
+        #expect(try await PDFCompression.sample(scan, options: options).engine == .qpdf)
+        let output = directory.appending(path: "Fallback.pdf")
+        let summary = try await PDFCompression.export(scan, to: output, options: options) { _ in }
+        #expect(summary.contains("qpdf"))
+        #expect(PDFDocument(url: output)?.pageCount == 1)
     }
 
     @Test(arguments: [0.1, 0.8])

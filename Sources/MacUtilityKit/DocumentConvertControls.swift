@@ -74,6 +74,10 @@ struct DocumentConvertControls: View {
             availability
             preview
         }
+        .task {
+            if options.pandocExecutable == nil { options.pandocExecutable = HomebrewEngine.pandoc.installed }
+            if options.libreOfficeExecutable == nil { options.libreOfficeExecutable = HomebrewEngine.libreOffice.installed }
+        }
         .task(id: request) {
             guard let request else { return }
             do {

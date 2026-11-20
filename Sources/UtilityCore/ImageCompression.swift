@@ -20,7 +20,7 @@ public enum ImageCompressionFormat: String, CaseIterable, Sendable {
 }
 
 public enum ImageCompressionMode: String, CaseIterable, Sendable {
-    case lossy, lossless
+    case automatic, lossy, lossless
 
     public var title: String { rawValue.capitalized }
 }
@@ -34,6 +34,12 @@ public struct ImageCompressionOptions: Sendable {
     public var imageMagickExecutable: URL?
 
     public init() {}
+
+    public static var recommended: Self {
+        var options = Self()
+        options.mode = .automatic
+        return options
+    }
 }
 
 public enum ImageCompression {
@@ -55,7 +61,8 @@ public enum ImageCompression {
         }
         let format = try selectedFormat(for: input, options: options)
         let target = try targetBytes(options.targetKilobytes)
-        guard options.quality.isFinite, (0...1).contains(options.quality) else {
+        let quality = options.mode == .automatic ? ImageCompressionOptions().quality : options.quality
+        guard quality.isFinite, (0...1).contains(quality) else {
             throw ToolError.invalid("Choose a quality between 0 and 100%.")
         }
 
@@ -67,7 +74,14 @@ public enum ImageCompression {
             throw ToolError.invalid("Compress Images supports single-image files. Use Convert Images to export the primary image.")
         }
         let inherentlyLossless = format == .png || format == .tiff
-        let usesLosslessEncoding = inherentlyLossless || options.mode == .lossless
+        let usesLosslessEncoding: Bool
+        if options.mode == .automatic && format == .webp && target == nil {
+            let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
+            let depth = properties?[kCGImagePropertyDepth] as? Int ?? 8
+            usesLosslessEncoding = depth <= 8 ? try ImageConversion.hasTransparency(input) : false
+        } else {
+            usesLosslessEncoding = inherentlyLossless || options.mode == .lossless
+        }
         if usesLosslessEncoding, format != .webp, !inherentlyLossless {
             throw ToolError.invalid("Lossless compression is available for PNG, TIFF and WebP. Choose a lossless format or switch to Lossy.")
         }
@@ -85,7 +99,7 @@ public enum ImageCompression {
 
         var encoding = ImageConversionOptions()
         encoding.format = format
-        encoding.quality = options.quality
+        encoding.quality = quality
         encoding.preserveMetadata = options.preserveMetadata
         encoding.flattenTransparency = false
         encoding.imageMagickExecutable = options.imageMagickExecutable

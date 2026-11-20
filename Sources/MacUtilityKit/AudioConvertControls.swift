@@ -29,48 +29,57 @@ struct AudioConvertControls: View {
                 }
                 .labelsHidden()
             }
-            SettingRow("Sample rate") {
-                Picker("Sample rate", selection: Binding(get: { options.sampleRate }, set: { rate in
-                    options.sampleRate = rate
-                    adjustBitrate()
-                })) {
-                    Text("Same as input").tag(Int?.none)
-                    ForEach(options.supportedRates, id: \.self) { rate in
-                        Text("\((Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...3)))) kHz")
-                            .tag(Optional(rate))
-                    }
-                }
-                .labelsHidden()
-            }
-            SettingRow("Channels") {
-                Picker("Channels", selection: $options.channels) {
-                    ForEach(AudioConvertOptions.Channels.allCases) { Text($0.rawValue).tag($0) }
-                }
-                .labelsHidden()
-            }
-            if options.isLossy {
-                SettingRow("Bitrate") {
-                    Picker("Audio bitrate", selection: $options.bitrate) {
-                        ForEach(options.supportedBitrates, id: \.self) { Text("\($0) kbps").tag($0) }
-                    }
-                    .labelsHidden()
-                }
-                if options.format == .mp3 && options.sampleRate == nil {
-                    Text("Available bitrates depend on each input’s sample rate.")
-                        .font(.callout).foregroundStyle(.secondary)
-                }
-            } else if options.format == .flac {
-                SettingRow("Compression") {
-                    Stepper("Level \(options.losslessCompression)", value: $options.losslessCompression, in: 0...8)
-                }
-            } else {
-                Text("24-bit PCM").font(.callout).foregroundStyle(.secondary)
-            }
-            if options.supportsMetadata {
-                Toggle("Preserve compatible metadata", isOn: $options.preservesMetadata)
-            } else {
-                Text("This encoder does not transfer metadata to \(options.format.title).")
+            if options.sampleRate == nil && options.channels == .source {
+                Text("Defaults to the source sample rate and channels.")
                     .font(.callout).foregroundStyle(.secondary)
+            }
+            DisclosureGroup("Advanced") {
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingRow("Sample rate") {
+                        Picker("Sample rate", selection: Binding(get: { options.sampleRate }, set: { rate in
+                            options.sampleRate = rate
+                            adjustBitrate()
+                        })) {
+                            Text("Same as input").tag(Int?.none)
+                            ForEach(options.supportedRates, id: \.self) { rate in
+                                Text("\((Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...3)))) kHz")
+                                    .tag(Optional(rate))
+                            }
+                        }
+                        .labelsHidden()
+                    }
+                    SettingRow("Channels") {
+                        Picker("Channels", selection: $options.channels) {
+                            ForEach(AudioConvertOptions.Channels.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .labelsHidden()
+                    }
+                    if options.isLossy {
+                        SettingRow("Bitrate") {
+                            Picker("Audio bitrate", selection: $options.bitrate) {
+                                ForEach(options.supportedBitrates, id: \.self) { Text("\($0) kbps").tag($0) }
+                            }
+                            .labelsHidden()
+                        }
+                        if options.format == .mp3 && options.sampleRate == nil {
+                            Text("Available bitrates depend on each input’s sample rate.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                    } else if options.format == .flac {
+                        SettingRow("Compression") {
+                            Stepper("Level \(options.losslessCompression)", value: $options.losslessCompression, in: 0...8)
+                        }
+                    } else {
+                        Text("24-bit PCM").font(.callout).foregroundStyle(.secondary)
+                    }
+                    if options.supportsMetadata {
+                        Toggle("Preserve compatible metadata", isOn: $options.preservesMetadata)
+                    } else {
+                        Text("This encoder does not transfer metadata to \(options.format.title).")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
+                .padding(.top, 8)
             }
             if options.format.requiresFFmpeg {
                 executablePicker("FFmpeg", selection: $options.ffmpegExecutable)
@@ -79,6 +88,11 @@ struct AudioConvertControls: View {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             } else {
                 sourceReview
+            }
+        }
+        .task(id: options.format) {
+            if options.format.requiresFFmpeg && options.ffmpegExecutable == nil {
+                options.ffmpegExecutable = HomebrewEngine.ffmpeg.installed
             }
         }
         .task(id: request) { [request] in await inspect(request) }

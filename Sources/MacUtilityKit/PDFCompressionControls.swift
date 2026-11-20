@@ -35,40 +35,52 @@ struct PDFCompressionControls: View {
                 }
                 .labelsHidden()
             }
-            SettingRow("Engine") {
-                Picker("Compression engine", selection: $options.engine) {
-                    ForEach(PDFCompressionOptions.Engine.allCases) { Text($0.rawValue).tag($0) }
+            if options.engine == .automatic {
+                Text("Automatic keeps text and forms lossless and may reduce image resolution in image-heavy PDFs.")
+                    .font(.callout).foregroundStyle(.secondary)
+                if options.qpdfExecutable == nil {
+                    ExternalEngineSetupButton(engine: .qpdf) { options.qpdfExecutable = $0 }
                 }
-                .labelsHidden()
-            }
-            if options.engine == .qpdf {
-                executablePicker("qpdf", selection: $options.qpdfExecutable)
-                Text(options.isLossless
-                     ? "Compress PDF objects and streams without reducing image quality."
-                     : "Optimize embedded JPEG images without changing their pixel dimensions. Requires qpdf 12.1+.")
-                    .font(.callout).foregroundStyle(.secondary)
+                if options.qpdfExecutable == nil && options.ghostscriptExecutable == nil {
+                    ExternalEngineSetupButton(engine: .ghostscript) { options.ghostscriptExecutable = $0 }
+                }
             } else {
-                executablePicker("Ghostscript", selection: $options.ghostscriptExecutable)
-                Text("Reduce embedded image DPI. Use qpdf for interactive forms and annotations.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Text(effectiveSettings).font(.callout).foregroundStyle(.secondary)
             }
-            Text(effectiveSettings)
-                .font(.callout).foregroundStyle(.secondary)
-            DisclosureGroup("Image Settings") {
-                imageSettings.padding(.top, 9)
+            DisclosureGroup("Advanced") {
+                VStack(alignment: .leading, spacing: 10) {
+                    SettingRow("Engine") {
+                        Picker("Compression engine", selection: Binding(get: { options.engine }, set: { engine in
+                            options.engine = engine
+                            options.imageQuality = nil
+                            options.imageDPI = nil
+                        })) {
+                            ForEach(PDFCompressionOptions.Engine.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                        .labelsHidden()
+                    }
+                    if options.engine != .ghostscript {
+                        executablePicker("qpdf", selection: $options.qpdfExecutable)
+                    }
+                    if options.engine != .qpdf {
+                        executablePicker("Ghostscript", selection: $options.ghostscriptExecutable)
+                    }
+                    if options.engine != .automatic { imageSettings }
+                    Toggle("Use original PDF if compression saves no space", isOn: $options.keepsOriginalIfLarger)
+                }
+                .padding(.top, 8)
             }
-            Toggle("Use original PDF if compression saves no space", isOn: $options.keepsOriginalIfLarger)
             if let issue = options.validationIssue {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             }
             estimate
         }
         .task(id: options.engine) {
-            switch options.engine {
-            case .qpdf:
-                if options.qpdfExecutable == nil { options.qpdfExecutable = HomebrewEngine.qpdf.installed }
-            case .ghostscript:
-                if options.ghostscriptExecutable == nil { options.ghostscriptExecutable = HomebrewEngine.ghostscript.installed }
+            if options.engine != .ghostscript && options.qpdfExecutable == nil {
+                options.qpdfExecutable = HomebrewEngine.qpdf.installed
+            }
+            if options.engine != .qpdf && options.ghostscriptExecutable == nil {
+                options.ghostscriptExecutable = HomebrewEngine.ghostscript.installed
             }
         }
         .task(id: pending) {
@@ -155,6 +167,10 @@ struct PDFCompressionControls: View {
                          ? "Export size: \(bytes(keepsOriginal ? sample.originalBytes : sample.candidateBytes))"
                          : "Estimated compressed size: \(bytes(sample.estimatedBytes))")
                         .font(.callout.weight(.medium))
+                    if options.engine == .automatic {
+                        Text(isWholeFile ? "Engine used: \(sample.engine.rawValue)" : "Sample engine: \(sample.engine.rawValue)")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
                     Text("\(sample.samplePages) of \(sample.totalPages) pages sampled · \(sample.originalBytes.formatted()) → \(sample.candidateBytes.formatted()) bytes")
                         .font(.callout).foregroundStyle(.secondary)
                     if sample.candidateBytes >= sample.originalBytes {
@@ -163,6 +179,11 @@ struct PDFCompressionControls: View {
                                  ? "The sample did not shrink. Export keeps the original PDF if the full result also saves no space."
                                  : "The sample did not shrink.")
                             .font(.callout).foregroundStyle(.secondary)
+                    }
+                    if sample.suggestsImageDownsampling {
+                        Text("This PDF contains large images. Automatic can reduce their resolution with Ghostscript.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        ExternalEngineSetupButton(engine: .ghostscript) { options.ghostscriptExecutable = $0 }
                     }
                     if let image = sample.preview {
                         Image(decorative: image, scale: 1)

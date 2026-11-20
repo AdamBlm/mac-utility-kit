@@ -49,7 +49,9 @@ struct VideoCompressionControls: View {
 
     private var request: CompressionReview.Request { .init(inputs: inputs, options: options) }
     private var availableFormats: [VideoFormat] {
-        selectedCapabilities?.formats ?? []
+        guard let formats = selectedCapabilities?.formats else { return [] }
+        if options.ffmpegExecutable == nil, installedFFmpeg != nil { return formats + [.webm] }
+        return formats
     }
 
     private var availableCodecs: [VideoCodec] {
@@ -62,20 +64,17 @@ struct VideoCompressionControls: View {
 
     var body: some View {
         SettingRow("Output format") {
-            Picker("Output format", selection: $options.videoFormat) {
+            Picker("Output format", selection: Binding(get: { options.videoFormat }, set: { format in
+                if format == .webm, options.ffmpegExecutable == nil, let executable = installedFFmpeg {
+                    selectEngine(executable)
+                }
+                options.videoFormat = format
+            })) {
                 if !availableFormats.contains(options.videoFormat) { Text(options.videoFormat.rawValue.uppercased()).tag(options.videoFormat) }
                 ForEach(availableFormats, id: \.self) { Text($0.rawValue.uppercased()).tag($0) }
             }
             .labelsHidden()
             .disabled(availableFormats.isEmpty)
-        }
-        SettingRow("Codec") {
-            Picker("Codec", selection: $options.videoCodec) {
-                if !availableCodecs.contains(options.videoCodec) { Text(options.videoCodec.rawValue).tag(options.videoCodec) }
-                ForEach(availableCodecs, id: \.self) { Text($0.rawValue).tag($0) }
-            }
-            .labelsHidden()
-            .disabled(availableCodecs.isEmpty)
         }
         if options.videoCompression.rateControl == .preset {
             SettingRow("Quality preset") {
@@ -104,6 +103,14 @@ struct VideoCompressionControls: View {
                 if options.videoFormat == .webm {
                     Text("WebM uses Opus audio with standard mono, stereo, or surround layouts.")
                         .font(.caption).foregroundStyle(.secondary)
+                }
+                SettingRow("Codec") {
+                    Picker("Codec", selection: $options.videoCodec) {
+                        if !availableCodecs.contains(options.videoCodec) { Text(options.videoCodec.rawValue).tag(options.videoCodec) }
+                        ForEach(availableCodecs, id: \.self) { Text($0.rawValue).tag($0) }
+                    }
+                    .labelsHidden()
+                    .disabled(availableCodecs.isEmpty)
                 }
                 SettingRow("Rate control") {
                     Picker("Rate control", selection: $options.videoCompression.rateControl) {
@@ -185,11 +192,7 @@ struct VideoCompressionControls: View {
         let hasCapabilities: Bool
     }
 
-    private var installedFFmpeg: URL? {
-        ["/opt/homebrew/bin/ffmpeg", "/usr/local/bin/ffmpeg"]
-            .first(where: FileManager.default.isExecutableFile(atPath:))
-            .map(URL.init(fileURLWithPath:))
-    }
+    private var installedFFmpeg: URL? { HomebrewEngine.ffmpeg.installed }
 
     private func chooseFFmpeg() {
         if let url = DeveloperToolFiles.choose() { selectEngine(url) }
@@ -220,9 +223,6 @@ struct VideoCompressionControls: View {
             try Task.checkCancellation()
             guard options.ffmpegExecutable == executable else { return }
             capabilities = (executable, detected)
-            if !availableFormats.contains(options.videoFormat), let format = availableFormats.first {
-                options.videoFormat = format
-            }
             correctCodec()
             if availableFormats.isEmpty {
                 engineIssue = "This FFmpeg build lacks the encoders or muxers needed for the supported formats."

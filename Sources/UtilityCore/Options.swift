@@ -56,7 +56,7 @@ public enum ImageFormat: String, CaseIterable, Sendable {
 public struct ToolOptions: Sendable {
     public var pdfSignature = PDFSignatureOptions()
     public var searchablePDF = SearchablePDFOptions()
-    public var pdfCompression = PDFCompressionOptions()
+    public var pdfCompression = PDFCompressionOptions.recommended
     public var pdfCrop = PDFCropOptions()
     public var pdfToWord = PDFToWordOptions()
     public var documents = DocumentConvertOptions()
@@ -105,7 +105,7 @@ public struct ToolOptions: Sendable {
     public var redactImage = ImageRedactOptions()
     public var removeBackground = RemoveBackgroundOptions()
     public var watermark = WatermarkOptions()
-    public var imageCompression = ImageCompressionOptions()
+    public var imageCompression = ImageCompressionOptions.recommended
     public var imageMetadata = ImageMetadataOptions()
     public var imageMagickExecutable: URL?
     public var imageSizing: ImageSizing = .longestEdge

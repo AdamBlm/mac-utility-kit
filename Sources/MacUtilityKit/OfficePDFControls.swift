@@ -92,6 +92,9 @@ struct OfficePDFControls: View {
             availability
             previewPanel
         }
+        .task {
+            if options.libreOfficeExecutable == nil { options.libreOfficeExecutable = HomebrewEngine.libreOffice.installed }
+        }
         .task(id: rendering) {
             guard let rendering else { return }
             do {

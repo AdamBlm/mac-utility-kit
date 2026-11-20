@@ -51,31 +51,17 @@ extension ToolWorkspace {
     @ViewBuilder
     func imageCompressionControls() -> some View {
         let options = draft.options.imageCompression
-        SettingRow("Compression") {
-            Picker("Compression", selection: Binding(
-                get: { draft.options.imageCompression.mode },
-                set: { mode in
-                    draft.options.imageCompression.mode = mode
-                    if mode == .lossless, [.jpg, .heic].contains(draft.options.imageCompression.format) {
-                        draft.options.imageCompression.format = .png
-                    }
-                }
-            )) {
-                ForEach(ImageCompressionMode.allCases, id: \.self) { Text($0.title).tag($0) }
-            }
-            .labelsHidden()
-            .pickerStyle(.segmented)
-        }
         SettingRow("Output format") {
             Picker("Output format", selection: $draft.options.imageCompression.format) {
                 ForEach(ImageCompressionFormat.allCases.filter {
-                    options.mode == .lossy || ![.jpg, .heic].contains($0)
+                    options.mode != .lossless || ![.jpg, .heic].contains($0)
                 }, id: \.self) { Text($0.title).tag($0) }
             }
             .labelsHidden()
         }
-        if options.mode == .lossy, options.format != .png, options.format != .tiff {
-            imageQualitySetting($draft.options.imageCompression.quality)
+        if options.mode == .automatic {
+            Text("Chooses compression for the output format. PNG and TIFF stay lossless.")
+                .font(.callout).foregroundStyle(.secondary)
         }
         Toggle("Set a best-effort size goal", isOn: Binding(
             get: { draft.options.imageCompression.targetKilobytes != nil },
@@ -94,6 +80,24 @@ extension ToolWorkspace {
         }
         DisclosureGroup("Advanced", isExpanded: $draft.showsAdvanced) {
             VStack(alignment: .leading, spacing: 10) {
+                SettingRow("Compression") {
+                    Picker("Compression", selection: Binding(
+                        get: { draft.options.imageCompression.mode },
+                        set: { mode in
+                            draft.options.imageCompression.mode = mode
+                            if mode == .lossless, [.jpg, .heic].contains(draft.options.imageCompression.format) {
+                                draft.options.imageCompression.format = .png
+                            }
+                        }
+                    )) {
+                        ForEach(ImageCompressionMode.allCases, id: \.self) { Text($0.title).tag($0) }
+                    }
+                    .labelsHidden()
+                    .pickerStyle(.segmented)
+                }
+                if options.mode == .lossy, options.format != .png, options.format != .tiff {
+                    imageQualitySetting($draft.options.imageCompression.quality)
+                }
                 Toggle("Preserve metadata where supported", isOn: $draft.options.imageCompression.preserveMetadata)
                 if options.format == .original {
                     executablePicker("ImageMagick", selection: $draft.options.imageCompression.imageMagickExecutable)

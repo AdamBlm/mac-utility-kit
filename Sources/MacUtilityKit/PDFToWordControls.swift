@@ -37,6 +37,9 @@ struct PDFToWordControls: View {
             exportAvailability
             previewControls(request)
         }
+        .task {
+            if options.libreOfficeExecutable == nil { options.libreOfficeExecutable = HomebrewEngine.libreOffice.installed }
+        }
         .task(id: request) {
             guard let request else { sourceDocument = nil; return }
             let acceptsReplacement = requestedReload == request.input

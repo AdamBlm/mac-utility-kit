@@ -165,6 +165,9 @@ struct TranscribeView: View {
                 .disabled(draft.task != nil)
             }
         }
+        .task {
+            if draft.options.executable == nil { draft.options.executable = HomebrewEngine.whisper.installed }
+        }
         .task(id: FileRequest(url: draft.input, revision: sourceRevision)) { await inspect(draft.input) }
         .task(id: listening) {
             if let listening { await play(listening) }

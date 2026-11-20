@@ -13,6 +13,11 @@
 - Keep processing in `UtilityCore`, with focused operations and engine adapters for each domain. Engine code accepts explicit inputs and options and reports progress, cancellation, results, and errors independently of SwiftUI. Shared job orchestration owns staging, batching, and publication. Add domain behavior in the relevant operation or adapter.
 - Keep interfaces small and prefer established framework boundaries. Introduce a shared abstraction when multiple callers genuinely need the same behavior. Verify changes through existing workflow tests and run the relevant engine integration fixture when changing an adapter.
 
+## Choose safe defaults for users
+
+- Default technical choices such as processing engine, codec, or quality to Automatic when the app can infer a safe choice from the input, the requested result, and the engines available. Preserve source quality and document features where possible. Tell the user what the app chose and explain when it keeps the original.
+- Put manual technical overrides in Advanced. Keep choices that express the user’s intent in the main workflow, such as which pages to keep, the desired output format, or content to remove.
+
 ## Development waves
 
 - For each new tool, verify required subfeatures and upstream choices before implementation. When working in parallel, delegate research, implementation, and independent adversarial review to separate agents for that tool. Rotate roles across tools and keep shared integration under one owner.
