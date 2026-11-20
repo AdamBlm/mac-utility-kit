@@ -36,6 +36,28 @@ struct UninstallAppTests {
         #expect(result.issues.map(\.url) == [cache])
     }
 
+    @Test func excludesSharedPreferencesAtReviewAndAtAction() async throws {
+        let fixture = try Fixture()
+        defer { fixture.clean() }
+        let preferences = try fixture.create(.preferences)
+        let shared = fixture.home.appending(path: "Shared Preferences.plist")
+        let initial = try await UninstallApp.review(fixture.app, environment: fixture.environment)
+        #expect(initial.items.first { $0.kind == .preferences }?.canTrash == true)
+
+        try FileManager.default.linkItem(at: preferences, to: shared)
+        let refreshed = try await UninstallApp.review(fixture.app, environment: fixture.environment)
+        let item = try #require(refreshed.items.first { $0.kind == .preferences })
+        #expect(!item.canTrash)
+        #expect(item.issue?.contains("other hard links") == true)
+
+        let result = await UninstallApp.trash([preferences], from: initial, environment: fixture.environment) { _ in
+            Issue.record("A shared preferences file must not reach Trash.")
+        }
+        #expect(result.moved.isEmpty)
+        #expect(result.issues.first?.reason.contains("other hard links") == true)
+        #expect(try Data(contentsOf: preferences) == Data(contentsOf: shared))
+    }
+
     @Test func rechecksDescendantsSymlinksAndOriginalBundleAndReportsMixedOutcomes() async throws {
         let fixture = try Fixture()
         defer { fixture.clean() }

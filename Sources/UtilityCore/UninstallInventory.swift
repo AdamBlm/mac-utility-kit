@@ -128,6 +128,9 @@ enum UninstallInventory {
               current.st_flags & flags == 0 else {
             throw ToolError.invalid("This path is linked, protected, or owned by another account.")
         }
+        if !kind.isDirectory, current.st_nlink > 1 {
+            throw ToolError.invalid("This file has other hard links and may be shared.")
+        }
         return DuplicateFileStamp(current)
     }
 
