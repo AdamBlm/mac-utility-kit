@@ -61,7 +61,7 @@ struct WatermarkControls: View {
                         .textFieldStyle(.roundedBorder)
                         .help("Example: 1–3, 6")
                 }
-                Text("Marked pages keep their visible content. Links, forms, and annotations lose interactivity on those pages.")
+                Text("Marked pages keep their visible content, web links, and email links. Internal links, forms, and other annotations lose interactivity on those pages.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             if hasVideo {

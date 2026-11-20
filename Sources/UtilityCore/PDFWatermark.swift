@@ -66,13 +66,16 @@ enum PDFWatermark {
         // Preserve original pages that are outside the selected range.
         let expected = document.pageCount
         for (index, pageIndex) in selected.enumerated() {
-            guard let page = replacements.page(at: index) else { throw ToolError.invalid("Could not assemble the marked PDF.") }
+            guard let page = replacements.page(at: index), let original = document.page(at: pageIndex) else {
+                throw ToolError.invalid("Could not assemble the marked PDF.")
+            }
             // A PDFPage belongs to one document. Reopen the one-page representation
             // so inserting it does not mutate the source collection mid-loop.
             guard let data = page.dataRepresentation,
                   let independent = PDFDocument(data: data)?.page(at: 0) else {
                 throw ToolError.invalid("Could not copy the marked PDF page.")
             }
+            preserveWebLinks(from: original, on: independent)
             document.removePage(at: pageIndex)
             document.insert(independent, at: pageIndex)
         }
@@ -85,6 +88,24 @@ enum PDFWatermark {
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return "\(input.lastPathComponent) · \(selected.count) marked page\(selected.count == 1 ? "" : "s") · PDF"
+    }
+
+    private static func preserveWebLinks(from original: PDFPage, on replacement: PDFPage) {
+        guard let source = original.pageRef else { return }
+        let crop = replacement.bounds(for: .cropBox)
+        let transform = source.getDrawingTransform(.cropBox, rect: crop, rotate: 0, preserveAspectRatio: true)
+        for annotation in original.annotations where annotation.type == "Link" {
+            guard let url = annotation.url ?? (annotation.action as? PDFActionURL)?.url,
+                  let scheme = url.scheme?.lowercased(), ["http", "https", "mailto"].contains(scheme) else { continue }
+            let bounds = annotation.bounds.applying(transform).standardized.intersection(crop)
+            guard !bounds.isNull, !bounds.isEmpty else { continue }
+            let link = PDFAnnotation(bounds: bounds, forType: .link, withProperties: nil)
+            let border = PDFBorder()
+            border.lineWidth = 0
+            link.border = border
+            link.action = PDFActionURL(url: url)
+            replacement.addAnnotation(link)
+        }
     }
 
     private static func pageSize(_ page: PDFPage) throws -> CGSize {

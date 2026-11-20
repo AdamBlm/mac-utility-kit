@@ -75,6 +75,41 @@ struct WatermarkTests {
         #expect(try Self.pixels(raster).at(100, 169).isBlue)
     }
 
+    @Test(arguments: [false, true])
+    func keepsURLLinkInItsVisiblePositionOnStampedRotatedPage(cropped: Bool) async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try Self.pdf(directory)
+        let document = try #require(PDFDocument(url: source))
+        let page = try #require(document.page(at: 1))
+        if cropped {
+            page.setBounds(CGRect(x: 10, y: 8, width: 160, height: 90), for: .cropBox)
+        }
+        let destination = try #require(URL(string: "https://example.com/guide"))
+        let link = PDFAnnotation(bounds: CGRect(x: 24, y: 16, width: 36, height: 12), forType: .link, withProperties: nil)
+        link.action = PDFActionURL(url: destination)
+        page.addAnnotation(link)
+        let linkSource = directory.appending(path: "link-source.pdf")
+        try #require(document.write(to: linkSource))
+        let original = try Data(contentsOf: linkSource)
+        var options = WatermarkOptions()
+        options.content = .text
+        options.text = "Draft"
+        options.pdfPages = "2"
+        let output = directory.appending(path: "linked-mark.pdf")
+        _ = try await Watermark.export(linkSource, to: output, options: options) { _ in }
+
+        let reopened = try #require(PDFDocument(url: output))
+        let stamped = try #require(reopened.page(at: 1))
+        let kept = try #require(stamped.annotations.first { $0.type == "Link" })
+        #expect((kept.action as? PDFActionURL)?.url == destination)
+        #expect(kept.bounds == (cropped ? CGRect(x: 8, y: 110, width: 12, height: 36)
+                                       : CGRect(x: 16, y: 120, width: 12, height: 36)))
+        #expect(kept.border?.lineWidth == 0)
+        #expect(stamped.string?.contains("Second searchable") == true)
+        #expect(try Data(contentsOf: linkSource) == original)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
     func videoNativePreviewAndFFmpegExportHonorTimingAndPortraitOrientation() async throws {
         let directory = try Self.directory()
