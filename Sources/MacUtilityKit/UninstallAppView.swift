@@ -9,6 +9,7 @@ struct UninstallAppDraft {
     var selected: Set<URL> = []
     var result: UninstallApp.Result?
     var removalTask: Task<Void, Never>?
+    var removalProgress: UninstallApp.Progress?
     var removing: Bool { removalTask != nil }
 }
 
@@ -79,7 +80,15 @@ struct UninstallAppView: View {
             }
             if let removalTask = draft.removalTask {
                 HStack {
-                    ProgressView("Rechecking and moving items…").controlSize(.small)
+                    if let progress = draft.removalProgress {
+                        ProgressView(value: Double(progress.completed), total: Double(progress.total)) {
+                            Text("Checking \(progress.completed + 1) of \(progress.total) · \(progress.current.lastPathComponent)")
+                                .lineLimit(1)
+                        }
+                        .font(.callout)
+                    } else {
+                        ProgressView("Rechecking and moving items…").controlSize(.small)
+                    }
                     Button("Stop") { removalTask.cancel() }
                 }
             }
@@ -188,8 +197,13 @@ struct UninstallAppView: View {
         let selected = draft.selected
         error = nil
         draft.removalTask = Task {
-            defer { draft.removalTask = nil }
-            let result = await UninstallApp.trash(selected, from: report)
+            defer {
+                draft.removalTask = nil
+                draft.removalProgress = nil
+            }
+            let result = await UninstallApp.trash(selected, from: report) { update in
+                await MainActor.run { draft.removalProgress = update }
+            }
             draft.result = result
             draft.report = nil
             draft.selected.removeAll()

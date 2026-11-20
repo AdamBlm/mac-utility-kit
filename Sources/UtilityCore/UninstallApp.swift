@@ -96,14 +96,17 @@ public enum UninstallApp {
                       items: items, associatedItemsShared: shared, original: witness)
     }
 
-    public static func trash(_ selected: Set<URL>, from report: Report) async -> Result {
-        await trash(selected, from: report, environment: .system) { url in
+    public static func trash(
+        _ selected: Set<URL>, from report: Report, progress: @Sendable (Progress) async -> Void = { _ in }
+    ) async -> Result {
+        await trash(selected, from: report, environment: .system, progress: progress) { url in
             try FileManager.default.trashItem(at: url, resultingItemURL: nil)
         }
     }
 
     static func trash(
         _ selected: Set<URL>, from report: Report, environment: UninstallInventory.Environment,
+        progress: @Sendable (Progress) async -> Void = { _ in },
         move: (URL) throws -> Void
     ) async -> Result {
         var moved: [URL] = []
@@ -113,8 +116,10 @@ public enum UninstallApp {
         let chosenPaths = Set(selected.filter(\.isFileURL).map { $0.standardizedFileURL.path })
         let requested = report.items.filter { chosenPaths.contains($0.url.standardizedFileURL.path) }
         let ordered = requested.filter { $0.kind != .app } + requested.filter { $0.kind == .app }
-        for item in ordered {
+        for (index, item) in ordered.enumerated() {
             do {
+                try Task.checkCancellation()
+                await progress(Progress(completed: index, total: ordered.count, current: item.url))
                 try Task.checkCancellation()
                 try await recheck(item, from: report, environment: environment)
                 try Task.checkCancellation()

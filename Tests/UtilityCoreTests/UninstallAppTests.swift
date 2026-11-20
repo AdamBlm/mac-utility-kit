@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 @testable import UtilityCore
 
@@ -100,8 +101,11 @@ struct UninstallAppTests {
         let app = fixture.app
         let environment = fixture.environment
         let movedCache = fixture.home.appending(path: "Moved cache")
+        let progress = Mutex<[UninstallApp.Progress]>([])
         let operation = Task.detached {
-            await UninstallApp.trash([app, cache], from: report, environment: environment) { item in
+            await UninstallApp.trash([app, cache], from: report, environment: environment, progress: { update in
+                progress.withLock { $0.append(update) }
+            }) { item in
                 #expect(item == cache)
                 try FileManager.default.moveItem(at: item, to: movedCache)
                 withUnsafeCurrentTask { $0?.cancel() }
@@ -109,6 +113,10 @@ struct UninstallAppTests {
         }
 
         let result = await operation.value
+        let updates = progress.withLock { $0 }
+        #expect(updates.map(\.current) == [cache])
+        #expect(updates.map(\.completed) == [0])
+        #expect(updates.map(\.total) == [2])
         #expect(result.wasCancelled)
         #expect(result.moved == [cache])
         #expect(result.issues.isEmpty)
