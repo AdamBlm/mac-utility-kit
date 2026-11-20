@@ -27,11 +27,13 @@ public enum DocumentSummarizer {
         public let source: Source
         public let length: Length
         public let format: Format
+        public let recognizesMixedPDFPages: Bool
 
-        public init(source: Source, length: Length, format: Format) {
+        public init(source: Source, length: Length, format: Format, recognizesMixedPDFPages: Bool = false) {
             self.source = source
             self.length = length
             self.format = format
+            self.recognizesMixedPDFPages = recognizesMixedPDFPages
         }
     }
 
@@ -60,7 +62,9 @@ public enum DocumentSummarizer {
         progress: @Sendable (Progress) async -> Void = { _ in }
     ) async throws -> Result {
         await progress(Progress(fraction: 0, message: "Reading Source"))
-        let (source, omittedPages) = try await load(request.source, progress: progress)
+        let (source, omittedPages) = try await load(
+            request.source, recognizesMixedPDFPages: request.recognizesMixedPDFPages, progress: progress
+        )
         let chunks = try split(source)
         guard !chunks.isEmpty else {
             throw ToolError.invalid("No readable text was found in the selected source.")
@@ -104,7 +108,7 @@ public enum DocumentSummarizer {
     }
 
     private static func load(
-        _ source: Source, progress: @Sendable (Progress) async -> Void
+        _ source: Source, recognizesMixedPDFPages: Bool, progress: @Sendable (Progress) async -> Void
     ) async throws -> (String, [Int]) {
         switch source {
         case .text(let text):
@@ -124,6 +128,7 @@ public enum DocumentSummarizer {
                 options.range = pages
                 options.password = password
                 options.includePageBreaks = false
+                options.includesMixedScanText = recognizesMixedPDFPages
                 let result = try await TextExtraction.extract(url, options: options) { fraction in
                     await progress(Progress(fraction: fraction * 0.2, message: "Reading PDF Pages"))
                 }

@@ -7,6 +7,7 @@ struct SummarizeDraft {
     var text = ""
     var file: URL?
     var pages = ""
+    var recognizesMixedPDFPages = false
     var length = DocumentSummarizer.Length.brief
     var format = DocumentSummarizer.Format.paragraph
 }
@@ -90,6 +91,7 @@ struct SummarizeView: View {
                     }
                     if let loaded {
                         PDFExportPagePicker(document: loaded.document, range: $draft.pages, startsWithAll: true)
+                        Toggle("Recognize text in images on every selected page", isOn: $draft.recognizesMixedPDFPages)
                         if case .failure(let error) = selection,
                            (try? PageSelection.indices(draft.pages, pageCount: loaded.document.pageCount)) != nil {
                             Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
@@ -162,6 +164,7 @@ struct SummarizeView: View {
             }
         }
         .onChange(of: draft.pages) { clearResult() }
+        .onChange(of: draft.recognizesMixedPDFPages) { clearResult() }
         .onChange(of: password) { clearResult() }
         .onChange(of: draft.length) { clearResult() }
         .onChange(of: draft.format) { clearResult() }
@@ -212,7 +215,8 @@ struct SummarizeView: View {
         guard verifyReviewedPDF(reviewedPDF, file: file) else { return }
         let source = draft.file.map { DocumentSummarizer.Source.document($0, pages: draft.pages, password: password) }
             ?? .text(draft.text)
-        let request = DocumentSummarizer.Request(source: source, length: draft.length, format: draft.format)
+        let request = DocumentSummarizer.Request(source: source, length: draft.length, format: draft.format,
+                                                 recognizesMixedPDFPages: draft.recognizesMixedPDFPages)
         let id = UUID()
         jobID = id
         job = Task {

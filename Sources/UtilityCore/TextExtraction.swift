@@ -13,6 +13,7 @@ public struct TextExtractionOptions: Sendable {
     public var region: CGRect?
     public var includePageBreaks = true
     public var preferEmbeddedText = true
+    package var includesMixedScanText = false
 
     public init() {}
 }
@@ -95,6 +96,12 @@ public enum TextExtraction {
         ) { index in
             guard let page = document.page(at: index) else {
                 throw ToolError.invalid("Could not read page \(index + 1).")
+            }
+            if options.region == nil, options.includesMixedScanText {
+                var recognition = SearchablePDFOptions()
+                recognition.language = options.language
+                recognition.skipsSearchablePages = false
+                return try SearchablePDF.recognitionResult(for: page, index: index, options: recognition).text
             }
             if options.region == nil, options.preferEmbeddedText, let embedded = page.string?
                 .trimmingCharacters(in: .whitespacesAndNewlines), !embedded.isEmpty {

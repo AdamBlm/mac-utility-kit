@@ -76,6 +76,45 @@ struct DocumentSummarizerTests {
         }
     }
 
+    @Test func canSummarizeNativeAndScannedFactsOnTheSamePage() async throws {
+        let url = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + ".pdf")
+        defer { try? FileManager.default.removeItem(at: url) }
+        let space = CGColorSpaceCreateDeviceRGB()
+        let bitmap = try #require(CGContext(data: nil, width: 1200, height: 240, bitsPerComponent: 8,
+                                           bytesPerRow: 0, space: space, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        func draw(_ value: String, size: CGFloat, at point: CGPoint, on canvas: CGContext) {
+            canvas.textPosition = point
+            let line = CTLineCreateWithAttributedString(NSAttributedString(string: value, attributes: [
+                NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, size, nil)
+            ]))
+            CTLineDraw(line, canvas)
+        }
+        bitmap.setFillColor(gray: 1, alpha: 1)
+        bitmap.fill(CGRect(x: 0, y: 0, width: 1200, height: 240))
+        bitmap.setFillColor(gray: 0, alpha: 1)
+        draw("62 crates due 17 October", size: 56, at: CGPoint(x: 50, y: 105), on: bitmap)
+        let image = try #require(bitmap.makeImage())
+        var media = CGRect(x: 0, y: 0, width: 600, height: 300)
+        let pdf = try #require(CGContext(url as CFURL, mediaBox: &media, nil))
+        pdf.beginPDFPage(nil)
+        draw("Neptune shipment", size: 28, at: CGPoint(x: 25, y: 230), on: pdf)
+        pdf.draw(image, in: CGRect(x: 0, y: 40, width: 600, height: 120))
+        pdf.endPDFPage()
+        pdf.closePDF()
+
+        let source = DocumentSummarizer.Source.document(url, pages: "1", password: "")
+        let regular = DocumentSummarizer.Request(source: source, length: .brief, format: .paragraph)
+        let scanned = DocumentSummarizer.Request(source: source, length: .brief, format: .paragraph,
+                                                 recognizesMixedPDFPages: true)
+        let calls = Calls()
+        let provider = RecordingProvider(record: calls)
+        #expect(try await DocumentSummarizer.summarize(regular, using: provider).summary == "Neptune")
+        let combined = try await DocumentSummarizer.summarize(scanned, using: provider)
+        #expect(combined.summary == "Neptune · 17 October · 62 crates")
+        #expect(combined.omittedPages.isEmpty)
+        #expect(await calls.input.last?.components(separatedBy: "Neptune").count == 2)
+    }
+
     @Test func oversizedSourcesFailBeforeCallingProvider() async throws {
         let request = DocumentSummarizer.Request(source: .text(String(repeating: "a", count: 50_000)),
                                                  length: .brief, format: .paragraph)
