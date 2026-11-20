@@ -302,7 +302,7 @@ struct ToolWorkspace: View {
                         case .resizeVideo:
                             VideoResizeControls(inputs: draft.inputs, options: $draft.options.videoResize)
                         case .videoToGIF:
-                            VideoGIFSettings(input: draft.inputs.first, options: $draft.options.videoGIF)
+                            VideoGIFSettings(inputs: draft.inputs, options: $draft.options.videoGIF)
                         case .cropRotateVideo:
                             VideoCropControls(inputs: draft.inputs, options: $draft.options.crop)
                         case .mergeVideos:
