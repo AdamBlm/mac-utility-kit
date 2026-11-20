@@ -125,8 +125,14 @@ enum PDFFormExport {
             if object_key(ref) in membership:
                 continue
             key = widget_name(widget)
-            if not key or key in names or "/Parent" in widget or "/FT" not in widget:
-                raise ValueError("The PDF has orphan widgets with ambiguous field ownership.")
+            if not key:
+                raise ValueError("A PDF widget outside the field tree has no field name.")
+            if key in names:
+                raise ValueError("A PDF widget outside the field tree duplicates an existing field name.")
+            if "/Parent" in widget:
+                raise ValueError("A PDF widget claims a parent but is missing from the field tree.")
+            if "/FT" not in widget:
+                raise ValueError("A PDF widget outside the field tree has no field type.")
             missing.append(ref)
             names.add(key)
         if not missing:

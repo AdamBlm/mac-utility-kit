@@ -9,7 +9,9 @@ public struct PDFRedactionGeometry {
     public init(_ page: PDFPage) throws {
         guard let reference = page.pageRef else { throw ToolError.invalid("Could not read this PDF page.") }
         let crop = reference.getBoxRect(.cropBox).intersection(reference.getBoxRect(.mediaBox))
-        let quarterTurn = abs(reference.rotationAngle % 180) == 90
+        // PDFKit can keep the original CGPDFPage after a pending rotation edit.
+        let rotation = page.rotation
+        let quarterTurn = abs(rotation % 180) == 90
         let size = quarterTurn ? CGSize(width: crop.height, height: crop.width) : crop.size
         guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 else {
             throw ToolError.invalid("This page has invalid display dimensions.")
@@ -25,8 +27,11 @@ public struct PDFRedactionGeometry {
         }
         displaySize = size
         physicalSize = physical
+        let pageRotation = rotation % 360
+        let referenceRotation = Int(reference.rotationAngle) % 360
+        let adjustment = Int32((pageRotation - referenceRotation + 720) % 360)
         pageToDisplay = reference.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: size),
-                                                      rotate: 0, preserveAspectRatio: true)
+                                                      rotate: adjustment, preserveAspectRatio: true)
     }
 
     /// Normalized visible coordinates measured from the upper-left of the displayed page.

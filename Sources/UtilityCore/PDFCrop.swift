@@ -138,9 +138,13 @@ public enum PDFCrop {
         }
         for index in expected.indices {
             guard let page = reopened.page(at: index), let reference = page.pageRef,
-                  page.rotation == rotations[index],
-                  pageUnit(reference) == units[index],
-                  sameBounds(reference.getBoxRect(.cropBox), expected[index]) else {
+                  page.rotation == rotations[index] else {
+                throw ToolError.invalid("Could not verify the rotation of cropped page \(index + 1).")
+            }
+            guard pageUnit(reference) == units[index] else {
+                throw ToolError.invalid("The cropped PDF did not retain the original physical scale on page \(index + 1).")
+            }
+            guard sameBounds(reference.getBoxRect(.cropBox), expected[index]) else {
                 throw ToolError.invalid("The exported crop on page \(index + 1) could not be verified.")
             }
         }

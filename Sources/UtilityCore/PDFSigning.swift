@@ -77,17 +77,25 @@ public enum PDFSigning {
         }
 
         package func matches(_ page: PDFPage) -> Bool {
+            verificationIssue(on: page) == nil
+        }
+
+        fileprivate func verificationIssue(on page: PDFPage) -> String? {
             let signatures = PDFSigning.signatures(in: page)
-            guard page.rotation == rotation, signatures.count == signatureCount, let reference = page.pageRef,
-                  let annotation = signatures.first(where: { $0.value(forAnnotationKey: .name) as? String == name }),
-                  annotation.shouldDisplay, annotation.shouldPrint else { return false }
+            guard page.rotation == rotation, let reference = page.pageRef else { return "page rotation changed" }
+            guard signatures.count == signatureCount else { return "the ink annotation or its path did not survive the write" }
+            guard let annotation = signatures.first(where: { $0.value(forAnnotationKey: .name) as? String == name }) else {
+                return "the annotation identifier did not survive the write"
+            }
+            guard annotation.shouldDisplay, annotation.shouldPrint else { return "the annotation is hidden or does not print" }
             let size = PDFSigning.visibleSize(for: reference)
             let transform = reference.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: size),
                                                            rotate: 0, preserveAspectRatio: true)
             let actual = annotation.bounds.applying(transform)
-            return zip([actual.minX, actual.minY, actual.maxX, actual.maxY],
-                       [displayedBounds.minX, displayedBounds.minY, displayedBounds.maxX, displayedBounds.maxY])
+            let matches = zip([actual.minX, actual.minY, actual.maxX, actual.maxY],
+                              [displayedBounds.minX, displayedBounds.minY, displayedBounds.maxX, displayedBounds.maxY])
                 .allSatisfy { abs($0 - $1) < 0.05 }
+            return matches ? nil : "the annotation position changed"
         }
     }
 
@@ -161,11 +169,16 @@ public enum PDFSigning {
         let candidate = staging.appendingPathComponent("Signed.pdf")
         guard document.write(to: candidate),
               let reopened = PDFDocument(url: candidate),
-              reopened.pageCount == document.pageCount,
-              placements.allSatisfy({ pageIndex, placement in
-                  reopened.page(at: pageIndex).map { placement.matches($0) } ?? false
-              }) else {
-            throw ToolError.invalid("Could not verify the visible signature in the output PDF.")
+              reopened.pageCount == document.pageCount else {
+            throw ToolError.invalid("Could not reopen the signed PDF with its original page count.")
+        }
+        for pageIndex in placements.keys.sorted() {
+            guard let page = reopened.page(at: pageIndex) else {
+                throw ToolError.invalid("Could not reopen signed page \(pageIndex + 1).")
+            }
+            if let issue = placements[pageIndex]?.verificationIssue(on: page) {
+                throw ToolError.invalid("Could not verify the signature on page \(pageIndex + 1) because \(issue).")
+            }
         }
         try Task.checkCancellation()
         try verifySource(input, stamp: options.sourceStamp)
