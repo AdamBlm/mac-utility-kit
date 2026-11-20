@@ -5,6 +5,12 @@ import UniformTypeIdentifiers
 import UtilityCore
 
 struct TextExtractionSettings: View {
+    private enum PDFTextMode: String, CaseIterable {
+        case embedded = "Prefer embedded text"
+        case mixed = "Combine embedded text and OCR"
+        case ocr = "OCR every page"
+    }
+
     let inputs: [URL]
     @Binding var options: TextExtractionOptions
     @State private var languages: [String] = []
@@ -43,9 +49,12 @@ struct TextExtractionSettings: View {
             }
             if hasPDF {
                 DisclosureGroup("PDF options") {
-                    Toggle("Use embedded text when available", isOn: $options.preferEmbeddedText)
-                    if !options.preferEmbeddedText {
-                        Text("Runs OCR across each selected PDF page, including images on pages with embedded text.")
+                    if options.region == nil {
+                        Picker("PDF recognition", selection: pdfTextMode) {
+                            ForEach(PDFTextMode.allCases, id: \.self) { Text($0.rawValue).tag($0) }
+                        }
+                    } else {
+                        Text("Region selection uses OCR.")
                             .font(.caption).foregroundStyle(.secondary)
                     }
                     SecureField("PDF password", text: $options.password)
@@ -96,6 +105,16 @@ struct TextExtractionSettings: View {
                 let right = Locale.current.localizedString(forIdentifier: $1) ?? $1
                 return left.localizedStandardCompare(right) == .orderedAscending
             }
+        }
+    }
+
+    private var pdfTextMode: Binding<PDFTextMode> {
+        Binding {
+            if options.includesMixedScanText { return .mixed }
+            return options.preferEmbeddedText ? .embedded : .ocr
+        } set: { mode in
+            options.includesMixedScanText = mode == .mixed
+            options.preferEmbeddedText = mode != .ocr
         }
     }
 

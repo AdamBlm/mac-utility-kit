@@ -92,6 +92,35 @@ import UtilityCore
     #expect(!forcedOCR.text.contains("FIRST DOCUMENT PAGE"))
 }
 
+@Test func textExtractionExportsMixedContentFromASinglePDFPage() async throws {
+    let folder = try textExtractionFixtureFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let scan = folder.appendingPathComponent("scan.png")
+    try writeTextExtractionImage(to: scan)
+    let bitmap = try #require(CGImageSourceCreateWithURL(scan as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(bitmap, 0, nil))
+    let source = folder.appendingPathComponent("hybrid.pdf")
+    var bounds = CGRect(x: 0, y: 0, width: 720, height: 550)
+    let pdf = try #require(CGContext(source as CFURL, mediaBox: &bounds, nil))
+    pdf.beginPDFPage(nil)
+    pdf.draw(image, in: CGRect(x: 0, y: 0, width: 720, height: 440))
+    drawOCRFixture("NATIVE HEADER", in: pdf, at: CGPoint(x: 55, y: 470))
+    pdf.endPDFPage()
+    pdf.closePDF()
+    var options = ToolOptions()
+    options.textExtraction.language = "en-US"
+    let preferred = try await TextExtraction.extract(source, options: options.textExtraction)
+    #expect(!preferred.text.contains("UPPER ORCHARD"))
+    options.textExtraction.includesMixedScanText = true
+    let report = try await ToolRunner.run(.extractText, inputs: [source], destination: folder, imageSize: 0, options: options) { _ in }
+    #expect(report.failures.isEmpty)
+    let output = try #require(report.outputs.first)
+    let text = try String(contentsOf: output, encoding: .utf8)
+    #expect(text.contains("UPPER ORCHARD") && text.contains("LOWER MEADOW"))
+    #expect(text.components(separatedBy: "NATIVE HEADER").count == 2)
+    #expect(report.textExtractions.first?.result.pages.first?.pageNumber == 1)
+}
+
 @Test func textExtractionPagePreviewRequiresAValidAndNonemptySelection() throws {
     #expect(try TextExtraction.previewPageIndex(pageNumber: nil, pageRange: "", pageCount: 2) == 0)
     #expect(try TextExtraction.previewPageIndex(pageNumber: nil, pageRange: "2, 1", pageCount: 2) == 1)
