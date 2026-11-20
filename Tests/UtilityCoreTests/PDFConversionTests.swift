@@ -255,7 +255,7 @@ private func conversionPDF(in folder: URL) throws -> URL {
     let objects = [
         "<< /Type /Catalog /Pages 2 0 R >>",
         "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
-        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 150] /UserUnit 2 >>"
+        "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 100 150] /Resources << >> /UserUnit 2 >>"
     ]
     try pdfFixtureData(objects: objects).write(to: pdf)
     let exports = try folder.subdirectory("exports")
@@ -282,6 +282,18 @@ private func conversionPDF(in folder: URL) throws -> URL {
     let resultPage = try #require(result.page(at: 0)?.pageRef)
     #expect(resultPage.getBoxRect(.cropBox) == CGRect(x: 10, y: 0, width: 90, height: 135))
     #expect(PDFCrop.visibleSize(for: resultPage) == CGSize(width: 180, height: 270))
+
+    // Also exercise the fallback on systems where the native writer retains the scale.
+    if let path = ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"] {
+        let fallback = folder.appending(path: "Cropped with qpdf.pdf")
+        let box = try PDFCrop.box(for: inputPage, offsets: crop.offsets)
+        try await PDFCropQPDF.write(pdf, to: fallback, boxes: [(index: 0, box: box)],
+                                    directory: folder, executable: URL(fileURLWithPath: path))
+        let fallbackDocument = try #require(PDFDocument(url: fallback))
+        let fallbackPage = try #require(fallbackDocument.page(at: 0)?.pageRef)
+        #expect(fallbackPage.getBoxRect(.cropBox) == CGRect(x: 10, y: 0, width: 90, height: 135))
+        #expect(PDFCrop.visibleSize(for: fallbackPage) == CGSize(width: 180, height: 270))
+    }
 }
 
 @Test func PDFToImagesBindsPlansAndPublicationToReviewedBytes() async throws {

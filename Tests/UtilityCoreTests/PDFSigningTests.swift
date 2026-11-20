@@ -40,7 +40,7 @@ import UtilityCore
         let display = annotation.bounds.applying(transform)
         #expect(abs(display.midX / size.width - 0.35) < 0.02)
         #expect(abs(display.midY / size.height - 0.33) < 0.02)
-        let name = try #require(annotation.value(forAnnotationKey: .name) as? String)
+        let name = try #require(PDFSigning.signatureIdentifier(annotation))
         let verification = PDFSigning.ExpectedPlacement(name: name, rotation: page.rotation,
                                                        displayedBounds: display, signatureCount: 1)
         #expect(verification.matches(page))
