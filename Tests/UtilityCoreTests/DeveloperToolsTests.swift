@@ -50,6 +50,22 @@ import UtilityCore
             #expect(error.column == 8)
         }
     }
+
+    @Test func selectsSourceErrorAcrossCRLFUnicodeAndEndOfInput() throws {
+        let input = "{\r\n  \"👩‍👩‍👧‍👦\": #}"
+        let error = try #require(#expect(throws: JSONFormatError.self) { try JSONFormatter.format(input) })
+        let marker = try #require(error.sourceRange(in: input))
+        #expect(input[marker] == "#")
+        #expect(error.line == 2 && error.column == 8)
+        let unclosed = "{\"a\": "
+        let endError = try #require(#expect(throws: JSONFormatError.self) { try JSONFormatter.format(unclosed) })
+        #expect(endError.sourceRange(in: unclosed) == unclosed.endIndex..<unclosed.endIndex)
+
+        let incompleteGrapheme = "1\u{301}"
+        let interior = try #require(#expect(throws: JSONFormatError.self) { try JSONFormatter.format(incompleteGrapheme) })
+        let selection = try #require(interior.sourceRange(in: incompleteGrapheme))
+        #expect(incompleteGrapheme[selection].utf8.elementsEqual(incompleteGrapheme.utf8))
+    }
 }
 
 @Suite struct ByteEncodingTests {

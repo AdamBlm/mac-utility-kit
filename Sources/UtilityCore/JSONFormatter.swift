@@ -16,7 +16,20 @@ public struct JSONFormatError: LocalizedError {
     public let message: String
     public let line: Int
     public let column: Int
+    let byteOffset: Int
     public var errorDescription: String? { "\(message) (line \(line), column \(column))." }
+
+    package func sourceRange(in text: String) -> Range<String.Index>? {
+        guard let byteIndex = text.utf8.index(text.utf8.startIndex, offsetBy: byteOffset, limitedBy: text.utf8.endIndex) else {
+            return nil
+        }
+        if byteIndex == text.utf8.endIndex { return text.endIndex..<text.endIndex }
+        // A parse error can be inside a grapheme, for example at a combining mark after a token.
+        guard let start = String.Index(byteIndex, within: text) ?? text.indices.last(where: { $0 <= byteIndex }) else {
+            return nil
+        }
+        return start..<text.index(after: start)
+    }
 }
 
 public enum JSONIndentation: String, CaseIterable, Identifiable, Sendable {
@@ -255,12 +268,13 @@ private struct Parser {
     }
 
     private func error(_ message: String, at index: Int? = nil) -> JSONFormatError {
-        let prefix = String(decoding: bytes.prefix(index ?? offset), as: UTF8.self)
+        let byteOffset = index ?? offset
+        let prefix = String(decoding: bytes.prefix(byteOffset), as: UTF8.self)
         // JSON recognizes only CR and LF as line breaks. Swift groups CRLF as one Character.
         let lineEndings: Set<Character> = ["\r", "\n", "\r\n"]
         let lineCount = prefix.filter { lineEndings.contains($0) }.count
         let column = prefix.reversed().prefix { !lineEndings.contains($0) }.count + 1
-        return JSONFormatError(message: message, line: lineCount + 1, column: column)
+        return JSONFormatError(message: message, line: lineCount + 1, column: column, byteOffset: byteOffset)
     }
 }
 

@@ -11,11 +11,14 @@ struct JSONFormatterDraft {
 struct JSONFormatterView: View {
     @Binding var draft: JSONFormatterDraft
     @State private var result: JSONFormatResult?
-    @State private var error: String?
+    @State private var error: (any Error)?
     @State private var outputInput: Input?
     @State private var fileError: String?
     @State private var exportError: String?
     @State private var isLoading = false
+    @State private var selection: TextSelection?
+    @FocusState private var inputFocused: Bool
+    @Namespace private var inputTarget
 
     private struct Input: Equatable, Sendable {
         let text: String
@@ -30,9 +33,15 @@ struct JSONFormatterView: View {
 
     var body: some View {
         let input = Input(text: draft.text, indentation: draft.indentation, sortKeys: draft.sortKeys)
+        ScrollViewReader { scroll in workspace(input: input, scroll: scroll) }
+    }
+
+    private func workspace(input: Input, scroll: ScrollViewProxy) -> some View {
         InteractiveToolLayout(tool: .jsonFormatter) { palette in
             WorkspaceSection("JSON input", palette: palette) {
-                TextEditor(text: $draft.text)
+                TextEditor(text: $draft.text, selection: $selection)
+                    .focused($inputFocused)
+                    .id(inputTarget)
                     .font(.system(.body, design: .monospaced))
                     .frame(minHeight: 160)
                     .scrollContentBackground(.hidden)
@@ -68,7 +77,16 @@ struct JSONFormatterView: View {
                 } else if outputInput != input && !input.text.isEmpty {
                     ProgressView("Formatting…").controlSize(.small)
                 } else if let error, outputInput == input {
-                    Text(error).foregroundStyle(.red)
+                    Text(error.localizedDescription).foregroundStyle(.red)
+                    if let diagnostic = error as? JSONFormatError {
+                        Button("Go to Error", systemImage: "scope") {
+                            guard draft.text.utf8.elementsEqual(input.text.utf8),
+                                  let range = diagnostic.sourceRange(in: draft.text) else { return }
+                            scroll.scrollTo(inputTarget, anchor: .top)
+                            inputFocused = true
+                            selection = TextSelection(range: range)
+                        }
+                    }
                 } else if let result, outputInput == input {
                     if !result.duplicateOccurrences.isEmpty {
                         DisclosureGroup {
@@ -144,7 +162,7 @@ struct JSONFormatterView: View {
                 }
             } catch {
                 if !Task.isCancelled {
-                    self.error = error.localizedDescription
+                    self.error = error
                     outputInput = input
                 }
             }
