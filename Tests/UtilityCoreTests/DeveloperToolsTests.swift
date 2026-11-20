@@ -1,8 +1,23 @@
 import Foundation
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 @Suite struct JSONFormatterTests {
+    @Test func capsPrettyOutputInUTF8BytesAndKeepsMinifiedSourceLexemes() throws {
+        let source = #"{"é":[9007199254740993, -0.000E+100],"é":[]}"#
+        let pretty = try JSONFormatter.format(source, indentation: .fourSpaces)
+        let budget = pretty.text.utf8.count
+        let exact = try JSONFormatter.format(source, indentation: .fourSpaces, maximumOutputBytes: budget)
+        #expect(exact.text == pretty.text)
+        #expect(exact.duplicateKeys == ["é"])
+        let failure = #expect(throws: ToolError.self) {
+            try JSONFormatter.format(source, indentation: .fourSpaces, maximumOutputBytes: budget - 1)
+        }
+        #expect(failure?.localizedDescription.contains("Choose Minified") == true)
+        let compact = try JSONFormatter.format(source, indentation: .minified, maximumOutputBytes: budget - 1)
+        #expect(compact.text == #"{"é":[9007199254740993,-0.000E+100],"é":[]}"#)
+    }
+
     @Test func opensBoundedUTF8WithoutChangingJSONTokens() async throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

@@ -52,6 +52,7 @@ public enum JSONIndentation: String, CaseIterable, Identifiable, Sendable {
 
 public enum JSONFormatter {
     package static let maximumInputBytes = 16 * 1024 * 1024
+    private static let maximumOutputBytes = 64 * 1024 * 1024
 
     package static func loadUTF8(_ input: URL) async throws -> String {
         let data: Data
@@ -74,14 +75,34 @@ public enum JSONFormatter {
     public static func format(
         _ text: String, indentation: JSONIndentation = .twoSpaces, sortKeys: Bool = false
     ) throws -> JSONFormatResult {
+        try format(text, indentation: indentation, sortKeys: sortKeys, maximumOutputBytes: maximumOutputBytes)
+    }
+
+    static func format(
+        _ text: String, indentation: JSONIndentation, sortKeys: Bool = false, maximumOutputBytes: Int
+    ) throws -> JSONFormatResult {
         guard text.utf8.count <= maximumInputBytes else {
             throw ToolError.invalid("Enter JSON no larger than 16 MiB.")
         }
         var parser = Parser(bytes: Array(text.utf8))
         let root = try parser.parse()
-        var output = ""
+        var output = JSONOutput(remainingBytes: maximumOutputBytes)
         try root.write(to: &output, indentation: indentation.whitespace, sortKeys: sortKeys, depth: 0)
-        return JSONFormatResult(text: output, duplicateOccurrences: try parser.duplicateOccurrences())
+        return JSONFormatResult(text: output.text, duplicateOccurrences: try parser.duplicateOccurrences())
+    }
+}
+
+private struct JSONOutput {
+    private(set) var text = ""
+    var remainingBytes: Int
+
+    mutating func append(_ fragment: String) throws {
+        let size = fragment.utf8.count
+        guard size <= remainingBytes else {
+            throw ToolError.invalid("Formatted JSON exceeds the output size limit. Choose Minified or use a smaller input.")
+        }
+        remainingBytes -= size
+        text.append(fragment)
     }
 }
 
@@ -96,37 +117,37 @@ enum JSONNode {
     case array([JSONNode])
     case object([JSONMember])
 
-    fileprivate func write(to output: inout String, indentation: String?, sortKeys: Bool, depth: Int) throws {
+    fileprivate func write(to output: inout JSONOutput, indentation: String?, sortKeys: Bool, depth: Int) throws {
         try Task.checkCancellation()
         switch self {
-        case .token(let raw): output += raw
+        case .token(let raw): try output.append(raw)
         case .array(let elements):
-            output += "["
+            try output.append("[")
             for (index, element) in elements.enumerated() {
-                if index > 0 { output += "," }
-                writeBreak(to: &output, indentation: indentation, depth: depth + 1)
+                if index > 0 { try output.append(",") }
+                try writeBreak(to: &output, indentation: indentation, depth: depth + 1)
                 try element.write(to: &output, indentation: indentation, sortKeys: sortKeys, depth: depth + 1)
             }
-            if !elements.isEmpty { writeBreak(to: &output, indentation: indentation, depth: depth) }
-            output += "]"
+            if !elements.isEmpty { try writeBreak(to: &output, indentation: indentation, depth: depth) }
+            try output.append("]")
         case .object(let members):
             let ordered = sortKeys ? members.sorted { $0.key.lexicographicallyPrecedes($1.key) } : members
-            output += "{"
+            try output.append("{")
             for (index, member) in ordered.enumerated() {
-                if index > 0 { output += "," }
-                writeBreak(to: &output, indentation: indentation, depth: depth + 1)
-                output += member.rawKey
-                output += indentation == nil ? ":" : ": "
+                if index > 0 { try output.append(",") }
+                try writeBreak(to: &output, indentation: indentation, depth: depth + 1)
+                try output.append(member.rawKey)
+                try output.append(indentation == nil ? ":" : ": ")
                 try member.value.write(to: &output, indentation: indentation, sortKeys: sortKeys, depth: depth + 1)
             }
-            if !ordered.isEmpty { writeBreak(to: &output, indentation: indentation, depth: depth) }
-            output += "}"
+            if !ordered.isEmpty { try writeBreak(to: &output, indentation: indentation, depth: depth) }
+            try output.append("}")
         }
     }
 
-    private func writeBreak(to output: inout String, indentation: String?, depth: Int) {
+    private func writeBreak(to output: inout JSONOutput, indentation: String?, depth: Int) throws {
         if let indentation {
-            output += "\n" + String(repeating: indentation, count: depth)
+            try output.append("\n" + String(repeating: indentation, count: depth))
         }
     }
 }
