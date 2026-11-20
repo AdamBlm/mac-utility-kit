@@ -23,27 +23,37 @@ final class KeepAwakeController {
             return
         }
         do {
-            session = try KeepAwakeSession(keepDisplayAwake: keepDisplayAwake)
+            let seconds = minutes.map { $0 * 60 }
+            let end = seconds.map { ContinuousClock.now.advanced(by: .seconds($0)) }
+            session = try KeepAwakeSession(keepDisplayAwake: keepDisplayAwake, timeoutSeconds: Double(seconds ?? 0))
             isActive = true
             keepsDisplayAwake = keepDisplayAwake
-            if let minutes {
-                scheduleExpiry(ContinuousClock.now.advanced(by: .seconds(minutes * 60)))
-            }
+            if let end { scheduleExpiry(end) }
         } catch {
             self.error = error.localizedDescription
         }
     }
 
     func extend(minutes: Int) {
-        guard session != nil, let deadline else { return }
+        guard let session, let deadline else { return }
         let now = ContinuousClock.now
         guard deadline > now else { stop(); return }
         guard let extended = KeepAwakeSchedule.extendedDeadline(deadline, byMinutes: minutes, now: now) else {
             error = "A session can have up to seven days remaining."
             return
         }
-        error = nil
-        scheduleExpiry(extended)
+        let remaining = now.duration(to: extended).components
+        let seconds = Double(remaining.seconds) + Double(remaining.attoseconds) / 1e18
+        do {
+            // Acquire both replacements before releasing the current coverage.
+            let replacement = try KeepAwakeSession(keepDisplayAwake: keepsDisplayAwake, timeoutSeconds: seconds)
+            self.session = replacement
+            session.stop()
+            error = nil
+            scheduleExpiry(extended)
+        } catch {
+            self.error = error.localizedDescription
+        }
     }
 
     private func scheduleExpiry(_ end: ContinuousClock.Instant) {

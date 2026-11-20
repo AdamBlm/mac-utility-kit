@@ -13,11 +13,15 @@ public struct KeepAwakeError: LocalizedError {
 public final class KeepAwakeSession {
     private var assertions: [IOPMAssertionID] = []
 
-    public init(keepDisplayAwake: Bool) throws {
+    public convenience init(keepDisplayAwake: Bool) throws {
+        try self.init(keepDisplayAwake: keepDisplayAwake, timeoutSeconds: 0)
+    }
+
+    package init(keepDisplayAwake: Bool, timeoutSeconds: Double) throws {
         do {
-            try acquire(kIOPMAssertionTypePreventUserIdleSystemSleep)
+            try acquire(kIOPMAssertionTypePreventUserIdleSystemSleep, timeoutSeconds: timeoutSeconds)
             if keepDisplayAwake {
-                try acquire(kIOPMAssertionTypePreventUserIdleDisplaySleep)
+                try acquire(kIOPMAssertionTypePreventUserIdleDisplaySleep, timeoutSeconds: timeoutSeconds)
             }
         } catch {
             stop()
@@ -32,11 +36,11 @@ public final class KeepAwakeSession {
         assertions.removeAll()
     }
 
-    private func acquire(_ type: String) throws {
+    private func acquire(_ type: String, timeoutSeconds: Double) throws {
         var assertion: IOPMAssertionID = 0
-        let status = IOPMAssertionCreateWithName(
-            type as CFString, IOPMAssertionLevel(kIOPMAssertionLevelOn),
-            "Mac Utility Kit Keep Awake" as CFString, &assertion
+        let status = IOPMAssertionCreateWithDescription(
+            type as CFString, "Mac Utility Kit Keep Awake" as CFString,
+            nil, nil, nil, timeoutSeconds, nil, &assertion
         )
         guard status == kIOReturnSuccess else { throw KeepAwakeError(status: status) }
         assertions.append(assertion)
