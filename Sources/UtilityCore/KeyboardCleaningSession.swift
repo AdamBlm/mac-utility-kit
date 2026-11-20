@@ -23,7 +23,10 @@ package final class KeyboardCleaningSession {
         self.input = input
     }
 
-    deinit { countdown?.cancel() }
+    isolated deinit {
+        countdown?.cancel()
+        if run != nil { input.remove() }
+    }
 
     package func start(seconds: Int) {
         guard !active else { return }

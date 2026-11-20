@@ -39,6 +39,7 @@ struct CleanKeyboardView: View {
                     HStack {
                         if hasPermission {
                             Button("Start Cleaning", systemImage: "keyboard") {
+                                defer { hasPermission = input.hasPermission }
                                 session.start(seconds: seconds)
                                 if session.active && dimScreen { dimmer.show() }
                             }

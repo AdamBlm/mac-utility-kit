@@ -73,6 +73,17 @@ struct KeyboardCleaningSessionTests {
         #expect(input.removing == 2)
     }
 
+    @Test func deallocationRemovesInstalledInputEvenWhenItHasAnotherOwner() {
+        let input = Input()
+        var session: KeyboardCleaningSession? = KeyboardCleaningSession(input: input)
+        session?.start(seconds: 60)
+        #expect(session?.active == true)
+        #expect(input.installing == 1)
+        session = nil
+        #expect(input.removing == 1)
+        #expect(input.interrupted == nil)
+    }
+
     @Test func countdownRestoresInputAutomatically() async throws {
         let input = Input()
         let session = KeyboardCleaningSession(input: input)
