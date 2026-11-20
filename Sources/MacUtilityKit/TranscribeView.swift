@@ -297,8 +297,16 @@ struct TranscribeView: View {
             }
             if activeSource?.hasVideo == true {
                 Button("Use as Burn-In Captions", systemImage: "captions.bubble") {
-                    onCaptionHandoff(source, Transcription.render(draft.cues, format: .srt))
+                    guard let stamp = draft.resultSourceStamp else { return }
+                    do {
+                        let captions = try Transcription.captionsForVideo(source, sourceStamp: stamp, cues: draft.cues)
+                        draft.error = nil
+                        onCaptionHandoff(source, captions)
+                    } catch {
+                        draft.error = error.localizedDescription
+                    }
                 }
+                .disabled(draft.resultSourceStamp == nil)
             }
         }
     }

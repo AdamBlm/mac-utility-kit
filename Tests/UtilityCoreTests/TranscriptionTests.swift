@@ -58,6 +58,11 @@ import Testing
         #expect(!transcript.forcedEnglish)
         #expect(try PDFSourceStamp.read(source) == transcript.sourceStamp)
         #expect(transcript.cues == [SubtitleCue(startMilliseconds: 300, endMilliseconds: 500, text: "Fixture speech")])
+        let captions = try Transcription.captionsForVideo(source, sourceStamp: transcript.sourceStamp, cues: transcript.cues)
+        #expect(try SubRip.parse(captions) == transcript.cues)
+        #expect(throws: ToolError.self) {
+            try Transcription.captionsForVideo(source, sourceStamp: transcript.sourceStamp, cues: [])
+        }
         let normalized = try AVAudioFile(forReading: folder.appendingPathComponent("observed.wav"))
         #expect(normalized.fileFormat.sampleRate == 16_000)
         #expect(normalized.fileFormat.channelCount == 1)
@@ -145,6 +150,10 @@ import Testing
         }
         let replacement = try Data(contentsOf: source)
         try replacement.write(to: source, options: .atomic)
+        #expect(throws: ToolError.self) {
+            try Transcription.captionsForVideo(source, sourceStamp: stamp, cues: [cue])
+        }
+        #expect(Transcription.render([cue], format: .txt) == "edited text\n")
         await #expect(throws: ToolError.self) {
             try await Transcription.previewAudio(source, cue: cue, sourceStamp: stamp)
         }

@@ -152,6 +152,13 @@ public enum Transcription {
         }
     }
 
+    package static func captionsForVideo(_ input: URL, sourceStamp: PDFSourceStamp, cues: [SubtitleCue]) throws -> String {
+        try requireSource(input, matches: sourceStamp)
+        let captions = render(cues, format: .srt)
+        guard !captions.isEmpty else { throw ToolError.invalid("Enter text for at least one caption.") }
+        return captions
+    }
+
     public static func render(_ cues: [SubtitleCue], format: TranscriptFormat) -> String {
         let cleaned = cues.compactMap { cue -> SubtitleCue? in
             let text = cue.text.split(whereSeparator: \.isNewline).map(String.init)
