@@ -24,6 +24,20 @@ public enum PDFToWord {
         public let text: String
         public let usedOCR: Bool
         public let issue: String?
+
+        package init(id: Int, embeddedText: String?, recognition: SearchablePDFPageResult?,
+                     ocrFailure: String?, recognizesScans: Bool) {
+            self.id = id
+            usedOCR = recognition?.status == .addedText
+            text = (usedOCR ? recognition?.text.nonemptyText : nil) ?? embeddedText ?? ""
+            if let ocrFailure {
+                issue = "OCR could not process this page. \(ocrFailure)" + (text.isEmpty ? "" : " Using embedded text.")
+            } else if text.isEmpty {
+                issue = recognizesScans ? "No text recognized." : "No embedded text."
+            } else {
+                issue = nil
+            }
+        }
     }
 
     public struct Preview: Sendable {
@@ -235,15 +249,11 @@ public enum PDFToWord {
                     failure = error.localizedDescription
                 }
             }
-            let usedOCR = ocr?.status == .addedText
-            let recognizedText = usedOCR ? ocr?.text.nonemptyText : nil
-            let content = recognizedText ?? embedded ?? ""
-
-            totalBytes += content.utf8.count
+            let previewPage = Page(id: number, embeddedText: embedded, recognition: ocr,
+                                   ocrFailure: failure, recognizesScans: recognizesScans)
+            totalBytes += previewPage.text.utf8.count
             guard totalBytes <= 4 * 1024 * 1024 else { throw ToolError.invalid("Select fewer pages, up to 4 MB of extracted text.") }
-            let issue = failure ?? (content.isEmpty
-                ? (recognizesScans ? "No text recognized." : "No embedded text.") : nil)
-            result.append(Page(id: number, text: content, usedOCR: usedOCR, issue: issue))
+            result.append(previewPage)
             await progress(Double(offset + 1) / Double(source.pages.count))
         }
         if containsAnnotations {

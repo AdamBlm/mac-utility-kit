@@ -182,6 +182,18 @@ struct PDFToWordTests {
         #expect(try textContent(await body(output, in: stage)).contains("Project header"))
     }
 
+    @Test func previewsEmbeddedTextAlongsideOCRFailure() {
+        let page = PDFToWord.Page(id: 2, embeddedText: "Embedded fallback", recognition: nil,
+                                  ocrFailure: "Could not rasterize this page.", recognizesScans: true)
+        #expect(page.text == "Embedded fallback")
+        #expect(!page.usedOCR)
+        #expect(page.issue == "OCR could not process this page. Could not rasterize this page. Using embedded text.")
+        let empty = PDFToWord.Page(id: 3, embeddedText: nil, recognition: nil,
+                                   ocrFailure: "Could not rasterize this page.", recognizesScans: true)
+        #expect(empty.text.isEmpty)
+        #expect(empty.issue == "OCR could not process this page. Could not rasterize this page.")
+    }
+
     @Test func missingEngineAndInvalidSelectionDoNotPublish() async throws {
         let stage = try makeStage()
         defer { try? FileManager.default.removeItem(at: stage) }

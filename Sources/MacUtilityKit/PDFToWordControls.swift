@@ -165,7 +165,8 @@ struct PDFToWordControls: View {
                 }
                 if let issue = page.issue {
                     Text(issue).font(.callout).foregroundStyle(.secondary)
-                } else {
+                }
+                if !page.text.isEmpty {
                     ScrollView {
                         Text(page.text).frame(maxWidth: .infinity, alignment: .leading).textSelection(.enabled)
                             .font(.callout)
