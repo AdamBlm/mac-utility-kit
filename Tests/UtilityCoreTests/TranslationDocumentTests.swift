@@ -164,13 +164,27 @@ struct TranslationDocumentTests {
         let markdown = try TranslationDocument("Bonjour", kind: .markdown)
         let output = try markdown.rendering(["<b>Hello</b> and **literal**"])
         #expect(try TranslationDocument(output, kind: .markdown).requests == ["<b>Hello</b> and **literal**"])
-        #expect(throws: ToolError.self) {
-            try TranslationDocument("| A | B |\n| - | - |\n| C | D |", kind: .markdown)
-        }
         for unsupported in ["Bonjour <b>monde</b>", "- [x] Bonjour", "~~Bonjour~~", "Bonjour[^a]\n\n[^a]: Note.",
                             "\u{FEFF}---\r\ntitle: Bonjour\r\n---\r\n\r\nTexte", "+++\ntitle = 'Bonjour'\n+++\n\nTexte"] {
             #expect(throws: ToolError.self) { try TranslationDocument(unsupported, kind: .markdown) }
         }
+    }
+
+    @Test func markdownTranslatesTableCellsAndPreservesAlignmentAndInlineContent() throws {
+        let document = try TranslationDocument("""
+        | Ville | Valeur |
+        | :--- | ---: |
+        | **Paris** | [Voir](https://example.test) |
+        | Nice | `n=2` |
+        """, kind: .markdown)
+        #expect(document.requests == ["Ville", "Valeur", "Paris", "Voir", "Nice"])
+        let output = try document.rendering(["City", "Value", "Paris", "View", "Nice | coast"])
+        #expect(try TranslationDocument(output, kind: .markdown).requests == ["City", "Value", "Paris", "View", "Nice | coast"])
+        #expect(output.contains("**Paris**") && output.contains("[View](https://example.test)") && output.contains("`n=2`"))
+        #expect(try document.applyingEdits(output.replacingOccurrences(of: "City", with: "Town")).contains("Town"))
+        let swappedAlignment = output.replacingOccurrences(of: " :-- | --: ", with: " --: | :-- ")
+        #expect(swappedAlignment != output)
+        #expect(throws: ToolError.self) { try document.applyingEdits(swappedAlignment) }
     }
 
     @Test func plainTextPreservesParagraphSeparation() throws {
@@ -202,10 +216,21 @@ struct TranslationDocumentTests {
         #expect(formatted.hasSuffix("</b></v>\n"))
         #expect(formatted.localizedCaseInsensitiveContains("bonjour"))
 
-        let markdown = try TranslationDocument("# Good morning\n\n[Good morning](https://example.test)", kind: .markdown)
+        let markdown = try TranslationDocument("""
+        # Good morning
+
+        [Good morning](https://example.test)
+
+        | Good morning | Code |
+        | :--- | ---: |
+        | Thank you | `keep` |
+        """, kind: .markdown)
         let translatedMarkdown = try await AppleTranslationProvider.translate(markdown, using: session, source: source, target: target)
         #expect(translatedMarkdown.hasPrefix("# "))
         #expect(translatedMarkdown.localizedCaseInsensitiveContains("bonjour"))
         #expect(translatedMarkdown.contains("](https://example.test)"))
+        #expect(translatedMarkdown.localizedCaseInsensitiveContains("merci"))
+        #expect(translatedMarkdown.contains("| :-- | --: |"))
+        #expect(translatedMarkdown.contains("`keep`"))
     }
 }

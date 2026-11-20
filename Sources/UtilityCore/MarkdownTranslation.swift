@@ -1,5 +1,6 @@
 import Foundation
 import cmark_gfm
+import cmark_gfm_extensions
 
 struct MarkdownTranslation: Sendable {
     private typealias Node = UnsafeMutablePointer<cmark_node>
@@ -124,7 +125,21 @@ struct MarkdownTranslation: Sendable {
                  CMARK_NODE_THEMATIC_BREAK, CMARK_NODE_SOFTBREAK, CMARK_NODE_LINEBREAK, CMARK_NODE_EMPH, CMARK_NODE_STRONG:
                 guard string(cmark_node_get_type_string(node)) != "tasklist" else { throw unsupported(node) }
             default:
-                throw unsupported(node)
+                switch string(cmark_node_get_type_string(node)) {
+                case "table":
+                    let columns = Int(cmark_gfm_extensions_get_table_columns(node))
+                    guard columns > 0, let alignments = cmark_gfm_extensions_get_table_alignments(node) else {
+                        throw unsupported(node)
+                    }
+                    details = (0..<columns).map { String(alignments[$0]) }
+                case "table_header", "table_row":
+                    details = [String(cmark_gfm_extensions_get_table_row_is_header(node))]
+                case "table_cell":
+                    details = [String(cmark_gfm_extensions_get_table_cell_colspan(node)),
+                               String(cmark_gfm_extensions_get_table_cell_rowspan(node))]
+                default:
+                    throw unsupported(node)
+                }
             }
             shape.append(.enter(type.rawValue, details))
         }
@@ -138,7 +153,7 @@ struct MarkdownTranslation: Sendable {
     }
 
     private static func unsupported(_ node: Node) -> ToolError {
-        .invalid("Unsupported Markdown \(string(cmark_node_get_type_string(node))) at line \(cmark_node_get_start_line(node)). Use headings, paragraphs, lists, links, images, and code.")
+        .invalid("Unsupported Markdown \(string(cmark_node_get_type_string(node))) at line \(cmark_node_get_start_line(node)). Use headings, paragraphs, lists, links, images, tables, and code.")
     }
 
     private static func string(_ value: UnsafePointer<CChar>?) -> String {
