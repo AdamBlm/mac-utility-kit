@@ -45,17 +45,21 @@ struct BatteryHealthTests {
          -Mouse (id=-105)\t84%; discharging present: true
         """
         let encoded = try #require(output.data(using: .macOSRoman))
-        let readings = try #require(BatteryHealth.parseAccessoryPower(encoded))
+        let managed = try #require(BatteryHealth.parsePowerManagementReport(encoded))
+        let readings = managed.accessories
+        #expect(managed.source == "AC Power")
         #expect(readings.map(\.name) == ["Boîtier", "Headphones", "Trackpad", "Keyboard (id=custom)", "Mouse"])
         let profile: [String: Any] = ["SPBluetoothDataType": [["device_connected": [
             ["Headphones": ["device_batteryLevelMain": "91%", "device_batteryLevelLeft": "90%"]],
-            ["Mouse": ["device_batteryLevelRight": "82%"]]
+            ["Mouse": ["device_batteryLevelRight": "82%"]],
+            ["Keyboard": ["device_batteryLevelMain": "Unavailable", "device_batteryLevel": "63%"]]
         ]]]]
         let first = BatteryHealth.assemble(power: nil, internalSource: nil, registry: nil, profile: profile,
-                                           accessoryPower: readings)
+                                           managedPower: managed)
         #expect(first.accessoryReadAvailable)
+        #expect(first.powerSource == "AC Power")
         #expect(first.battery == nil)
-        #expect(first.accessories.count == 5)
+        #expect(first.accessories.count == 6)
         #expect(first.accessories.first { $0.name == "Headphones" }?.battery == 91)
         #expect(first.accessories.first { $0.name == "Headphones" }?.left == 90)
         #expect(first.accessories.first { $0.name == "Boîtier" }?.battery == 73)
@@ -63,13 +67,15 @@ struct BatteryHealthTests {
 
         #expect(first.accessories.first { $0.name == "Mouse" }?.battery == 84)
         #expect(first.accessories.first { $0.name == "Keyboard (id=custom)" }?.battery == 67)
+        #expect(first.accessories.first { $0.name == "Keyboard" }?.battery == 63)
 
-        let empty = BatteryHealth.parseAccessoryPower(Data("Now drawing from 'AC Power'".utf8))
-        let refreshed = BatteryHealth.assemble(power: nil, internalSource: nil, registry: nil, profile: nil,
-                                               accessoryPower: empty)
+        let empty = BatteryHealth.parsePowerManagementReport(Data("Now drawing from 'AC Power'".utf8))
+        let refreshed = BatteryHealth.assemble(power: "Battery Power", internalSource: nil, registry: nil, profile: nil,
+                                               managedPower: empty)
         #expect(refreshed.accessoryReadAvailable)
+        #expect(refreshed.powerSource == "Battery Power")
         #expect(refreshed.accessories.isEmpty)
-        #expect(BatteryHealth.parseAccessoryPower(Data("unexpected report".utf8)) == nil)
+        #expect(BatteryHealth.parsePowerManagementReport(Data("unexpected report".utf8)) == nil)
     }
 
     @Test func fallsBackToSystemProfilerInternalBatteryAndRespectsNativeChargingState() throws {

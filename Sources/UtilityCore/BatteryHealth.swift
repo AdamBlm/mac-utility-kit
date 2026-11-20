@@ -34,17 +34,17 @@ public enum BatteryHealth {
         let registry = registryBattery()
         async let profile = commandOutput("/usr/sbin/system_profiler", name: "System Profiler",
             arguments: ["-json", "-timeout", "8", "SPPowerDataType", "SPBluetoothDataType"])
-        async let accessories = accessoryPower()
-        let (profileResult, accessoryResult) = try await (profile, accessories)
+        async let managedPower = powerManagementReport()
+        let (profileResult, managedReport) = try await (profile, managedPower)
         try Task.checkCancellation()
         return assemble(power: native.source, internalSource: native.battery, registry: registry,
                         profile: profileResult.flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] },
-                        accessoryPower: accessoryResult)
+                        managedPower: managedReport)
     }
 
     static func assemble(
         power: String?, internalSource: [String: Any]?, registry: [String: Any]?, profile: [String: Any]?,
-        accessoryPower: [AccessoryPower]? = nil
+        managedPower: PowerManagementReport? = nil
     ) -> BatteryHealthSnapshot {
         let powerEntries = profile?["SPPowerDataType"] as? [[String: Any]] ?? []
         let internalProfile = powerEntries.first { $0["_name"] as? String == "spbattery_information" }
@@ -85,12 +85,13 @@ public enum BatteryHealth {
         }
         let wireless = profile?["SPBluetoothDataType"] as? [[String: Any]]
         var accessories: [BatteryHealthSnapshot.Accessory] = []
-        let nativeByName = Dictionary(grouping: accessoryPower ?? [], by: \.name)
+        let accessoryPower = managedPower?.accessories ?? []
+        let nativeByName = Dictionary(grouping: accessoryPower, by: \.name)
         for controller in wireless ?? [] {
             for item in controller["device_connected"] as? [[String: [String: Any]]] ?? [] {
                 for (name, details) in item.sorted(by: { $0.key < $1.key }) {
                     accessories.append(.init(id: accessories.count, name: name,
-                                             battery: percent(details["device_batteryLevelMain"] ?? details["device_batteryLevel"]),
+                                             battery: percent(details["device_batteryLevelMain"]) ?? percent(details["device_batteryLevel"]),
                                              left: percent(details["device_batteryLevelLeft"]),
                                              right: percent(details["device_batteryLevelRight"]),
                                              caseCharge: percent(details["device_batteryLevelCase"])))
@@ -104,13 +105,13 @@ public enum BatteryHealth {
             return .init(id: listed.id, name: listed.name, battery: listed.battery ?? readings[0].charge,
                          left: listed.left, right: listed.right, caseCharge: listed.caseCharge)
         }
-        for reading in accessoryPower ?? [] {
+        for reading in accessoryPower {
             if profilerByName[reading.name]?.count == 1, nativeByName[reading.name]?.count == 1 { continue }
             accessories.append(.init(id: accessories.count, name: reading.name, battery: reading.charge,
                                      left: nil, right: nil, caseCharge: nil))
         }
-        return .init(powerSource: power, battery: battery, accessories: accessories,
-                     accessoryReadAvailable: wireless != nil || accessoryPower != nil)
+        return .init(powerSource: power ?? managedPower?.source, battery: battery, accessories: accessories,
+                     accessoryReadAvailable: wireless != nil || managedPower != nil)
     }
 
     private static func profilerCharging(_ value: Any?) -> Bool? {
@@ -166,11 +167,20 @@ public enum BatteryHealth {
         let charge: Int?
     }
 
-    static func parseAccessoryPower(_ data: Data) -> [AccessoryPower]? {
+    struct PowerManagementReport: Sendable {
+        let source: String
+        let accessories: [AccessoryPower]
+    }
+
+    static func parsePowerManagementReport(_ data: Data) -> PowerManagementReport? {
         // pmset's upstream implementation writes names using MacRoman.
-        guard let output = String(data: data, encoding: .macOSRoman),
-              output.hasPrefix("Now drawing from ") else { return nil }
-        return output.split(whereSeparator: \.isNewline).compactMap { line in
+        guard let output = String(data: data, encoding: .macOSRoman) else { return nil }
+        let lines = output.split(whereSeparator: \.isNewline)
+        let prefix = "Now drawing from '"
+        guard let header = lines.first, header.hasPrefix(prefix), header.hasSuffix("'") else { return nil }
+        let source = header.dropFirst(prefix.count).dropLast()
+        guard !source.isEmpty, !source.contains("'") else { return nil }
+        let accessories: [AccessoryPower] = lines.dropFirst().compactMap { line in
             let fields = line.split(separator: "\t", maxSplits: 1, omittingEmptySubsequences: false)
             guard fields.count == 2, fields[0].hasPrefix(" -"),
                   fields[1].hasSuffix(" present: true") else { return nil }
@@ -183,11 +193,12 @@ public enum BatteryHealth {
             let level = fields[1].dropFirst(value.count).hasPrefix("%;") ? percent(String(value)) : nil
             return AccessoryPower(name: name, charge: level)
         }
+        return PowerManagementReport(source: String(source), accessories: accessories)
     }
 
-    private static func accessoryPower() async throws -> [AccessoryPower]? {
+    private static func powerManagementReport() async throws -> PowerManagementReport? {
         try await commandOutput("/usr/bin/pmset", name: "Power Management", arguments: ["-g", "accps"])
-            .flatMap(parseAccessoryPower)
+            .flatMap(parsePowerManagementReport)
     }
 
     private static func commandOutput(_ path: String, name: String, arguments: [String]) async throws -> Data? {
