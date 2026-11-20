@@ -9,20 +9,25 @@ struct Workspace: View {
     let clipboardHistoryController: ClipboardHistoryController
     let audioRecordingController: AudioRecordingController
     let screenRecordingController: ScreenRecordingController
-    @State private var selection = Destination.tool(.resizeImages)
+    @State private var selection = Destination.browse(.overview)
     @State private var readerSource: URL?
     @State private var captureHandoffError: String?
     @State private var search = ""
-    @State private var collapsedCategories: Set<ToolCategory> = []
+    @AppStorage("workspace.favoriteTools") private var storedFavorites = ""
+    @AppStorage("workspace.recentTools") private var storedRecents = ""
     @FocusState private var searching: Bool
     @State private var session = WorkspaceSession()
 
     @Environment(\.colorScheme) private var colorScheme
     private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
+    private var searchTerm: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
+    private var favorites: [Tool] { storedFavorites.split(separator: ",").compactMap { Tool(rawValue: String($0)) } }
+    private var recents: [Tool] { storedRecents.split(separator: ",").compactMap { Tool(rawValue: String($0)) } }
+
     private var visibleGroups: [ToolGroup] {
         let matches = Tool.allCases.filter {
-            search.isEmpty || $0.title.localizedCaseInsensitiveContains(search)
-                || $0.category.localizedCaseInsensitiveContains(search) || $0.matchesCapability(search)
+            $0.title.localizedCaseInsensitiveContains(searchTerm)
+                || $0.category.localizedCaseInsensitiveContains(searchTerm) || $0.matchesCapability(searchTerm)
         }
         let grouped = Dictionary(grouping: matches, by: \.group)
         return ToolCategory.allCases.compactMap { category in
@@ -31,12 +36,13 @@ struct Workspace: View {
     }
 
     private enum Destination: Equatable {
+        case browse(ToolBrowser.Page)
         case tool(Tool)
         case pdfReader
     }
 
     private var matchesReader: Bool {
-        search.isEmpty || "PDF Reader".localizedCaseInsensitiveContains(search)
+        "PDF Reader".localizedCaseInsensitiveContains(searchTerm)
     }
 
     private struct ToolGroup: Identifiable {
@@ -57,6 +63,7 @@ struct Workspace: View {
                         .textFieldStyle(.plain)
                         .focused($searching)
                         .onSubmit {
+                            guard !searchTerm.isEmpty else { return }
                             if let first = visibleGroups.first?.tools.first {
                                 selection = .tool(first)
                                 searching = false
@@ -79,32 +86,14 @@ struct Workspace: View {
                 .padding(.vertical, 8)
                 .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
 
-                if matchesReader {
-                    readerButton
-                }
-
-                if visibleGroups.isEmpty && !matchesReader {
-                    Text("No matching tools")
-                        .font(.callout).foregroundStyle(.secondary)
-                        .padding(.horizontal, 6)
-                } else {
-                    ScrollView {
-                        LazyVStack(alignment: .leading, spacing: 14) {
-                            ForEach(visibleGroups) { group in
-                                VStack(alignment: .leading, spacing: 4) {
-                                    categoryHeading(group.category)
-                                    if !search.isEmpty || !collapsedCategories.contains(group.category) {
-                                        ForEach(group.tools) { tool in
-                                            toolButton(tool)
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                        .padding(.bottom, 8)
+                ScrollView {
+                    if searchTerm.isEmpty {
+                        browseSidebar
+                    } else {
+                        searchResults
                     }
-                    .scrollIndicators(.hidden)
                 }
+                .scrollIndicators(.hidden)
                 Spacer(minLength: 0)
             }
             .padding(.horizontal, 14)
@@ -113,6 +102,12 @@ struct Workspace: View {
         } detail: {
             Group {
                 switch selection {
+                case .browse(let page):
+                    ToolBrowser(page: page, favorites: favorites, recents: recents,
+                                navigate: { selection = .browse($0) },
+                                openTool: { selection = .tool($0) },
+                                toggleFavorite: toggleFavorite)
+                        .id(page.title)
                 case .pdfReader:
                     PDFReaderView(source: $readerSource,
                                   canHandoffForms: session.drafts[.fillFlattenForms]?.pdfForms.exportTask == nil,
@@ -153,6 +148,11 @@ struct Workspace: View {
             search = ""
             searching = false
         })
+        .onChange(of: selection) { _, destination in
+            guard case .tool(let tool) = destination else { return }
+            let updated = [tool] + recents.filter { $0 != tool }
+            storedRecents = updated.prefix(12).map(\.rawValue).joined(separator: ",")
+        }
         .onOpenURL { url in
             guard url.isFileURL, url.pathExtension.lowercased() == "pdf" else { return }
             openOutput(url)
@@ -269,33 +269,57 @@ struct Workspace: View {
         selection = .tool(tool)
     }
 
-    @ViewBuilder
-    private func categoryHeading(_ category: ToolCategory) -> some View {
-        if search.isEmpty {
-            let collapsed = collapsedCategories.contains(category)
-            Button {
-                if collapsed { collapsedCategories.remove(category) }
-                else { collapsedCategories.insert(category) }
-            } label: {
-                HStack {
-                    Text(category.title)
-                    Spacer()
-                    Image(systemName: collapsed ? "chevron.right" : "chevron.down")
-                        .font(.system(size: 8, weight: .semibold))
-                        .accessibilityHidden(true)
-                }
-                .contentShape(Rectangle())
+    private var browseSidebar: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            VStack(spacing: 2) {
+                sidebarButton("Browse Tools", icon: "square.grid.2x2", destination: .browse(.overview))
+                sidebarButton("Favorites", icon: "star", destination: .browse(.favorites))
+                sidebarButton("Recents", icon: "clock", destination: .browse(.recents))
             }
-            .buttonStyle(.plain)
-            .accessibilityValue(collapsed ? "Collapsed" : "Expanded")
-            .modifier(CategoryHeadingStyle())
-        } else {
-            Text(category.title).modifier(CategoryHeadingStyle())
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text("Categories").modifier(CategoryHeadingStyle())
+                ForEach(ToolCategory.allCases) { category in
+                    sidebarButton(category.title, icon: category.browseSymbol, destination: .browse(.category(category)))
+                }
+            }
+
+            Divider().padding(.horizontal, 10)
+            readerButton
         }
+        .padding(.bottom, 8)
     }
 
-    private func toolButton(_ tool: Tool) -> some View {
-        sidebarButton(tool.title, icon: tool.symbol, destination: .tool(tool))
+    private var searchResults: some View {
+        let groups = visibleGroups
+        return LazyVStack(alignment: .leading, spacing: 14) {
+            if matchesReader { readerButton }
+            if groups.isEmpty && !matchesReader {
+                Text("No matching tools")
+                    .font(.callout)
+                    .foregroundStyle(.secondary)
+                    .padding(.horizontal, 6)
+            }
+            ForEach(groups) { group in
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(group.category.title).modifier(CategoryHeadingStyle())
+                    ForEach(group.tools) { tool in
+                        sidebarButton(tool.title, icon: tool.symbol, destination: .tool(tool))
+                            .contextMenu {
+                                Button(favorites.contains(tool) ? "Remove from Favorites" : "Add to Favorites") {
+                                    toggleFavorite(tool)
+                                }
+                            }
+                    }
+                }
+            }
+        }
+        .padding(.bottom, 8)
+    }
+
+    private func toggleFavorite(_ tool: Tool) {
+        let updated = favorites.contains(tool) ? favorites.filter { $0 != tool } : favorites + [tool]
+        storedFavorites = updated.map(\.rawValue).joined(separator: ",")
     }
 
     private func sidebarButton(_ title: String, icon: String, destination: Destination) -> some View {
