@@ -74,10 +74,18 @@ struct QRToolsView: View {
             previewInput = nil
             preview = nil
             generationMessage = nil
-            guard (try? input.payload.encoded()) != nil else {
-                if case .url(let url) = input.payload, !url.isEmpty {
+            do {
+                _ = try input.payload.encoded()
+            } catch {
+                switch (input.payload, error) {
+                case (.url(let url), QRToolError.invalidURL) where !url.isEmpty:
                     previewInput = input
-                    generationMessage = QRToolError.invalidURL.localizedDescription
+                    generationMessage = error.localizedDescription
+                case (_, QRToolError.networkNameTooLong):
+                    previewInput = input
+                    generationMessage = error.localizedDescription
+                default:
+                    break
                 }
                 return
             }

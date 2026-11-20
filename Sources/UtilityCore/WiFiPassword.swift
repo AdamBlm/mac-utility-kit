@@ -97,10 +97,7 @@ package enum WiFiPassword {
     package static func qr(
         name: String, security: QRPayload.Security, password: String, hidden: Bool
     ) throws -> CGImage {
-        guard (1...32).contains(name.utf8.count) else {
-            throw ToolError.invalid("Enter a Wi-Fi network name of 1 to 32 UTF-8 bytes.")
-        }
-        return try QRTools.generate(.wiFi(name: name, security: security, password: password, hidden: hidden))
+        try QRTools.generate(.wiFi(name: name, security: security, password: password, hidden: hidden))
     }
 
     static func networkSecurity(_ native: CWSecurity) -> NetworkSecurity {

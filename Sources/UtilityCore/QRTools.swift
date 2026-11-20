@@ -28,6 +28,7 @@ public enum QRPayload: Equatable, Sendable {
             return text
         case .wiFi(let name, let security, let password, let hidden):
             guard !name.isEmpty else { throw QRToolError.emptyNetwork }
+            guard name.utf8.count <= 32 else { throw QRToolError.networkNameTooLong }
             guard security == .open || !password.isEmpty else { throw QRToolError.emptyPassword }
             let type = switch security {
             case .wpa: "WPA"
@@ -103,13 +104,14 @@ public struct QRDetection: Identifiable, Equatable, Sendable {
 }
 
 public enum QRToolError: LocalizedError {
-    case emptyText, invalidURL, emptyNetwork, emptyPassword, unsupportedSize, encoding, export, unreadableImage
+    case emptyText, invalidURL, emptyNetwork, networkNameTooLong, emptyPassword, unsupportedSize, encoding, export, unreadableImage
 
     public var errorDescription: String? {
         switch self {
         case .emptyText: "Enter text to generate a QR code."
         case .invalidURL: "Enter a complete HTTP or HTTPS URL."
         case .emptyNetwork: "Enter the Wi-Fi network name."
+        case .networkNameTooLong: "Enter a Wi-Fi network name of 1 to 32 UTF-8 bytes."
         case .emptyPassword: "Enter the Wi-Fi password."
         case .unsupportedSize: "Choose an image size between 128 and 4096 pixels."
         case .encoding: "The payload could not be encoded at this error correction level."

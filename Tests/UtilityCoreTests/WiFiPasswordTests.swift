@@ -56,8 +56,22 @@ struct WiFiPasswordTests {
         #expect(throws: ToolError.self) {
             try WiFiPassword.passwordResult(status: errSecItemNotFound, value: nil)
         }
-        #expect(throws: ToolError.self) {
+        #expect(throws: QRToolError.self) {
             try WiFiPassword.qr(name: String(repeating: "あ", count: 11), security: .open, password: "", hidden: false)
+        }
+    }
+
+    @Test func bothQRWorkflowsUseTheSSIDByteLimit() throws {
+        let exact = String(repeating: "é", count: 16)
+        let overLimit = exact + "A"
+        let payload = QRPayload.wiFi(name: exact, security: .open, password: "", hidden: false)
+        #expect(exact.utf8.count == 32)
+        #expect(try QRTools.generate(payload).width == WiFiPassword.qr(name: exact, security: .open, password: "", hidden: false).width)
+        #expect(throws: QRToolError.self) {
+            try QRTools.generate(.wiFi(name: overLimit, security: .open, password: "", hidden: false))
+        }
+        #expect(throws: QRToolError.self) {
+            try WiFiPassword.qr(name: overLimit, security: .open, password: "", hidden: false)
         }
     }
 
