@@ -44,26 +44,55 @@ package enum AppDamageDiagnosis {
     }
 
     package static func inspect(_ url: URL) async throws -> Report {
+        try await inspect(url, assess: assess)
+    }
+
+    static func inspect(_ url: URL, assess: @Sendable (URL) async throws -> Assessment) async throws -> Report {
         guard url.isFileURL, url.pathExtension.lowercased() == "app",
               try url.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true
         else { throw ToolError.invalid("Choose a macOS application bundle.") }
 
         let path = url.resolvingSymlinksInPath().standardizedFileURL
+        let changed = ToolError.invalid("The application changed during inspection. Choose it again.")
+        guard let rootStamp = stamp(path) else { throw changed }
+        let evidencePaths = ["Contents", "Contents/Info.plist", "Contents/_CodeSignature/CodeResources"]
+        var evidenceURLs = [path] + evidencePaths.map { path.appending(path: $0) }
+        var evidence = [Optional(rootStamp)] + evidenceURLs.dropFirst().map(stamp)
+        let bundle = Bundle(url: path)
+        let bundleIdentifier = bundle?.bundleIdentifier
+        if let executable = bundle?.executableURL {
+            evidenceURLs.append(executable)
+            evidence.append(stamp(executable))
+        }
+        func verifyEvidence() throws {
+            guard url.resolvingSymlinksInPath().standardizedFileURL == path,
+                  evidenceURLs.map(stamp) == evidence else { throw changed }
+        }
+        try verifyEvidence()
         let signing = await Task.detached(priority: .userInitiated) { inspectSignature(path) }.value
         try Task.checkCancellation()
+        try verifyEvidence()
         let assessment = try await assess(path)
         try Task.checkCancellation()
+        let quarantined = quarantineStatus(path)
+        try verifyEvidence()
         return Report(
             name: url.deletingPathExtension().lastPathComponent,
-            bundleIdentifier: Bundle(url: path)?.bundleIdentifier,
+            bundleIdentifier: bundleIdentifier,
             signingIdentifier: signing.identifier,
             teamIdentifier: signing.team,
             certificateName: signing.certificate,
             signature: signing.signature,
             signatureDetail: signing.detail,
-            quarantined: quarantineStatus(path),
+            quarantined: quarantined,
             assessment: assessment
         )
+    }
+
+    private static func stamp(_ url: URL) -> DuplicateFileStamp? {
+        var info = stat()
+        guard lstat(url.path, &info) == 0 else { return nil }
+        return DuplicateFileStamp(info)
     }
 
     private struct Signing: Sendable {

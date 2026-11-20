@@ -27,6 +27,37 @@ struct AppDamageDiagnosisTests {
         #expect(AppDamageDiagnosis.parseAssessment(Data(), detail: "unavailable").detail == "unavailable")
     }
 
+    @Test(arguments: [false, true])
+    func rejectsChangedBundleBeforeReturningMixedInspectionEvidence(replaceBundle: Bool) async throws {
+        let manager = FileManager.default
+        let folder = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        let app = folder.appending(path: "Sample.app")
+        let moved = folder.appending(path: "Previous.app")
+        let info = app.appending(path: "Contents/Info.plist")
+        try manager.createDirectory(at: info.deletingLastPathComponent(), withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: folder) }
+        let plist = try PropertyListSerialization.data(
+            fromPropertyList: ["CFBundleIdentifier": "example.temporary", "CFBundlePackageType": "APPL"],
+            format: .xml, options: 0
+        )
+        try plist.write(to: info)
+        do {
+            _ = try await AppDamageDiagnosis.inspect(app) { _ in
+                let manager = FileManager.default
+                if replaceBundle {
+                    try manager.moveItem(at: app, to: moved)
+                    try manager.copyItem(at: moved, to: app)
+                } else {
+                    try (plist + Data([0x0a])).write(to: info)
+                }
+                return .init(allowsExecution: true, authority: "Fixture", detail: nil)
+            }
+            Issue.record("A changed bundle must never produce a combined assessment.")
+        } catch {
+            #expect(error.localizedDescription.contains("application changed during inspection"))
+        }
+    }
+
     @Test func verifiesKnownMacOSBundleReadOnly() async throws {
         let url = URL(filePath: "/System/Applications/Calculator.app")
         guard FileManager.default.fileExists(atPath: url.path) else { return }
