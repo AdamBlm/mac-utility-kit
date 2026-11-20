@@ -1,4 +1,6 @@
+import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 struct CaseConverterDraft {
@@ -14,6 +16,7 @@ struct CaseConverterView: View {
     @State private var output = ""
     @State private var issue: String?
     @State private var selection: TextSelection?
+    @State private var fileTask: Task<Void, Never>?
 
     private var highlightedRanges: [Range<String.Index>] {
         guard let selection else { return [] }
@@ -27,17 +30,25 @@ struct CaseConverterView: View {
     var body: some View {
         InteractiveToolLayout(tool: .caseConverter) { palette in
             WorkspaceSection("Text", palette: palette) {
-                TextEditor(text: Binding(get: { draft.input }, set: {
-                    draft.input = $0
-                    selection = nil
-                    clear()
-                }), selection: $selection)
+                TextEditor(text: Binding(get: { draft.input }, set: replaceText), selection: $selection)
                     .font(.body.monospaced())
                     .frame(minHeight: 100)
                     .scrollContentBackground(.hidden)
                     .padding(6)
                     .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
                     .accessibilityLabel("Text to convert")
+                HStack {
+                    Button("Open text file…", systemImage: "folder") {
+                        if let url = DeveloperToolFiles.choose(allowedTypes: [.plainText]) { loadFile(url) }
+                    }
+                    .disabled(fileTask != nil)
+                    ClipboardFileButton(allowedTypes: [.plainText], buttonOnlyTitle: "Paste File", onPasteFile: loadFile)
+                        .disabled(fileTask != nil)
+                    Button("Paste Text", systemImage: "doc.on.clipboard") {
+                        if let text = NSPasteboard.general.string(forType: .string) { replaceText(text) }
+                    }
+                    if fileTask != nil { ProgressView().controlSize(.small).accessibilityLabel("Reading text file") }
+                }
                 SettingRow("Case") {
                     Picker("Case", selection: $draft.style) {
                         ForEach(TextCase.allCases) { Text($0.rawValue).tag($0) }
@@ -86,10 +97,39 @@ struct CaseConverterView: View {
                 }
             }
         }
+        .onDisappear { fileTask?.cancel() }
         .onChange(of: draft.style) { clear() }
         .onChange(of: draft.localeID) { clear() }
         .onChange(of: draft.useLineSelection) { clear() }
         .onChange(of: draft.lines) { clear() }
+    }
+
+    private func replaceText(_ text: String) {
+        fileTask?.cancel()
+        draft.input = text
+        selection = nil
+        clear()
+    }
+
+    private func loadFile(_ file: URL) {
+        guard fileTask == nil else { return }
+        issue = nil
+        fileTask = Task {
+            defer { fileTask = nil }
+            do {
+                let text = try await CaseConverter.loadText(file)
+                try Task.checkCancellation()
+                draft.input = text
+                draft.lines = ""
+                selection = nil
+                clear()
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                issue = error.localizedDescription
+            }
+        }
     }
 
     private func clear() {

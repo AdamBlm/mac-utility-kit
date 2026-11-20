@@ -3,6 +3,19 @@ import Testing
 import UtilityCore
 
 struct CaseConverterTests {
+    @Test func importsBOMMarkedTextAndRejectsOversizedFiles() async throws {
+        let input = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".txt")
+        defer { try? FileManager.default.removeItem(at: input) }
+        let text = "İstanbul\r\n東京\n"
+        try #require(text.data(using: .utf16)).write(to: input)
+        #expect(try await CaseConverter.loadText(input) == text)
+
+        let file = try FileHandle(forWritingTo: input)
+        try file.truncate(atOffset: 2 * 1_024 * 1_024 + 1)
+        try file.close()
+        await #expect(throws: ToolError.self) { try await CaseConverter.loadText(input) }
+    }
+
     @Test func transformsUnicodeIdentifiersAcrossAcronymsAndDelimiters() throws {
         let input = "  XMLHTTPRequest—caféUser_ID42 "
         #expect(try CaseConverter.convert(input, to: .snake) == "xmlhttp_request_café_user_id42")

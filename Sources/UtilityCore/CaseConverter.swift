@@ -13,8 +13,26 @@ public enum TextCase: String, CaseIterable, Identifiable, Sendable {
 }
 
 public enum CaseConverter {
+    private static let maximumInputBytes = 2 * 1_024 * 1_024
+
+    package static func loadText(_ file: URL) async throws -> String {
+        let data: Data
+        do {
+            data = try await PlainTextDecoding.loadVerifiedBytes(file, maximumBytes: maximumInputBytes)
+        } catch PlainTextDecoding.ReadIssue.tooLarge {
+            throw ToolError.invalid("Choose a file up to 2 MiB.")
+        }
+        guard let text = PlainTextDecoding.decode(data) else {
+            throw ToolError.invalid("Could not read this file as UTF-8 or BOM-marked Unicode plain text.")
+        }
+        guard text.utf8.count <= maximumInputBytes else {
+            throw ToolError.invalid("Choose a file with up to 2 MiB of decoded text.")
+        }
+        return text
+    }
+
     public static func lineSelection(in text: String, for ranges: [Range<String.Index>]) throws -> String {
-        guard text.utf8.count <= 2_097_152 else { throw ToolError.invalid("Enter up to 2 MB of text.") }
+        guard text.utf8.count <= maximumInputBytes else { throw ToolError.invalid("Enter up to 2 MB of text.") }
         var lineStarts = [text.startIndex]
         for index in text.indices where text[index].isNewline {
             lineStarts.append(text.index(after: index))
@@ -48,7 +66,7 @@ public enum CaseConverter {
     public static func convert(
         _ text: String, to style: TextCase, locale: Locale = .current, selectedLines: String? = nil
     ) throws -> String {
-        guard text.utf8.count <= 2_097_152 else {
+        guard text.utf8.count <= maximumInputBytes else {
             throw ToolError.invalid("Enter up to 2 MB of text.")
         }
         guard let selectedLines else { return apply(text, style: style, locale: locale) }
