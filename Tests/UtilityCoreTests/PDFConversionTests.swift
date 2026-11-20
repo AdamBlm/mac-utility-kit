@@ -284,27 +284,34 @@ private func conversionPDF(in folder: URL) throws -> URL {
     #expect(PDFCrop.visibleSize(for: resultPage) == CGSize(width: 180, height: 270))
 }
 
-@Test func PDFToImagesHonorsCopyrightRestrictionsAndCanEncodeHEIC() async throws {
+@Test(arguments: ["reader", ""])
+func PDFToImagesHonorsCopyrightRestrictionsAndCanEncodeHEIC(readerPassword: String) async throws {
     let folder = try conversionFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let source = try conversionPDF(in: folder)
     let document = try #require(PDFDocument(url: source))
     let restricted = folder.appendingPathComponent("Protected.pdf")
     let data = try #require(document.dataRepresentation(options: [
-        PDFDocumentWriteOption.userPasswordOption: "reader",
+        PDFDocumentWriteOption.userPasswordOption: readerPassword,
         PDFDocumentWriteOption.ownerPasswordOption: "owner",
         PDFDocumentWriteOption.accessPermissionsOption: 0
     ]))
     try data.write(to: restricted)
+    let opened = try #require(PDFDocument(url: restricted))
+    #expect(opened.isEncrypted)
+    #expect(opened.isLocked == !readerPassword.isEmpty)
     let exports = try folder.subdirectory("exports")
     var options = PDFToImagesOptions()
-    options.password = "reader"
+    options.password = readerPassword
     options.range = "1"
+    #expect(throws: ToolError.self) { try PDFToImages.plans(restricted, options: options) }
     await #expect(throws: ToolError.self) {
         try await PDFToImages.export(restricted, into: exports, options: options) { _ in }
     }
     #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
     options.password = "owner"
+    #expect(try PDFToImages.plans(restricted, options: options).map(\.pageNumber) == [1])
+    #expect(try await PDFToImages.preview(restricted, pageNumber: 1, options: options).width == 420)
     if (CGImageDestinationCopyTypeIdentifiers() as? [String])?.contains(UTType.heic.identifier) == true {
         options.format = .heic
     }
