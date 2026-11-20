@@ -56,7 +56,7 @@ struct ConvertTable: CatalogCommandBinding {
 
     func run() throws {
         let source = try readUTF8Text(file: file, limit: CSVJSON.maximumInputBytes,
-                                      invalidInput: "Provide UTF-8 input up to 2 MiB.")
+                                      invalidInput: "Provide UTF-8 input up to 2 MiB.", preservesBOM: true)
         let separator = try delimiter.separator ?? detectedDelimiter(in: source)
         let output = try CSVJSON.convert(source, direction: direction.conversion, delimiter: separator,
                                          includesHeader: !noHeaders).output

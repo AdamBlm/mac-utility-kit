@@ -101,6 +101,9 @@ def check_table_conversion(binary):
         assert source.read_bytes() == csv
     assert encoded.returncode == 0 and not encoded.stderr, encoded.stderr
     assert json.loads(encoded.stdout) == [{"id": "001", "note": "a;b\nété"}, {"id": "002", "note": ""}]
+    bom = "\ufeff".encode()
+    first_field = convert("csv-to-json", content=bom * 2 + b"code\n001\n")
+    assert first_field.returncode == 0 and json.loads(first_field.stdout) == [{"\ufeffcode": "001"}]
     decoded = convert("json-to-csv", "--delimiter", "semicolon", content=encoded.stdout)
     assert decoded.returncode == 0 and decoded.stdout == csv.replace(b"002;\r\n", b'002;""\r\n'), decoded.stderr
     markdown = convert("csv-to-markdown", "--no-headers", content=b"001,a|b\n")

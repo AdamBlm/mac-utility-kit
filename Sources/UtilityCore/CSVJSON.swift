@@ -54,6 +54,39 @@ public enum CSVJSON {
         public var errorDescription: String? { message }
     }
 
+    package static func loadUTF8(_ input: URL) async throws -> String {
+        try Task.checkCancellation()
+        let work = Task.detached(priority: .userInitiated) {
+            guard input.isFileURL else { throw Issue(message: "Choose a local UTF-8 file.") }
+            let resolved = input.resolvingSymlinksInPath().standardizedFileURL
+            guard let stamp = try DuplicateFileIO.inspect(resolved) else {
+                throw Issue(message: "Choose a regular UTF-8 file.")
+            }
+            guard stamp.bytes <= maximumInputBytes else {
+                throw Issue(message: "Input must be 2 MiB or smaller.")
+            }
+            let source = DuplicateFile(url: resolved, stamp: stamp)
+            var bytes = Data()
+            bytes.reserveCapacity(Int(stamp.bytes))
+            try DuplicateFileIO.forEachVerifiedChunk(source) { bytes.append($0) }
+            try Task.checkCancellation()
+            guard input.resolvingSymlinksInPath().standardizedFileURL.path == resolved.path else {
+                throw Issue(message: "The input file changed while opening it.")
+            }
+            guard let text = String(validating: bytes, as: UTF8.self) else {
+                throw Issue(message: "This file contains invalid UTF-8.")
+            }
+            return text
+        }
+        return try await withTaskCancellationHandler {
+            let text = try await work.value
+            try Task.checkCancellation()
+            return text
+        } onCancel: {
+            work.cancel()
+        }
+    }
+
     public static func detectDelimiter(_ input: String) throws -> DelimiterDetection {
         guard input.utf8.count <= maximumInputBytes else {
             throw Issue(message: "Input must be 2 MiB or smaller.")
@@ -98,7 +131,9 @@ public enum CSVJSON {
             }
             return Result(output: output, columns: headers, rows: rows)
         case .jsonToCSV:
-            let (headers, rows) = try jsonTable(input)
+            let json = input.unicodeScalars.first == "\u{FEFF}"
+                ? String(String.UnicodeScalarView(input.unicodeScalars.dropFirst())) : input
+            let (headers, rows) = try jsonTable(json)
             let output = try csv(includesHeader && !headers.isEmpty ? [headers] + rows : rows, delimiter: delimiter)
             return Result(output: output, columns: headers, rows: rows)
         }

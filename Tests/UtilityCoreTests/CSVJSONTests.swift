@@ -3,6 +3,33 @@ import Testing
 import UtilityCore
 
 struct CSVJSONTests {
+    @Test func importsBoundedStrictUTF8AndKeepsCSVFirstFieldAndNewlines() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "table.csv")
+        let input = "\u{FEFF}\u{FEFF}001,note\r\n002,\"été\r\nsuite\"\r\n"
+        try Data(input.utf8).write(to: source)
+        let imported = try await CSVJSON.loadUTF8(source)
+        #expect(imported.utf8.elementsEqual(input.utf8))
+        let conversion = try CSVJSON.convert(imported, direction: .csvToJSON)
+        #expect(conversion.columns == ["\u{FEFF}001", "note"])
+        #expect(conversion.rows == [["002", "été\r\nsuite"]])
+
+        try Data("\u{FEFF}[[\"001\",\"été\"]]".utf8).write(to: source)
+        let json = try await CSVJSON.loadUTF8(source)
+        let csv = try CSVJSON.convert(json, direction: .jsonToCSV, includesHeader: false)
+        #expect(csv.output == "001,été\r\n")
+
+        try Data([0xFF]).write(to: source)
+        let encoding = await #expect(throws: CSVJSON.Issue.self) { try await CSVJSON.loadUTF8(source) }
+        #expect(encoding?.localizedDescription.contains("invalid UTF-8") == true)
+        try Data(repeating: 0x61, count: CSVJSON.maximumInputBytes + 1).write(to: source)
+        let size = await #expect(throws: CSVJSON.Issue.self) { try await CSVJSON.loadUTF8(source) }
+        #expect(size?.localizedDescription.contains("2 MiB") == true)
+        await #expect(throws: CSVJSON.Issue.self) { try await CSVJSON.loadUTF8(folder) }
+    }
+
     @Test func detectsOnlyConsistentUnambiguousDelimitersOutsideQuotedFields() throws {
         let quoted = "\u{FEFF}name,comment\r\nAda,\"contains ; and |\r\nand \"\"quotes\"\"\"\r\nLin,normal"
         #expect(try CSVJSON.detectDelimiter(quoted) == .detected(.comma))

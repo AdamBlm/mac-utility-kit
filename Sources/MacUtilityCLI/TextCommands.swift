@@ -71,14 +71,15 @@ struct FormatJSON: CatalogCommandBinding {
     }
 }
 
-func readUTF8Text(file: String, limit: Int, invalidInput: String) throws -> String {
+func readUTF8Text(file: String, limit: Int, invalidInput: String, preservesBOM: Bool = false) throws -> String {
     let handle = file == "-" ? FileHandle.standardInput : try FileHandle(forReadingFrom: URL(filePath: file))
     defer { if file != "-" { try? handle.close() } }
     var data = Data()
     while data.count <= limit, let chunk = try handle.read(upToCount: min(64 * 1024, limit + 1 - data.count)), !chunk.isEmpty {
         data.append(chunk)
     }
-    guard data.count <= limit, let source = String(data: data, encoding: .utf8) else {
+    guard data.count <= limit,
+          let source = preservesBOM ? String(validating: data, as: UTF8.self) : String(data: data, encoding: .utf8) else {
         throw ValidationError(invalidInput)
     }
     return source

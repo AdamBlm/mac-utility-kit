@@ -1,4 +1,5 @@
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 struct CSVJSONDraft {
@@ -12,13 +13,14 @@ struct CSVJSONView: View {
     @Binding var draft: CSVJSONDraft
     @State private var revision = 0
     @State private var editorRevision = 0
-    @State private var isLoading = false
+    @State private var fileTask: Task<Void, Never>?
     @State private var fileName: String?
     @State private var fileIssue: String?
     @State private var detectionRequest: UUID?
     @State private var delimiterMessage: String?
     @State private var saveIssue: String?
     @State private var comparison: (revision: Int, result: Result<CSVJSON.Result, Error>)?
+    private var isLoading: Bool { fileTask != nil }
 
     var body: some View {
         InteractiveToolLayout(tool: .csvJSON) { palette in
@@ -46,11 +48,14 @@ struct CSVJSONView: View {
                 HStack {
                     Button("Open…", systemImage: "folder", action: open).disabled(isLoading)
                         .help("Open a UTF-8 text file")
+                    ClipboardFileButton(allowedTypes: [.data], buttonOnlyTitle: "Paste File", onPasteFile: load)
+                        .disabled(isLoading)
                     if let fileName { Text(fileName).font(.caption).foregroundStyle(.secondary).lineLimit(1) }
                     if isLoading { ProgressView().controlSize(.small) }
                 }
                 TextEditor(text: Binding(get: { draft.input }, set: {
                     draft.input = $0
+                    fileName = nil
                     fileIssue = nil
                     invalidate()
                 }))
@@ -80,6 +85,7 @@ struct CSVJSONView: View {
         .onChange(of: draft.direction) { invalidate() }
         .onChange(of: draft.delimiter) { invalidate() }
         .onChange(of: draft.includesHeader) { invalidate() }
+        .onDisappear { fileTask?.cancel() }
         .task(id: revision) { await convert() }
         .task(id: detectionRequest) {
             if let detectionRequest { await detectDelimiter(detectionRequest) }
@@ -201,22 +207,24 @@ struct CSVJSONView: View {
 
     private func open() {
         guard let url = DeveloperToolFiles.choose() else { return }
-        isLoading = true
+        load(url)
+    }
+
+    private func load(_ url: URL) {
+        guard fileTask == nil else { return }
         fileIssue = nil
         detectionRequest = nil
         delimiterMessage = nil
-        Task {
-            defer { isLoading = false }
+        fileTask = Task {
+            defer { fileTask = nil }
             do {
-                let data = try await DeveloperToolFiles.read(url)
-                guard data.count <= CSVJSON.maximumInputBytes else {
-                    fileIssue = "Input must be 2 MiB or smaller."
-                    return
-                }
-                draft.input = try DeveloperToolFiles.utf8(data)
+                let text = try await CSVJSON.loadUTF8(url)
+                try Task.checkCancellation()
+                draft.input = text
                 fileName = url.lastPathComponent
                 editorRevision += 1
                 invalidate()
+            } catch is CancellationError {
             } catch {
                 fileIssue = url.lastPathComponent + " — " + error.localizedDescription
             }
