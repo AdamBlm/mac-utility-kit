@@ -29,26 +29,54 @@ public struct AudioConvertOptions: Equatable, Sendable {
 
     public static let sampleRates = [32_000, 44_100, 48_000, 88_200, 96_000]
     public static let bitrates = [64, 96, 128, 160, 192, 224, 256, 320]
+    // LAME's constant-bitrate choices vary by MPEG version.
+    private static let mp3Profiles: [(rates: [Int], bitrates: [Int])] = [
+        ([8_000, 11_025, 12_000], [8, 16, 24, 32, 40, 48, 56, 64]),
+        ([16_000, 22_050, 24_000], [8, 16, 24, 32, 40, 48, 56, 64, 80, 96, 112, 128, 144, 160]),
+        ([32_000, 44_100, 48_000], [32, 40, 48, 56, 64, 80, 96, 112, 128, 160, 192, 224, 256, 320])
+    ]
 
     public var isLossy: Bool { format == .m4a || format == .mp3 }
     public var supportsMetadata: Bool { format == .m4a || format == .mp3 || format == .flac }
 
     public var supportedRates: [Int] {
-        format == .mp3 ? [32_000, 44_100, 48_000] : Self.sampleRates
+        format == .mp3 ? Self.mp3Profiles.flatMap(\.rates) : Self.sampleRates
+    }
+
+    public var supportedBitrates: [Int] { supportedBitrates(at: sampleRate) }
+
+    private func supportedBitrates(at rate: Int?) -> [Int] {
+        guard format == .mp3 else { return Self.bitrates }
+        if let rate { return Self.mp3Profiles.first(where: { $0.rates.contains(rate) })?.bitrates ?? [] }
+        return Set(Self.mp3Profiles.flatMap(\.bitrates)).sorted()
     }
 
     public var validationIssue: String? {
         if let sampleRate, !supportedRates.contains(sampleRate) {
             return "The format does not support this sample rate."
         }
-        if isLossy && !Self.bitrates.contains(bitrate) {
-            return "Choose an audio bitrate from the list."
+        if isLossy && !supportedBitrates.contains(bitrate) {
+            return "Choose a bitrate supported by the selected sample rate."
         }
         if format == .flac && !(0...8).contains(losslessCompression) {
             return "Choose a FLAC compression level from 0 to 8."
         }
         if format.requiresFFmpeg, ffmpegExecutable.map(ExternalTool.isExecutable) != true {
             return "Choose an FFmpeg executable for \(format.title) output."
+        }
+        return nil
+    }
+
+    func mp3Issue(rate: Int?, channels: Int?) -> String? {
+        guard format == .mp3 else { return nil }
+        if let rate, !supportedRates.contains(rate) {
+            return "MP3 cannot keep the input sample rate. Choose a supported sample rate."
+        }
+        if !supportedBitrates(at: rate).contains(bitrate) {
+            return "MP3 cannot use this bitrate at the source sample rate. Choose a compatible bitrate or set the output sample rate explicitly."
+        }
+        if let channels, channels > 2 {
+            return "MP3 supports mono or stereo. Choose a channel layout for this multichannel input."
         }
         return nil
     }
@@ -73,8 +101,13 @@ public enum AudioConvert {
         let inputFormat = try? AVAudioFile(forReading: input).fileFormat
         let originalRate = inputFormat.map { Int($0.sampleRate.rounded()) }
         let originalChannels = inputFormat.map { Int($0.channelCount) }
+        let expectedRate = options.sampleRate ?? originalRate
+        let expectedChannels = options.channels.count ?? originalChannels
+        if let issue = options.mp3Issue(rate: expectedRate, channels: expectedChannels) {
+            throw ToolError.invalid(issue)
+        }
         if options.format.requiresFFmpeg {
-            try await FFmpegAudioConvert.export(input, to: candidate, options: options)
+            try await FFmpegAudioConvert.export(input, to: candidate, options: options, mp3Rate: expectedRate)
         } else {
             let asset = AVURLAsset(url: input, options: [
                 AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue),
@@ -101,13 +134,19 @@ public enum AudioConvert {
         let rate = Int(outputFormat.sampleRate.rounded())
         let channels = Int(outputFormat.channelCount)
         let codec = withExtendedLifetime(outputFormat) { outputFormat.streamDescription.pointee.mFormatID }
-        let expectedRate = options.sampleRate ?? originalRate
-        let expectedChannels = options.channels.count ?? originalChannels
         guard file.length > 0,
               expectedRate == nil || expectedRate == rate,
               expectedChannels == nil || expectedChannels == channels,
               verify(codec, format: options.format) else {
             throw ToolError.invalid("The converted file did not match the selected codec, sample rate, or channel count.")
+        }
+        if let issue = options.mp3Issue(rate: rate, channels: channels) { throw ToolError.invalid(issue) }
+        guard let probe = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: 512) else {
+            throw ToolError.invalid("Could not verify playback of the converted audio.")
+        }
+        try file.read(into: probe)
+        guard probe.frameLength > 0 else {
+            throw ToolError.invalid("The converted file has no playable audio samples.")
         }
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)

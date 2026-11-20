@@ -61,6 +61,51 @@ struct AudioConvertTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func mp3PreservesLowSourceRatesAndRejectsIncompatibleSettings() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ffmpeg = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let high = try Self.writeStereoWAV(to: directory, sampleRate: 96_000)
+        let low = directory.appending(path: "24k.wav")
+        try Self.runFFmpeg(ffmpeg, ["-i", high.path, "-ar", "24000", low.path])
+
+        var options = AudioConvertOptions()
+        options.format = .mp3
+        options.ffmpegExecutable = ffmpeg
+        options.bitrate = 320
+        let rejected = directory.appending(path: "rejected.mp3")
+        let sampleRateError = await #expect(throws: ToolError.self) {
+            try await AudioConvert.export(high, to: rejected, options: options) { _ in }
+        }
+        #expect(sampleRateError?.localizedDescription.contains("MP3 cannot keep the input sample rate") == true)
+        let bitrateError = await #expect(throws: ToolError.self) {
+            try await AudioConvert.export(low, to: rejected, options: options) { _ in }
+        }
+        #expect(bitrateError?.localizedDescription.contains("MP3 cannot use this bitrate at the source sample rate") == true)
+        options.sampleRate = 24_000
+        #expect(options.validationIssue != nil)
+        #expect(!options.supportedBitrates.contains(320))
+        #expect(!FileManager.default.fileExists(atPath: rejected.path))
+
+        options.bitrate = 144
+        options.sampleRate = nil
+        let output = directory.appending(path: "24k.mp3")
+        let summary = try await AudioConvert.export(low, to: output, options: options) { _ in }
+        let decoded = try AVAudioFile(forReading: output)
+        #expect(decoded.fileFormat.sampleRate == 24_000 && decoded.fileFormat.channelCount == 2)
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: decoded.processingFormat, frameCapacity: 512))
+        try decoded.read(into: buffer)
+        #expect(buffer.frameLength == 512)
+        #expect(summary.contains("24 kHz"))
+
+        options.sampleRate = 8_000
+        options.bitrate = 32
+        let phone = directory.appending(path: "8k.mp3")
+        _ = try await AudioConvert.export(high, to: phone, options: options) { _ in }
+        #expect(try AVAudioFile(forReading: phone).fileFormat.sampleRate == 8_000)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
     func metadataDisabledStripsChaptersFromMP3() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -152,10 +197,10 @@ struct AudioConvertTests {
         return 2 * hypot(left, right) / Double(end - start)
     }
 
-    private static func writeStereoWAV(to directory: URL) throws -> URL {
+    private static func writeStereoWAV(to directory: URL, sampleRate: Double = 48_000) throws -> URL {
         let url = directory.appending(path: "source.wav")
-        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: 48_000, channels: 2))
-        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: 24_000))
+        let format = try #require(AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 2))
+        let buffer = try #require(AVAudioPCMBuffer(pcmFormat: format, frameCapacity: AVAudioFrameCount(sampleRate / 2)))
         buffer.frameLength = buffer.frameCapacity
         let values = try #require(buffer.floatChannelData)
         for index in 0..<Int(buffer.frameLength) {
