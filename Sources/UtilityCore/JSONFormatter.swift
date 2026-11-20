@@ -61,7 +61,9 @@ public enum JSONFormatter {
         } catch PlainTextDecoding.ReadIssue.tooLarge {
             throw ToolError.invalid("Choose a JSON file no larger than 16 MiB.")
         }
-        guard let text = String(data: data, encoding: .utf8) else {
+        let bom: [UInt8] = [0xEF, 0xBB, 0xBF]
+        let bytes = data.starts(with: bom) ? data.dropFirst(bom.count) : data
+        guard let text = String(validating: bytes, as: UTF8.self) else {
             throw ToolError.invalid("This file contains invalid UTF-8.")
         }
         return text
