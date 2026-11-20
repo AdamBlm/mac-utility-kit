@@ -72,6 +72,40 @@ struct OrganizeDownloadsTests {
         #expect(try manager.contentsOfDirectory(atPath: other.path).isEmpty)
     }
 
+    @Test(arguments: [OrganizeDownloads.FileAction.copy, .move])
+    func cancelledExportKeepsCompletedResultsAndLeavesRemainingSources(action: OrganizeDownloads.FileAction) async throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        let source = root.appending(path: "Source")
+        let target = root.appending(path: "Target")
+        try manager.createDirectory(at: source, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: root) }
+        try manager.createDirectory(at: target, withIntermediateDirectories: false)
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
+        let first = source.appending(path: "First.png")
+        let second = source.appending(path: "Second.png")
+        try bytes.write(to: first)
+        try bytes.write(to: second)
+        let items = try OrganizeDownloads.scan(source)
+        let destination = try OrganizeDownloads.inspectDestination(target)
+        let worker = Task.detached {
+            try OrganizeDownloads.export(items, to: destination, action: action) { _ in
+                withUnsafeCurrentTask { $0?.cancel() }
+            }
+        }
+
+        let outcome = try await worker.value
+        #expect(outcome.wasCancelled)
+        #expect(outcome.completed.count == 1)
+        let published = try #require(outcome.completed.first)
+        #expect(URL(filePath: published).lastPathComponent == "First.png")
+        #expect(try Data(contentsOf: URL(filePath: published)) == bytes)
+        #expect(outcome.skipped.isEmpty && outcome.failures.isEmpty)
+        #expect(try Data(contentsOf: second) == bytes)
+        #expect(manager.fileExists(atPath: first.path) == (action == .copy))
+        #expect(try manager.contentsOfDirectory(atPath: target.appending(path: "Unknown Source").path) == ["First.png"])
+    }
+
     @Test func groupsBrowserMetadataAndCopiesWithoutOverwriting() throws {
         let root = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         let source = root.appending(path: "Source")

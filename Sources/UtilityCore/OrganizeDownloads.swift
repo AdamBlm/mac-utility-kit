@@ -17,6 +17,7 @@ public struct DownloadsResult: Sendable {
     public var completed: [String] = []
     public var skipped: [String] = []
     public var failures: [String] = []
+    public var wasCancelled = false
 }
 
 public struct DownloadDestination: Sendable {
@@ -86,6 +87,12 @@ public enum OrganizeDownloads {
     }
 
     public static func export(_ entries: [DownloadImage], to destination: DownloadDestination, action: FileAction) throws -> DownloadsResult {
+        try export(entries, to: destination, action: action) { _ in }
+    }
+
+    static func export(
+        _ entries: [DownloadImage], to destination: DownloadDestination, action: FileAction, didPublish: (URL) -> Void
+    ) throws -> DownloadsResult {
         let fd = try openDirectory(destination.directory)
         defer { close(fd) }
         guard try folderIdentity(fd) == destination.identity else {
@@ -94,7 +101,7 @@ public enum OrganizeDownloads {
         var outcome = DownloadsResult()
         var used: Set<URL> = []
         for entry in entries {
-            try Task.checkCancellation()
+            if Task.isCancelled { break }
             guard used.insert(entry.file).inserted else { outcome.skipped.append(entry.file.lastPathComponent); continue }
             do {
                 let folderName = entry.origin ?? "Unknown Source"
@@ -115,12 +122,20 @@ public enum OrganizeDownloads {
                     }
                     return try copy(source, named: entry.file, to: origin, folder: folder)
                 }
-                if let path { outcome.completed.append(path.path) }
-                else { outcome.skipped.append(entry.file.lastPathComponent + " · already in this origin folder") }
+                if let path {
+                    outcome.completed.append(path.path)
+                    didPublish(path)
+                } else {
+                    outcome.skipped.append(entry.file.lastPathComponent + " · already in this origin folder")
+                }
+            } catch is CancellationError {
+                outcome.wasCancelled = true
+                return outcome
             } catch {
                 outcome.failures.append(entry.file.lastPathComponent + " · " + error.localizedDescription)
             }
         }
+        outcome.wasCancelled = Task.isCancelled
         return outcome
     }
 
@@ -184,6 +199,7 @@ public enum OrganizeDownloads {
         let stem = source.deletingPathExtension().lastPathComponent
         let suffix = source.pathExtension.isEmpty ? "" : "." + source.pathExtension
         for count in 1...10_000 {
+            try Task.checkCancellation()
             let name = count == 1 ? source.lastPathComponent : "\(stem) \(count)\(suffix)"
             if try rename(name) == 0 { return folder.appending(path: name) }
             let error = errno

@@ -85,7 +85,15 @@ struct OrganizeDownloadsView: View {
             }
             if let result = draft.result {
                 WorkspaceSection("Results", palette: palette) {
-                    Text("\(result.completed.count) completed · \(result.skipped.count) skipped · \(result.failures.count) failed")
+                    Text((result.wasCancelled ? "Stopped · " : "")
+                         + "\(result.completed.count) completed · \(result.skipped.count) skipped · \(result.failures.count) failed")
+                    if !result.completed.isEmpty {
+                        DisclosureGroup("Completed Items") {
+                            ForEach(Array(result.completed.enumerated()), id: \.offset) { _, detail in
+                                Text(detail).font(.callout).foregroundStyle(.secondary).textSelection(.enabled)
+                            }
+                        }
+                    }
                     ForEach(Array((result.skipped + result.failures).enumerated()), id: \.offset) { _, detail in
                         Text(detail).font(.callout).foregroundStyle(.secondary)
                     }
