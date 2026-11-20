@@ -79,6 +79,29 @@ import UtilityCore
     }
 
     @MainActor
+    @Test func embedsEarlierImagesBeforeApplyingDocumentImageLimit() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        try createPNG(folder.appending(path: "first.png"))
+        try createPNG(folder.appending(path: "middle.png"))
+        try createPNG(folder.appending(path: "last.png"))
+        let images = ["![First illustration](first.png)"]
+            + Array(repeating: "![Middle illustration](middle.png)", count: 47)
+            + ["![Last illustration](last.png)"]
+        var options = MarkdownPDFOptions()
+        options.imageFolder = folder
+        let prepared = try await MarkdownPDF.prepare(images.joined(separator: "\n\n"), options: options)
+        #expect(prepared.html.contains("alt=\"First illustration\""))
+        #expect(!prepared.html.contains("alt=\"Last illustration\""))
+        #expect(prepared.imageIssues.count == 1)
+        #expect(prepared.imageIssues.first?.contains("last.png") == true)
+        let exported = try await MarkdownPDFPrint.render(prepared)
+        let document = try #require(PDFDocument(data: exported))
+        #expect(document.string?.contains("[Image unavailable]") == true)
+    }
+
+    @MainActor
     @Test func printsSearchablePaginatedPDFWithAPreservedLinkAndWrappedCode() async throws {
         var options = MarkdownPDFOptions()
         options.paper = .letter

@@ -68,7 +68,8 @@ public enum MarkdownPDF {
 
         let headingIDs = try MarkdownHeadingAnchors.assign(in: document)
         var images = MarkdownLocalImages(folder: imageFolder)
-        for node in resourceNodes(document).reversed() {
+        var unavailableImages: [UnsafeMutablePointer<cmark_node>] = []
+        for node in resourceNodes(document) {
             try Task.checkCancellation()
             guard let raw = cmark_node_get_url(node) else { continue }
             let target = String(cString: raw)
@@ -78,14 +79,7 @@ public enum MarkdownPDF {
                     cmark_node_set_url(node, data)
                 case .failure(let issue):
                     images.issues.append(issue.localizedDescription)
-                    if let replacement = cmark_node_new(CMARK_NODE_TEXT) {
-                        cmark_node_set_literal(replacement, "[Image unavailable]")
-                        if cmark_node_replace(node, replacement) == 1 {
-                            cmark_node_free(node)
-                        } else {
-                            cmark_node_free(replacement)
-                        }
-                    }
+                    unavailableImages.append(node)
                 }
             } else if target.hasPrefix("#"), let id = String(target.dropFirst()).removingPercentEncoding,
                       headingIDs.contains(id.precomposedStringWithCanonicalMapping) {
@@ -94,13 +88,25 @@ public enum MarkdownPDF {
                 cmark_node_set_url(node, "")
             }
         }
+        // Replace child images before freeing any parent image nodes.
+        for node in unavailableImages.reversed() {
+            try Task.checkCancellation()
+            if let replacement = cmark_node_new(CMARK_NODE_TEXT) {
+                cmark_node_set_literal(replacement, "[Image unavailable]")
+                if cmark_node_replace(node, replacement) == 1 {
+                    cmark_node_free(node)
+                } else {
+                    cmark_node_free(replacement)
+                }
+            }
+        }
         // Deliberately leave CMARK_OPT_UNSAFE off: rendered HTML cannot include raw HTML or unsafe URLs.
         guard let content = cmark_render_html(document, flags, cmark_parser_get_syntax_extensions(parser)) else {
             throw ToolError.invalid("Could not render the Markdown document.")
         }
         defer { free(content) }
         try Task.checkCancellation()
-        return (String(cString: content), Array(images.issues.reversed()))
+        return (String(cString: content), images.issues)
     }
 
     private static func resourceNodes(_ document: UnsafeMutablePointer<cmark_node>) -> [UnsafeMutablePointer<cmark_node>] {
