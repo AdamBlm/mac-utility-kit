@@ -22,6 +22,29 @@ public struct TranslationDocument: Sendable {
         [.plainText] + ["srt", "vtt", "md", "markdown", "mdown"].compactMap { UTType(filenameExtension: $0) }
     }
 
+    package static func load(_ url: URL) async throws -> (text: String, kind: Kind) {
+        let data: Data
+        do {
+            data = try await PlainTextDecoding.loadVerifiedBytes(url, maximumBytes: maximumBytes)
+        } catch PlainTextDecoding.ReadIssue.tooLarge {
+            throw ToolError.invalid("Choose a document no larger than 512 KiB.")
+        }
+        let kind: Kind = switch url.pathExtension.lowercased() {
+        case "srt": .srt
+        case "vtt": .vtt
+        case "md", "markdown", "mdown": .markdown
+        default: .text
+        }
+        guard let text = String(data: data, encoding: .utf8) else {
+            throw CocoaError(.fileReadInapplicableStringEncoding)
+        }
+        // Preserve the WebVTT transport marker so export can round-trip the source.
+        if kind == .vtt, data.starts(with: [0xEF, 0xBB, 0xBF]), !text.hasPrefix("\u{FEFF}") {
+            return ("\u{FEFF}" + text, kind)
+        }
+        return (text, kind)
+    }
+
     private struct Line: Sendable {
         let text: String
         let ending: String

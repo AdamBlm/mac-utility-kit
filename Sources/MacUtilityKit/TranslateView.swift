@@ -19,7 +19,8 @@ struct TranslateView: View {
     @State private var output = ""
     @State private var issue: String?
     @State private var progress: Double?
-    @State private var isLoadingFile = false
+    @State private var fileTask: Task<Void, Never>?
+    private var isLoadingFile: Bool { fileTask != nil }
     @State private var editorRevision = 0
 
     private struct Job {
@@ -56,8 +57,12 @@ struct TranslateView: View {
                         ForEach(TranslationDocument.Kind.allCases) { Text($0.rawValue).tag($0) }
                     }
                     .labelsHidden()
+                    .disabled(isLoadingFile)
                     Button("Open…", systemImage: "folder", action: open)
                         .disabled(pending != nil || isLoadingFile)
+                    ClipboardFileButton(allowedTypes: TranslationDocument.acceptedInputTypes,
+                                        buttonOnlyTitle: "Paste File", onPasteFile: load)
+                        .disabled(isLoadingFile)
                     if let name = draft.filename { Text(name).font(.caption).lineLimit(1) }
                     if isLoadingFile { ProgressView().controlSize(.small) }
                 }
@@ -65,6 +70,7 @@ struct TranslateView: View {
                 HStack(alignment: .top, spacing: 14) {
                     textEditor("Original", text: Binding(get: { draft.input }, set: {
                         draft.input = $0
+                        draft.filename = nil
                         clear()
                     }))
                     .id(editorRevision)
@@ -101,7 +107,10 @@ struct TranslateView: View {
         .onChange(of: draft.kind) { clear() }
         .onChange(of: draft.source) { clear() }
         .onChange(of: draft.target) { clear() }
-        .onDisappear(perform: cancel)
+        .onDisappear {
+            fileTask?.cancel()
+            cancel()
+        }
     }
 
     private var languageOptions: some View {
@@ -182,29 +191,26 @@ struct TranslateView: View {
 
     private func open() {
         guard let url = DeveloperToolFiles.choose(allowedTypes: TranslationDocument.acceptedInputTypes) else { return }
-        isLoadingFile = true
+        load(url)
+    }
+
+    private func load(_ url: URL) {
+        guard fileTask == nil, pending == nil else { return }
         issue = nil
-        Task {
-            defer { isLoadingFile = false }
+        fileTask = Task {
+            defer { fileTask = nil }
             do {
-                let data = try await DeveloperToolFiles.read(url)
-                guard data.count <= 512 * 1024 else {
-                    throw ToolError.invalid("Choose a document no larger than 512 KiB.")
-                }
-                let kind = switch url.pathExtension.lowercased() {
-                case "srt": TranslationDocument.Kind.srt
-                case "vtt": TranslationDocument.Kind.vtt
-                case "md", "markdown", "mdown": TranslationDocument.Kind.markdown
-                default: TranslationDocument.Kind.text
-                }
-                let text = try DeveloperToolFiles.utf8(data)
-                draft.input = kind == .vtt && data.starts(with: [0xEF, 0xBB, 0xBF]) && !text.hasPrefix("\u{FEFF}")
-                    ? "\u{FEFF}" + text : text
-                draft.kind = kind
+                let imported = try await TranslationDocument.load(url)
+                try Task.checkCancellation()
+                draft.input = imported.text
+                draft.kind = imported.kind
                 draft.filename = url.lastPathComponent
                 editorRevision += 1
                 clear()
+            } catch is CancellationError {
+                return
             } catch {
+                guard !Task.isCancelled else { return }
                 issue = error.localizedDescription
             }
         }

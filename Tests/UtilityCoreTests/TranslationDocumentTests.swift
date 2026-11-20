@@ -4,6 +4,21 @@ import Translation
 import UtilityCore
 
 struct TranslationDocumentTests {
+    @Test func verifiedImportPreservesWebVTTBOMAndRejectsOversizedSource() async throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".vtt")
+        defer { try? FileManager.default.removeItem(at: file) }
+        let text = "\u{FEFF}WEBVTT\r\n\r\n00:00.000 --> 00:01.000\r\nBonjour\r\n"
+        try Data(text.utf8).write(to: file)
+        let imported = try await TranslationDocument.load(file)
+        #expect(imported.kind == .vtt)
+        #expect(imported.text.utf8.elementsEqual(text.utf8))
+        #expect(try TranslationDocument(imported.text, kind: imported.kind).requests == ["Bonjour"])
+        let handle = try FileHandle(forWritingTo: file)
+        try handle.truncate(atOffset: 512 * 1_024 + 1)
+        try handle.close()
+        await #expect(throws: ToolError.self) { try await TranslationDocument.load(file) }
+    }
+
     @Test func subRipKeepsIDsOverlapsAndMixedLineEndings() throws {
         let source = "7\r\n00:00:03,200 --> 00:00:05,600\r\nBonjour\r\nTout le monde\r\n\r\n"
             + "9\n00:00:04,000 --> 00:00:07,000\nA bientôt"
