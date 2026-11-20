@@ -35,8 +35,10 @@ package enum LoginBackgroundItems {
             return executablePath.flatMap(Self.localURL)
         }
 
-        package var locationExists: Bool {
-            location.map { FileManager.default.fileExists(atPath: $0.path) } ?? false
+        package var revealLocation: URL? {
+            [location, executablePath.flatMap(Self.localURL)].compactMap { $0 }.first {
+                FileManager.default.fileExists(atPath: $0.path)
+            }
         }
 
         private static func localURL(_ raw: String) -> URL? {

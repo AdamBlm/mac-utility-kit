@@ -58,6 +58,33 @@ struct LoginBackgroundItemsTests {
         #expect(entries.first { $0.kind == .unknown }?.status == .unknown)
     }
 
+    @Test func revealsTheExecutableWhenItsRegistrationSourceIsMissing() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "Registration.plist")
+        let executable = folder.appending(path: "Background Helper")
+        try Data().write(to: executable)
+        let inventory = """
+        Records for UID 501 : placeholder
+        #1:
+         Name: Example Helper
+         Type: agent (0x8)
+         URL: \(source.absoluteString)
+         Executable Path: \(executable.path)
+        """
+        let entry = try #require(LoginBackgroundItems.parse(inventory, userID: 501).first)
+        #expect(entry.location?.path == source.path)
+        #expect(entry.revealLocation?.path == executable.path)
+
+        try Data().write(to: source)
+        #expect(entry.revealLocation?.path == source.path)
+
+        try FileManager.default.removeItem(at: source)
+        try FileManager.default.removeItem(at: executable)
+        #expect(entry.revealLocation == nil)
+    }
+
     @Test func distinguishesUnavailableInventoryFromEmptyRegistry() throws {
         #expect(throws: ToolError.self) {
             try LoginBackgroundItems.parse("Unrecognized response", userID: 501)

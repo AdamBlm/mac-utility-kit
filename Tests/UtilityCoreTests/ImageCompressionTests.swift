@@ -167,6 +167,41 @@ func imageCompressionOnlyRejectsJPEGForNonOpaquePixels(depth: Int) async throws 
 }
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
+func imageCompressionUsesActualMinimumWebPQualityForSizeGoal() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
+    let folder = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = folder.appending(path: "original.png")
+    try writeCompressionFixture(to: source, format: .png, withAlpha: false)
+
+    var settings = ImageCompressionOptions()
+    settings.format = .webp
+    settings.imageMagickExecutable = URL(fileURLWithPath: executable)
+    settings.quality = 0.01
+    let minimum = folder.appending(path: "minimum.webp")
+    _ = try await ImageCompression.compress(source, to: minimum, options: settings)
+    let minimumData = try Data(contentsOf: minimum)
+
+    settings.quality = 0
+    let zero = folder.appending(path: "zero.webp")
+    let zeroReport = try await ImageCompression.compress(source, to: zero, options: settings)
+    let minimumLabel = 0.01.formatted(.percent.precision(.fractionLength(0)))
+    #expect(zeroReport.contains("Quality \(minimumLabel)"))
+    #expect(try Data(contentsOf: zero) == minimumData)
+
+    let target = (minimumData.count + 999) / 1000
+    settings.quality = 1
+    settings.targetKilobytes = target
+    let searched = folder.appending(path: "target.webp")
+    let report = try await ImageCompression.compress(source, to: searched, options: settings)
+    #expect(report.contains("Size goal reached"))
+    #expect(try Data(contentsOf: searched).count <= target * 1000)
+    let result = try #require(CGImageSourceCreateWithURL(searched as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(result, 0, nil))
+    #expect(image.width == 256 && image.height == 192)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
 func imageCompressionUsesImageMagickForTransparentLosslessWebP() async throws {
     let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
     let directory = try compressionDirectory()

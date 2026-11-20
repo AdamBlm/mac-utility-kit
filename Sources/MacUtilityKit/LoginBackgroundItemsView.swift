@@ -93,14 +93,15 @@ struct LoginBackgroundItemsView: View {
                 entryDetail("Scope", entry.systemWide ? "System" : "Current account")
                 entryDetail("Source", entry.sourcePath ?? "Unknown source path")
                 if let executable = entry.executablePath { entryDetail("Executable", executable) }
-                if let location = entry.location {
-                    if entry.locationExists {
-                        Button("Reveal in Finder", systemImage: "folder") {
-                            NSWorkspace.shared.activateFileViewerSelecting([location])
-                        }
-                    } else {
-                        Text("File is missing or unavailable.").foregroundStyle(.secondary)
+                if let location = entry.revealLocation {
+                    if location != entry.location {
+                        Text("The source file is missing or unavailable.").foregroundStyle(.secondary)
                     }
+                    Button(location == entry.location ? "Reveal in Finder" : "Reveal Executable in Finder", systemImage: "folder") {
+                        NSWorkspace.shared.activateFileViewerSelecting([location])
+                    }
+                } else if entry.location != nil {
+                    Text("File is missing or unavailable.").foregroundStyle(.secondary)
                 } else if entry.sourcePath != nil || entry.executablePath != nil {
                     Text("macOS only reports a partial path for this item.").foregroundStyle(.secondary)
                 }

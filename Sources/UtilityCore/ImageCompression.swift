@@ -91,6 +91,7 @@ public enum ImageCompression {
         encoding.imageMagickExecutable = options.imageMagickExecutable
         encoding.losslessWebP = usesLosslessEncoding && format == .webp
         if encoding.losslessWebP { encoding.quality = 1 }
+        let minimumQuality = format == .webp ? Double(ImageMagickWebPEncoding.minimumLossyQuality) / 100 : 0
 
         let sourceSize = try byteCount(input)
         let staging = output.deletingLastPathComponent().appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -98,8 +99,9 @@ public enum ImageCompression {
         defer { try? fileManager.removeItem(at: staging) }
 
         var best = try await encode(input, in: staging, options: encoding)
-        if let target, best.bytes > target, !usesLosslessEncoding, encoding.quality > 0 {
-            best = try await findCandidate(input, in: staging, options: encoding, initial: best, target: target)
+        if let target, best.bytes > target, !usesLosslessEncoding, best.quality > minimumQuality {
+            best = try await findCandidate(input, in: staging, options: encoding, initial: best, target: target,
+                                           minimumQuality: minimumQuality)
         }
         try Task.checkCancellation()
         if usesLosslessEncoding {
@@ -149,26 +151,23 @@ public enum ImageCompression {
         let output = directory.appendingPathComponent(UUID().uuidString)
             .appendingPathExtension(options.format.rawValue)
         _ = try await ImageConversion.convert(input, to: output, options: options)
-        return Candidate(url: output, bytes: try byteCount(output), quality: options.quality)
+        let quality = options.format == .webp && !options.losslessWebP
+            ? Double(ImageMagickWebPEncoding.lossyQualityPercent(options.quality)) / 100 : options.quality
+        return Candidate(url: output, bytes: try byteCount(output), quality: quality)
     }
 
     private static func findCandidate(
-        _ input: URL, in directory: URL, options: ImageConversionOptions, initial: Candidate, target: Int
+        _ input: URL, in directory: URL, options: ImageConversionOptions, initial: Candidate, target: Int,
+        minimumQuality: Double
     ) async throws -> Candidate {
         var settings = options
         var best = initial
-        var low = 0.0
-        var high = options.quality
+        var low = minimumQuality
+        var high = initial.quality
         // Encoders approximate quality settings, so use measured file sizes and a bounded search.
         for attempt in 0..<7 {
-            settings.quality = attempt == 0 ? 0 : (low + high) / 2
+            settings.quality = attempt == 0 ? low : (low + high) / 2
             let candidate = try await encode(input, in: directory, options: settings)
-            if candidate.bytes <= target {
-                low = settings.quality
-            } else {
-                high = settings.quality
-            }
-
             let replace = candidate.bytes <= target || (best.bytes > target && candidate.bytes < best.bytes)
             if replace {
                 try FileManager.default.removeItem(at: best.url)
@@ -176,7 +175,12 @@ public enum ImageCompression {
             } else {
                 try FileManager.default.removeItem(at: candidate.url)
             }
-            if high - low < 0.01 { break }
+            if candidate.bytes <= target {
+                low = candidate.quality
+            } else {
+                high = candidate.quality
+            }
+            if high - low <= 0.01 + Double.ulpOfOne { break }
         }
         return best
     }
