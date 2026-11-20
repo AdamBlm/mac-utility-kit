@@ -226,6 +226,36 @@ import UtilityCore
     }
 }
 
+@Test func autoUnlockedPDFRequiresOwnerPasswordForRestrictedPageAssembly() async throws {
+    try await withPDFEditingFixture { source, directory in
+        let document = try #require(PDFDocument(url: source))
+        let restricted = directory.appendingPathComponent("Open for reading.pdf")
+        try #require(document.write(to: restricted, withOptions: [
+            .userPasswordOption: "",
+            .ownerPasswordOption: "independent owner",
+            .accessPermissionsOption: NSNumber(value: PDFAccessPermissions.allowsLowQualityPrinting.rawValue)
+        ]))
+        let initial = try #require(PDFDocument(url: restricted))
+        try #require(initial.isEncrypted && !initial.isLocked && !initial.allowsDocumentAssembly)
+        let original = try Data(contentsOf: restricted)
+        var options = PDFExtractOptions()
+        options.range = "2"
+        let output = directory.appendingPathComponent("Selected.pdf")
+        for password in ["", "wrong"] {
+            options.password = password
+            await #expect(throws: ToolError.self) {
+                try await PDFPageEditing.extract(restricted, to: output, options: options) { _ in }
+            }
+            #expect(!FileManager.default.fileExists(atPath: output.path))
+        }
+        options.password = "independent owner"
+        #expect(try PDFPageEditing.pageCount(restricted, password: options.password) == 5)
+        try await PDFPageEditing.extract(restricted, to: output, options: options) { _ in }
+        #expect(try pdfPageNumbers(output) == [2])
+        #expect(try Data(contentsOf: restricted) == original)
+    }
+}
+
 private func withPDFEditingFixture(_ test: (URL, URL) async throws -> Void) async throws {
     let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
     try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

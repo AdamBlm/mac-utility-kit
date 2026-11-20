@@ -264,7 +264,8 @@ public enum PDFPageEditing {
         guard input.isFileURL, let document = PDFDocument(url: input) else {
             throw ToolError.invalid("Could not open \(input.lastPathComponent) as a PDF.")
         }
-        guard !document.isLocked || document.unlock(withPassword: password) else {
+        let needsOwnerPassword = document.isEncrypted && !document.allowsDocumentAssembly && !password.isEmpty
+        if (document.isLocked || needsOwnerPassword), !document.unlock(withPassword: password) {
             throw ToolError.invalid("Enter the correct PDF password.")
         }
         guard document.allowsDocumentAssembly else {

@@ -141,7 +141,8 @@ struct PDFEditingSettings: View {
         } else {
             document = input.flatMap { PDFDocument(url: $0) }
         }
-        if document?.isLocked == true, !password.wrappedValue.isEmpty { unlock() }
+        if let document, document.isEncrypted, !password.wrappedValue.isEmpty,
+           document.isLocked || !hasPermission(document) { unlock() }
     }
 
     private func unlock() {
