@@ -72,14 +72,26 @@ def check(binary):
                     "additionalProperties": False,
                 }, f"Unexpected input schema for {tool['name']}"
 
-            formatted = call("format-json", {"text": '{"n":9007199254740993}'}, 3)
-            assert not formatted["isError"] and "9007199254740993" in formatted["content"][0]["text"]
+            formatted = call("format-json", {"text": '{"n":9007199254740993,"b":-0.000E+100}'}, 3)
+            assert not formatted["isError"]
+            assert formatted["content"] == [
+                {"type": "text", "text": '{\n  "b": -0.000E+100,\n  "n": 9007199254740993\n}'}
+            ]
             clean = call("clean-link", {"text": "https://example.test/?utm_source=fixture&keep=1#section"}, 4)
             assert not clean["isError"] and clean["content"][0]["text"] == "https://example.test/?keep=1#section"
             assert call("word-count", {"text": "two words"}, 5)["isError"]
             assert call("format-json", {"text": "{}", "extra": ""}, 6)["isError"]
             assert call("format-json", {}, 7)["isError"]
             assert call("format-json", {"text": 42}, 8)["isError"]
+            duplicate = call("format-json", {"text": '{\n  "n": 9007199254740993,\n  "\\u006e": 2\n}'}, 9)
+            assert not duplicate["isError"]
+            assert len(duplicate["content"]) == 2 and all(block["type"] == "text" for block in duplicate["content"])
+            assert duplicate["content"][0]["text"] == '{\n  "n": 9007199254740993,\n  "\\u006e": 2\n}'
+            warning = duplicate["content"][1]["text"]
+            assert "Duplicate keys preserved (1)" in warning and '"n" at line 3, column 3' in warning
+            invalid = call("format-json", {"text": '{\n  "n": #\n}'}, 10)
+            assert invalid["isError"] and len(invalid["content"]) == 1
+            assert "line 2, column 8" in invalid["content"][0]["text"]
         finally:
             server.stdin.close()
             try:

@@ -32,26 +32,44 @@ struct StartMCP: AsyncParsableCommand {
 
         private var description: String {
             switch self {
-            case .formatJSON: "Format JSON text and preserve exact number lexemes."
+            case .formatJSON: "Format JSON text, preserving number lexemes and duplicate keys. Duplicate keys are reported separately."
             case .wordCount: "Count words, characters, sentences, and paragraphs in text."
             case .cleanLink: "Clean a supplied link locally and return its destination without loading it."
             }
         }
 
-        func call(_ text: String) async throws -> String {
+        func call(_ text: String) async throws -> [MCP.Tool.Content] {
             switch self {
             case .formatJSON:
                 let result = try JSONFormatter.format(text, sortKeys: true)
-                if !result.duplicateKeys.isEmpty {
-                    throw ToolError.invalid("The supplied JSON has duplicate object keys.")
-                }
-                return result.text
+                var content = [Self.block(result.text)]
+                if let warning = Self.duplicateWarning(result.duplicateOccurrences) { content.append(Self.block(warning)) }
+                return content
             case .wordCount:
                 let result = try await WordCounter.analyze(text)
-                return "Words: \(result.words)\nCharacters: \(result.characters)\nSentences: \(result.sentences)\nParagraphs: \(result.paragraphs)"
+                return [Self.block("Words: \(result.words)\nCharacters: \(result.characters)\nSentences: \(result.sentences)\nParagraphs: \(result.paragraphs)")]
             case .cleanLink:
-                return try CleanLinks.clean(text).cleaned
+                return [Self.block(try CleanLinks.clean(text).cleaned)]
             }
+        }
+
+        private static func block(_ text: String) -> MCP.Tool.Content {
+            .text(text: text, annotations: nil, _meta: nil)
+        }
+
+        private static func duplicateWarning(_ duplicates: [JSONDuplicateKey]) -> String? {
+            guard !duplicates.isEmpty else { return nil }
+            let detailLimit = 20
+            var lines = ["Duplicate keys preserved (\(duplicates.count)). Locations refer to the supplied JSON."]
+            for occurrence in duplicates.prefix(detailLimit) {
+                let abbreviatedKey = String(String.UnicodeScalarView(occurrence.key.unicodeScalars.prefix(80)))
+                let key = String(reflecting: abbreviatedKey) + (abbreviatedKey == occurrence.key ? "" : "…")
+                lines.append("\(key) at line \(occurrence.line), column \(occurrence.column)")
+            }
+            if duplicates.count > detailLimit {
+                lines.append("\(duplicates.count - detailLimit) more duplicate occurrences.")
+            }
+            return lines.joined(separator: "\n")
         }
     }
 
@@ -72,7 +90,7 @@ struct StartMCP: AsyncParsableCommand {
                 return .init(content: [.text(text: "Supply one text argument up to 1 MB.", annotations: nil, _meta: nil)], isError: true)
             }
             do {
-                return .init(content: [.text(text: try await tool.call(text), annotations: nil, _meta: nil)], isError: false)
+                return .init(content: try await tool.call(text), isError: false)
             } catch {
                 return .init(content: [.text(text: error.localizedDescription, annotations: nil, _meta: nil)], isError: true)
             }
