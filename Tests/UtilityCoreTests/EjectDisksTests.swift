@@ -50,9 +50,36 @@ struct EjectDisksTests {
         #expect(retry.map(\.status) == [.ejected])
     }
 
+    @Test func omittedTargetsGetAccurateOutcomesWithoutAttemptingAnAction() async throws {
+        let targets = (1...5).map {
+            EjectTarget(name: "Fixture \($0)", isWholeDevice: false, device: "disk20s\($0)", registryID: UInt64($0))
+        }
+        let outcome = await EjectDisks.perform(targets, eligible: [targets[0]], presence: { target in
+            switch target.registryID {
+            case 2: .absent
+            case 3: .unmounted
+            case 4: .present
+            default: .unverified
+            }
+        }) { target in
+            #expect(target == targets[0])
+            return .busy(nil)
+        }
+        #expect(outcome.map(\.status) == [
+            .busy(nil), .alreadyRemoved, .unmounted, .failed("This device is no longer eligible for eject."),
+            .failed("Could not verify whether the device is still available.")
+        ])
+    }
+
     @Test func nativeAppleInventoryExcludesTheStartupVolume() async throws {
         let groups = try await EjectDisks.inventory()
         #expect(groups.flatMap(\.volumes).allSatisfy { $0.mount.path != "/" })
+    }
+
+    @Test func nativeProbeTreatsMissingMediaAsAbsent() {
+        let target = EjectTarget(name: "Unavailable fixture", isWholeDevice: true, device: "disk999999999", registryID: 1)
+        guard !FileManager.default.fileExists(atPath: "/dev/" + target.device) else { return }
+        #expect(EjectDiskArbitration.presence(target) == .absent)
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_EJECT_TEST_DISK"] != nil))

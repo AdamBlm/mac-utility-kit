@@ -18,15 +18,17 @@ struct HashGeneratorView: View {
     @State private var running = false
     @State private var resultsInput: Input?
     @State private var exportError: String?
+    @State private var fileRevision = UUID()
 
     private struct Input: Equatable {
         let text: String
         let files: [URL]
         let algorithm: HashAlgorithm
         let mode: HashGeneratorDraft.Mode
+        let fileRevision: UUID?
 
         static func == (lhs: Self, rhs: Self) -> Bool {
-            lhs.mode == rhs.mode && lhs.algorithm == rhs.algorithm && lhs.files == rhs.files
+            lhs.mode == rhs.mode && lhs.algorithm == rhs.algorithm && lhs.files == rhs.files && lhs.fileRevision == rhs.fileRevision
                 && lhs.text.utf8.elementsEqual(rhs.text.utf8)
         }
     }
@@ -42,7 +44,7 @@ struct HashGeneratorView: View {
         let input = Input(
             text: draft.mode == .text ? draft.text : "",
             files: draft.mode == .files ? draft.files : [],
-            algorithm: draft.algorithm, mode: draft.mode
+            algorithm: draft.algorithm, mode: draft.mode, fileRevision: draft.mode == .files ? fileRevision : nil
         )
         let currentResults = resultsInput == input ? results : []
         let isHashing = (resultsInput != input || running) && (input.mode == .text || !input.files.isEmpty)
@@ -64,7 +66,13 @@ struct HashGeneratorView: View {
                     Text("Text is hashed as UTF-8, including whitespace.")
                         .font(.callout).foregroundStyle(.secondary)
                 } else {
-                    Button("Choose files…", systemImage: "folder") { chooseFiles() }
+                    HStack {
+                        Button("Choose files…", systemImage: "folder") { chooseFiles() }
+                        if !draft.files.isEmpty {
+                            Button("Rehash Files", systemImage: "arrow.clockwise") { fileRevision = UUID() }
+                                .disabled(isHashing)
+                        }
+                    }
                     ForEach(draft.files, id: \.self) { file in
                         HStack {
                             Text(file.lastPathComponent).help(file.path)
@@ -110,6 +118,10 @@ struct HashGeneratorView: View {
                     }
                 }
                 if !currentResults.isEmpty && !isHashing {
+                    if input.mode == .files {
+                        Text("Digests reflect the last read. Rehash Files to check for changes.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
                     HStack {
                         Button("Copy results", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(report) }
                         Button("Export results…", systemImage: "square.and.arrow.up") { export() }
@@ -173,6 +185,7 @@ struct HashGeneratorView: View {
         panel.allowsMultipleSelection = true
         guard panel.runModal() == .OK else { return }
         for url in panel.urls where !draft.files.contains(url) { draft.files.append(url) }
+        fileRevision = UUID()
     }
 
     private func export() {

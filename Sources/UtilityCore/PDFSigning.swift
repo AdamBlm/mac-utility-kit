@@ -63,6 +63,34 @@ public struct PDFSignatureAppearance {
 public enum PDFSigning {
     private static let annotationLabel = "Visual signature"
 
+    package struct ExpectedPlacement {
+        let name: String
+        let rotation: Int
+        let displayedBounds: CGRect
+        let signatureCount: Int
+
+        package init(name: String, rotation: Int, displayedBounds: CGRect, signatureCount: Int) {
+            self.name = name
+            self.rotation = rotation
+            self.displayedBounds = displayedBounds
+            self.signatureCount = signatureCount
+        }
+
+        package func matches(_ page: PDFPage) -> Bool {
+            let signatures = PDFSigning.signatures(in: page)
+            guard page.rotation == rotation, signatures.count == signatureCount, let reference = page.pageRef,
+                  let annotation = signatures.first(where: { $0.value(forAnnotationKey: .name) as? String == name }),
+                  annotation.shouldDisplay, annotation.shouldPrint else { return false }
+            let size = PDFSigning.visibleSize(for: reference)
+            let transform = reference.getDrawingTransform(.cropBox, rect: CGRect(origin: .zero, size: size),
+                                                           rotate: 0, preserveAspectRatio: true)
+            let actual = annotation.bounds.applying(transform)
+            return zip([actual.minX, actual.minY, actual.maxX, actual.maxY],
+                       [displayedBounds.minX, displayedBounds.minY, displayedBounds.maxX, displayedBounds.maxY])
+                .allSatisfy { abs($0 - $1) < 0.05 }
+        }
+    }
+
     public static func sign(
         _ input: URL, to output: URL, options: PDFSignatureOptions,
         progress: @Sendable (Double) async -> Void
@@ -84,7 +112,7 @@ public enum PDFSigning {
         }
         let pages = try signingPageIndices(options, pageCount: document.pageCount)
         let mark = try signaturePath(options)
-        var counts: [Int: Int] = [:]
+        var placements: [Int: ExpectedPlacement] = [:]
         for (index, pageIndex) in pages.enumerated() {
             try Task.checkCancellation()
             guard let page = document.page(at: pageIndex), let pageRef = page.pageRef,
@@ -104,6 +132,10 @@ public enum PDFSigning {
                 throw ToolError.invalid("Could not prepare the signature outline.")
             }
             let ink = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
+            let name = UUID().uuidString
+            guard ink.setValue(name, forAnnotationKey: .name) else {
+                throw ToolError.invalid("Could not identify the signature annotation.")
+            }
             ink.contents = annotationLabel
             ink.color = NSColor(srgbRed: 0.11, green: 0.14, blue: 0.25, alpha: 1)
             ink.shouldPrint = true
@@ -111,9 +143,13 @@ public enum PDFSigning {
             border.lineWidth = appearance.lineWidth
             ink.border = border
             ink.add(NSBezierPath(cgPath: path.flattened(threshold: 0.12)))
-            let expected = signatures(in: page) + 1
+            let expectedCount = signatures(in: page).count + 1
             page.addAnnotation(ink)
-            counts[pageIndex] = expected
+            placements[pageIndex] = ExpectedPlacement(
+                name: name, rotation: page.rotation,
+                displayedBounds: appearance.path.boundingBoxOfPath.insetBy(dx: -appearance.lineWidth, dy: -appearance.lineWidth),
+                signatureCount: expectedCount
+            )
             await progress(Double(index + 1) / Double(pages.count + 1))
         }
 
@@ -126,8 +162,8 @@ public enum PDFSigning {
         guard document.write(to: candidate),
               let reopened = PDFDocument(url: candidate),
               reopened.pageCount == document.pageCount,
-              counts.allSatisfy({ pageIndex, count in
-                  reopened.page(at: pageIndex).map { signatures(in: $0) == count } ?? false
+              placements.allSatisfy({ pageIndex, placement in
+                  reopened.page(at: pageIndex).map { placement.matches($0) } ?? false
               }) else {
             throw ToolError.invalid("Could not verify the visible signature in the output PDF.")
         }
@@ -184,8 +220,8 @@ public enum PDFSigning {
         }
     }
 
-    private static func signatures(in page: PDFPage) -> Int {
-        page.annotations.filter { $0.contents == annotationLabel && $0.paths?.isEmpty == false }.count
+    private static func signatures(in page: PDFPage) -> [PDFAnnotation] {
+        page.annotations.filter { $0.contents == annotationLabel && $0.paths?.isEmpty == false }
     }
 
     private static func place(

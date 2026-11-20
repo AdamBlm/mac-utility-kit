@@ -1,3 +1,4 @@
+import Darwin
 import DiskArbitration
 import Foundation
 import IOKit
@@ -63,6 +64,21 @@ enum EjectDiskArbitration {
             let target = EjectTarget(name: name, isWholeDevice: true, device: group.disk.device, registryID: identity)
             return EjectDevice(id: target, name: name, isDiskImage: group.image != nil, volumes: volumes)
         }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+    }
+
+    static func presence(_ target: EjectTarget) -> EjectDisks.TargetPresence {
+        guard let session = DASessionCreate(kCFAllocatorDefault) else { return .unverified }
+        guard let disk = disk(target.device, session: session) else { return .absent }
+        guard let registryID = registryIdentity(disk) else {
+            // Disk Arbitration can return a placeholder even after the media disappears.
+            var details = stat()
+            if lstat("/dev/" + target.device, &details) != 0, errno == ENOENT { return .absent }
+            return .unverified
+        }
+        guard registryID == target.registryID else { return .absent }
+        guard let details = description(disk) else { return .unverified }
+        if !target.isWholeDevice, isExternal(details), mountedPath(details) == nil { return .unmounted }
+        return .present
     }
 
     static func perform(_ target: EjectTarget) async -> EjectOutcome.Status {

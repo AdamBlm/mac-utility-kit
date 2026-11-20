@@ -44,6 +44,10 @@ public struct EjectOutcome: Identifiable, Sendable {
 }
 
 public enum EjectDisks {
+    enum TargetPresence: Sendable {
+        case absent, unmounted, present, unverified
+    }
+
     public static func inventory() async throws -> [EjectDevice] {
         try await EjectDiskInventory().scan()
     }
@@ -55,13 +59,26 @@ public enum EjectDisks {
             let eligible = Set(current.flatMap { device in
                 [device.id] + device.volumes.map(\.id)
             })
-            return await perform(targets) { target in
-                guard eligible.contains(target) else { return .alreadyRemoved }
-                return await EjectDiskArbitration.perform(target)
-            }
+            return await perform(targets, eligible: eligible, presence: EjectDiskArbitration.presence,
+                                 action: EjectDiskArbitration.perform)
         } catch {
             return await perform(targets) { _ in
                 .failed("Could not recheck device eligibility. " + error.localizedDescription)
+            }
+        }
+    }
+
+    static func perform(
+        _ targets: [EjectTarget], eligible: Set<EjectTarget>, presence: (EjectTarget) -> TargetPresence,
+        action: (EjectTarget) async -> EjectOutcome.Status
+    ) async -> [EjectOutcome] {
+        await perform(targets) { target in
+            if eligible.contains(target) { return await action(target) }
+            switch presence(target) {
+            case .absent: return .alreadyRemoved
+            case .unmounted: return .unmounted
+            case .present: return .failed("This device is no longer eligible for eject.")
+            case .unverified: return .failed("Could not verify whether the device is still available.")
             }
         }
     }

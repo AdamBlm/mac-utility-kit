@@ -26,6 +26,42 @@ struct HashGeneratorTests {
     }
 
     @Test
+    func refusesToFinalizeDigestAfterInPlaceEditDuringVerifiedRead() throws {
+        let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+            .resolvingSymlinksInPath().standardizedFileURL
+        defer { try? FileManager.default.removeItem(at: file) }
+        try Data("abc".utf8).write(to: file)
+        let stamp = try #require(try DuplicateFileIO.inspect(file))
+        let source = DuplicateFile(url: file, stamp: stamp)
+        var didReadOriginal = false
+        #expect(throws: DuplicateReadError.self) {
+            try DuplicateFileIO.forEachVerifiedChunk(source) { data in
+                didReadOriginal = data == Data("abc".utf8)
+                let writing = try FileHandle(forWritingTo: file)
+                defer { try? writing.close() }
+                try writing.write(contentsOf: Data("different".utf8))
+            }
+        }
+        #expect(didReadOriginal)
+    }
+
+    @Test
+    func rehashesSymlinkAfterItsTargetChanges() async throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let file = directory.appending(path: "data")
+        let link = directory.appending(path: "link")
+        try Data("old".utf8).write(to: file)
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: file)
+        let old = try await HashGenerator.file(link, algorithm: .sha384)
+        try Data("new".utf8).write(to: file, options: .atomic)
+        let new = try await HashGenerator.file(link, algorithm: .sha384)
+        #expect(new != old)
+        #expect(new == (try await HashGenerator.text("new", algorithm: .sha384)))
+    }
+
+    @Test
     func propagatesCancellation() async throws {
         let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         defer { try? FileManager.default.removeItem(at: file) }

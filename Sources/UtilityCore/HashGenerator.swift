@@ -28,11 +28,13 @@ public enum HashVerification: Equatable, Sendable {
 public enum HashGeneratorError: LocalizedError {
     case notLocalFile
     case notRegularFile
+    case changedFile
 
     public var errorDescription: String? {
         switch self {
         case .notLocalFile: "Only local files can be hashed."
         case .notRegularFile: "Select a regular file to hash."
+        case .changedFile: "The file changed while hashing. Rehash it after the changes are complete."
         }
     }
 }
@@ -49,19 +51,18 @@ public enum HashGenerator {
     public static func file(_ url: URL, algorithm: HashAlgorithm) async throws -> String {
         try await run {
             guard url.isFileURL else { throw HashGeneratorError.notLocalFile }
-            let resolved = url.resolvingSymlinksInPath()
-            guard try resolved.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+            let resolved = url.resolvingSymlinksInPath().standardizedFileURL
+            guard let stamp = try DuplicateFileIO.inspect(resolved) else {
                 throw HashGeneratorError.notRegularFile
             }
-            let handle = try FileHandle(forReadingFrom: resolved)
-            defer { try? handle.close() }
-            return hexadecimal(try calculate(algorithm) { update in
-                while true {
-                    try Task.checkCancellation()
-                    guard let chunk = try handle.read(upToCount: 1024 * 1024), !chunk.isEmpty else { break }
-                    update(chunk)
-                }
-            })
+            let file = DuplicateFile(url: resolved, stamp: stamp)
+            let digest = try calculate(algorithm) { update in
+                try DuplicateFileIO.forEachVerifiedChunk(file, consume: update)
+            }
+            guard url.resolvingSymlinksInPath().standardizedFileURL.path == resolved.path else {
+                throw HashGeneratorError.changedFile
+            }
+            return hexadecimal(digest)
         }
     }
 

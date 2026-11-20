@@ -67,19 +67,25 @@ enum DuplicateFileIO {
     }
 
     static func hash(_ file: DuplicateFile, prefixOnly: Bool) throws -> SHA256.Digest {
+        var hasher = SHA256()
+        try forEachVerifiedChunk(file, prefixOnly: prefixOnly) { hasher.update(data: $0) }
+        return hasher.finalize()
+    }
+
+    static func forEachVerifiedChunk(
+        _ file: DuplicateFile, prefixOnly: Bool = false, consume: (Data) throws -> Void
+    ) throws {
         let opened = try openVerified(file)
         defer { close(opened) }
         let count = prefixOnly ? min(file.bytes, prefixSize) : file.bytes
-        var hasher = SHA256()
         var offset: Int64 = 0
         while offset < count {
             try Task.checkCancellation()
             let readCount = Int(min(chunkSize, count - offset))
-            hasher.update(data: try read(opened, file: file, offset: offset, count: readCount))
+            try consume(read(opened, file: file, offset: offset, count: readCount))
             offset += Int64(readCount)
         }
         try verify(opened, file: file)
-        return hasher.finalize()
     }
 
     static func equal(_ left: DuplicateFile, _ right: DuplicateFile) throws -> Bool {
