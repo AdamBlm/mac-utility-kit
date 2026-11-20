@@ -311,7 +311,7 @@ struct ToolWorkspace: View {
                             ReplaceAudioControls(inputs: draft.inputs, options: $draft.options.replaceAudio,
                                                  review: $replaceAudioReview)
                         case .burnSubtitles:
-                            BurnSubtitlesSettings(input: draft.inputs.first, options: $draft.options.burnSubtitles, onTranscribe: openTranscription)
+                            BurnSubtitlesSettings(inputs: draft.inputs, options: $draft.options.burnSubtitles, onTranscribe: openTranscription)
                         case .mediaInfo:
                             inspectionControls()
                         case .extractAudio:

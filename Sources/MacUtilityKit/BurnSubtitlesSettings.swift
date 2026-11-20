@@ -4,10 +4,11 @@ import UniformTypeIdentifiers
 import UtilityCore
 
 struct BurnSubtitlesSettings: View {
-    let input: URL?
+    let inputs: [URL]
     @Binding var options: BurnSubtitlesOptions
     var onTranscribe: ((URL) -> Void)?
     @Environment(\.colorScheme) private var colorScheme
+    @State private var selectedSource: URL?
     @State private var duration: Double?
     @State private var loadedInput: URL?
     @State private var playhead = 0.0
@@ -28,8 +29,30 @@ struct BurnSubtitlesSettings: View {
         .number.grouping(.never).precision(.fractionLength(0...3))
     }
 
+    private var previewInputs: [URL] {
+        var seen = Set<URL>()
+        return inputs.filter { seen.insert($0).inserted }
+    }
+
     var body: some View {
+        let previews = previewInputs
+        let input = selectedSource.flatMap { previews.contains($0) ? $0 : nil } ?? previews.first
         let palette = WorkspacePalette(dark: colorScheme == .dark)
+        if previews.count > 1 {
+            SettingRow("Preview video") {
+                Picker("Preview video", selection: Binding(get: { input }, set: { selectedSource = $0 })) {
+                    ForEach(previews, id: \.self) { url in
+                        let name = url.lastPathComponent
+                        let duplicateName = previews.contains { $0 != url && $0.lastPathComponent == name }
+                        Text(duplicateName ? url.path : name).tag(Optional(url))
+                    }
+                }
+                .labelsHidden()
+                .help(input?.path ?? "")
+            }
+            Text("Subtitle text, timing, and style apply to every queued video.")
+                .font(.callout).foregroundStyle(.secondary)
+        }
         HStack {
             Button("Import SRT…", systemImage: "folder", action: importSRT)
                 .disabled(importing)
@@ -40,6 +63,10 @@ struct BurnSubtitlesSettings: View {
             if importing { ProgressView().controlSize(.small) }
         }
         .task(id: input) { await load(input) }
+        if inputs.count > 1, onTranscribe != nil {
+            Text("Sending captions back from Transcribe replaces this batch with the captioned video.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
         TextEditor(text: $options.srt)
             .font(.body.monospaced())
             .frame(minHeight: 150)
@@ -129,6 +156,7 @@ struct BurnSubtitlesSettings: View {
     }
 
     private func load(_ source: URL?) async {
+        guard !Task.isCancelled else { return }
         duration = nil
         playhead = 0
         loadedInput = nil
