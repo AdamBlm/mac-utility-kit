@@ -86,7 +86,11 @@ struct VideoEngineSettingsView: View {
                         }
                     }
                 } else {
-                    Text(engines.available ? "Video Tools are not installed." : "Managed setup is unavailable in this build.")
+                    if engines.available {
+                        Text("Video Tools are not installed.")
+                    } else {
+                        HomebrewVideoSetup()
+                    }
                 }
                 if engines.available {
                     Toggle("Automatically update installed Video Tools", isOn: $automaticUpdates)

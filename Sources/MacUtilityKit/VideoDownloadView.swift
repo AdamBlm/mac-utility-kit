@@ -20,18 +20,25 @@ struct InspectedVideo {
     let source: URL
     let executable: URL
     let engines: ManagedVideoEngines?
+    let deno: URL?
+    let fallbackFFmpeg: URL?
     let info: VideoDownloadInfo
 }
 
 struct VideoDownloadView: View {
     @Binding var draft: VideoDownloadDraft
     private let engineSettings = VideoEngineSettings.shared
+    @State private var homebrew = HomebrewVideoTools()
+    @State private var checkedHomebrew = false
+    private var downloader: URL? {
+        draft.executable ?? engineSettings.installed?.downloader ?? homebrew.downloader
+    }
     private var needsSetup: Bool {
-        draft.executable == nil && engineSettings.installed == nil && engineSettings.available
+        downloader == nil && engineSettings.available
     }
     private var inspected: InspectedVideo? {
         guard let value = draft.inspected, value.source == (try? VideoDownload.sourceURL(draft.address)),
-              value.executable == (draft.executable ?? engineSettings.installed?.downloader) else { return nil }
+              value.executable == downloader else { return nil }
         return value
     }
 
@@ -48,9 +55,24 @@ struct VideoDownloadView: View {
                 } else {
                     executablePicker("yt-dlp", selection: $draft.executable)
                 }
+                if !engineSettings.available, homebrew.downloader == nil || homebrew.ffmpeg == nil {
+                    DisclosureGroup("Set Up with Homebrew") {
+                        HomebrewVideoSetup {
+                            homebrew = .discover()
+                            checkedHomebrew = true
+                        }
+                        if checkedHomebrew {
+                            Text(homebrew.downloader == nil ? "Homebrew yt-dlp was not found." : "Homebrew FFmpeg and FFprobe were not found.")
+                                .font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                if draft.executable == nil, engineSettings.installed == nil, homebrew.downloader != nil {
+                    Text("Using Homebrew yt-dlp").font(.callout).foregroundStyle(.secondary)
+                }
                 Button(needsSetup ? "Install Video Tools" : "Inspect Link",
                        systemImage: needsSetup ? "arrow.down.circle" : "list.bullet", action: inspect)
-                    .disabled((draft.executable == nil && !engineSettings.available)
+                    .disabled((downloader == nil && !engineSettings.available)
                               || (try? VideoDownload.sourceURL(draft.address)) == nil)
             }
             .disabled(draft.task != nil)
@@ -82,7 +104,10 @@ struct VideoDownloadView: View {
                 }
             }
         }
-        .task { await engineSettings.refresh() }
+        .task {
+            homebrew = .discover()
+            await engineSettings.refresh()
+        }
         .onDisappear { if !draft.downloading { draft.task?.cancel() } }
         .onChange(of: draft.address) { draft.error = nil }
     }
@@ -111,7 +136,7 @@ struct VideoDownloadView: View {
                 streamPicker("Audio", items: inspected.info.formats.filter { $0.hasAudio && !$0.hasVideo },
                              selection: $draft.selection.audioID)
             }
-            if inspected.engines != nil {
+            if inspected.fallbackFFmpeg != nil {
                 DisclosureGroup("Advanced") {
                     executablePicker("FFmpeg", selection: $draft.selection.ffmpeg)
                 }
@@ -159,22 +184,20 @@ struct VideoDownloadView: View {
             defer { draft.task = nil }
             do {
                 let custom = draft.executable
-                let engines: ManagedVideoEngines?
-                if custom == nil, engineSettings.available {
-                    if let installed = engineSettings.installed { engines = installed }
-                    else { engines = try await engineSettings.install() }
-                } else {
-                    engines = nil
-                }
-                guard let executable = custom ?? engines?.downloader else { return }
+                var engines = custom == nil ? engineSettings.installed : nil
+                if needsSetup { engines = try await engineSettings.install() }
+                guard let executable = custom ?? engines?.downloader ?? homebrew.downloader else { return }
+                let deno = engines?.deno ?? (custom == nil ? homebrew.deno : nil)
+                let fallbackFFmpeg = engines?.ffmpeg ?? homebrew.ffmpeg
                 let info = try await VideoDownload.inspect(
-                    source, executable: executable, deno: engines?.deno,
-                    ffmpeg: draft.selection.ffmpeg ?? engines?.ffmpeg
+                    source, executable: executable, deno: deno,
+                    ffmpeg: draft.selection.ffmpeg ?? fallbackFFmpeg
                 )
                 try Task.checkCancellation()
                 draft.selection.videoID = nil
                 draft.selection.audioID = nil
-                draft.inspected = InspectedVideo(source: source, executable: executable, engines: engines, info: info)
+                draft.inspected = InspectedVideo(source: source, executable: executable, engines: engines,
+                                                 deno: deno, fallbackFFmpeg: fallbackFFmpeg, info: info)
             } catch is CancellationError {
                 return
             } catch {
@@ -212,7 +235,7 @@ struct VideoDownloadView: View {
     private func download(_ inspected: InspectedVideo) {
         guard draft.task == nil else { return }
         var selection = draft.selection
-        selection.ffmpeg = selection.ffmpeg ?? inspected.engines?.ffmpeg
+        selection.ffmpeg = selection.ffmpeg ?? inspected.fallbackFFmpeg
         if !selection.output.audioOnly,
            inspected.info.formats.contains(where: { $0.id == selection.videoID && $0.hasAudio }) {
             selection.audioID = nil
@@ -235,7 +258,7 @@ struct VideoDownloadView: View {
             do {
                 draft.result = try await VideoDownload.downloadWithProgress(
                     inspected.source, info: inspected.info, executable: inspected.executable,
-                    selection: selection, destination: destination, deno: inspected.engines?.deno
+                    selection: selection, destination: destination, deno: inspected.deno
                 ) { value in
                     await MainActor.run {
                         guard draft.activeDownload == job else { return }
