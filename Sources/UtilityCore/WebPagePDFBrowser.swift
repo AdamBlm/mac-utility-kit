@@ -8,6 +8,7 @@ import WebKit
 public final class WebPagePDFBrowser: NSObject, WKNavigationDelegate {
     @ObservationIgnored public let webView: WKWebView
     private(set) public var currentURL: URL?
+    private(set) public var lastLoadedURL: URL?
     private(set) public var failure: String?
     private(set) public var isLoading = false
     private(set) public var isExporting = false
@@ -147,6 +148,7 @@ public final class WebPagePDFBrowser: NSObject, WKNavigationDelegate {
         }
         clearNavigation()
         currentURL = url
+        lastLoadedURL = url
         failure = nil
         updateHistory()
         endPending(nil)

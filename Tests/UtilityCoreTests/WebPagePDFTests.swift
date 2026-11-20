@@ -72,8 +72,15 @@ import UtilityCore
         await #expect(throws: ToolError.self) { try await browser.load(server.url("/missing")) }
         #expect(browser.failure?.contains("HTTP 404") == true)
         #expect(browser.currentURL == nil)
+        let lastPage = try #require(browser.lastLoadedURL)
+        #expect(lastPage.path == "/oversize")
         await #expect(throws: ToolError.self) { try await browser.load(server.url("/attachment")) }
         #expect(browser.failure?.contains("download instead of a webpage") == true)
+        #expect(browser.lastLoadedURL == lastPage)
+        await #expect(throws: ToolError.self) { _ = try await browser.export(options: options) }
+        try await browser.load(lastPage)
+        #expect(browser.currentURL == lastPage)
+        #expect(browser.failure == nil)
     }
 
     private func redPixels(_ page: PDFPage) throws -> Int {

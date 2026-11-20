@@ -32,6 +32,13 @@ struct WebPagePDFView: View {
                     Text("Use a complete HTTP or HTTPS URL.").font(.callout).foregroundStyle(.secondary)
                 } else if let failure = browser.failure {
                     Text(failure).font(.callout).foregroundStyle(.red).textSelection(.enabled)
+                    if let lastURL = browser.lastLoadedURL {
+                        Button("Return to Last Loaded Page", systemImage: "arrow.uturn.backward") {
+                            draft.address = lastURL.absoluteString
+                            load(lastURL)
+                        }
+                        .disabled(browser.isLoading || browser.isExporting)
+                    }
                 }
             }
 
@@ -119,7 +126,12 @@ struct WebPagePDFView: View {
     private var address: URL? { try? WebPagePDF.address(draft.address) }
 
     private func load() {
-        guard let url = address, exportTask == nil else { return }
+        guard let url = address else { return }
+        load(url)
+    }
+
+    private func load(_ url: URL) {
+        guard exportTask == nil else { return }
         loadTask?.cancel()
         exportError = nil
         // The browser owns navigation errors and invalidates prior callbacks on replacement.
