@@ -105,6 +105,48 @@ struct DocumentConvertTests {
         #expect(try DocumentConvert.requiredEngine(for: oldWord, options: options) == .both)
     }
 
+    @Test(arguments: [DocumentConvertOptions.Format.docx, .odt])
+    func rejectsWrongOfficePackagesBeforePublishing(format: DocumentConvertOptions.Format) async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appending(path: "Original.md")
+        try Data("Document text".utf8).write(to: input)
+
+        let mimetype = directory.appending(path: "mimetype")
+        let content = directory.appending(path: "content.xml")
+        let metadata = directory.appending(path: "META-INF")
+        try FileManager.default.createDirectory(at: metadata, withIntermediateDirectories: false)
+        try Data("application/vnd.oasis.opendocument.test".utf8).write(to: mimetype)
+        try Data("<document-content/>".utf8).write(to: content)
+        try Data("<manifest/>".utf8).write(to: metadata.appending(path: "manifest.xml"))
+        try await ArchiveTools.create([mimetype, content, metadata], to: directory.appending(path: "Wrong.zip"))
+
+        let engine = directory.appending(path: "wrong-package-engine")
+        try Data("""
+            #!/bin/sh
+            while [ "$#" -gt 0 ]; do
+              case "$1" in
+                --log) shift; printf '[]' > "$1" ;;
+                --output) shift; target="$1" ;;
+              esac
+              shift
+            done
+            exec /bin/cp "${0%/*}/Wrong.zip" "$target"
+            """.utf8).write(to: engine)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: engine.path)
+        var options = DocumentConvertOptions()
+        options.target = format
+        options.pandocExecutable = engine
+        let output = directory.appending(path: "Output.\(format.fileExtension)")
+        do {
+            _ = try await DocumentConvert.export(input, to: output, options: options) { _ in }
+            Issue.record("Conversion published the wrong Office package.")
+        } catch {
+            #expect(error.localizedDescription.contains("required \(format.rawValue) document parts"))
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_PANDOC_TEST"] != nil))
     func pandocKeepsHeadingsLinksBoldAndUnicodeAcrossRichFormats() async throws {
         let directory = try Self.directory()
@@ -170,6 +212,10 @@ struct DocumentConvertTests {
         options.libreOfficeExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"]))
         let preview = try await DocumentConvert.preview(rtf, options: options)
         #expect(preview.text.contains("Café") && preview.text.contains("bold"))
+        options.target = .odt
+        let output = directory.appending(path: "Converted.odt")
+        _ = try await DocumentConvert.export(rtf, to: output, options: options) { _ in }
+        #expect(FileManager.default.fileExists(atPath: output.path))
     }
 
     private static func directory() throws -> URL {

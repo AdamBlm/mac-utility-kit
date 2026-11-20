@@ -266,6 +266,7 @@ public enum DocumentConvert {
         }
         try Task.checkCancellation()
         try DocumentConversionEngines.verify(output, format: options.target)
+        try await DocumentConversionEngines.verifyOfficePackage(output, format: options.target)
         return engine
     }
 

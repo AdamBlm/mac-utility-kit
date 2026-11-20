@@ -116,4 +116,29 @@ enum DocumentConversionEngines {
             }
         }
     }
+
+    static func verifyOfficePackage(_ output: URL, format: DocumentConvertOptions.Format) async throws {
+        let required: [String]
+        switch format {
+        case .docx: required = ["[Content_Types].xml", "_rels/.rels", "word/document.xml"]
+        case .odt: required = ["mimetype", "META-INF/manifest.xml", "content.xml"]
+        default: return
+        }
+        let issue = ToolError.invalid("The output did not contain the required \(format.rawValue) document parts.")
+        let listing = try await ArchiveTools.readContents(output)
+        let parts = listing.entries.filter { !$0.isDirectory && !$0.isEncrypted && ($0.uncompressedSize ?? 0) > 0 }
+        guard Set(required).isSubset(of: Set(parts.map(\.path))) else { throw issue }
+        if format == .odt {
+            let expected = Data("application/vnd.oasis.opendocument.text".utf8)
+            guard let mime = parts.first(where: { $0.path == "mimetype" }),
+                  mime.uncompressedSize == Int64(expected.count) else { throw issue }
+            let inspection = output.deletingLastPathComponent().appending(path: "Verify-\(UUID().uuidString)")
+            let manager = FileManager.default
+            try manager.createDirectory(at: inspection, withIntermediateDirectories: false,
+                                        attributes: [.posixPermissions: 0o700])
+            defer { try? manager.removeItem(at: inspection) }
+            _ = try await ArchiveTools.extract(output, listing: listing, to: inspection, selected: [mime.id], conflicts: .skip)
+            guard try Data(contentsOf: inspection.appending(path: "mimetype")) == expected else { throw issue }
+        }
+    }
 }
