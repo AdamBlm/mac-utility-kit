@@ -3,6 +3,10 @@ import Darwin
 import Foundation
 import UtilityCore
 
+protocol FileJobCatalogCommand: CatalogCommandBinding {
+    var job: FileJobArguments { get }
+}
+
 struct FileJobArguments: ParsableArguments, Sendable {
     @Option(name: .shortAndLong, help: "Existing folder for the new job result.")
     var destination: String
@@ -51,7 +55,7 @@ struct FileJobArguments: ParsableArguments, Sendable {
     }
 }
 
-struct ResizeImages: AsyncParsableCommand, CatalogCommandBinding {
+struct ResizeImages: AsyncParsableCommand, FileJobCatalogCommand {
     static let configuration = CommandConfiguration(commandName: "resize-images", abstract: "Resize images by their longest edge.")
     static let catalogTool = Tool.resizeImages
 
@@ -72,7 +76,7 @@ struct ResizeImages: AsyncParsableCommand, CatalogCommandBinding {
     }
 }
 
-struct MergePDFs: AsyncParsableCommand, CatalogCommandBinding {
+struct MergePDFs: AsyncParsableCommand, FileJobCatalogCommand {
     static let configuration = CommandConfiguration(commandName: "merge-pdfs", abstract: "Merge unencrypted PDFs or images in argument order.")
     static let catalogTool = Tool.mergePDFs
 
@@ -92,7 +96,7 @@ struct MergePDFs: AsyncParsableCommand, CatalogCommandBinding {
     }
 }
 
-struct MediaInfo: AsyncParsableCommand, CatalogCommandBinding {
+struct MediaInfo: AsyncParsableCommand, FileJobCatalogCommand {
     static let configuration = CommandConfiguration(commandName: "media-info", abstract: "Write local media inspection reports.")
     static let catalogTool = Tool.mediaInfo
     @OptionGroup var job: FileJobArguments

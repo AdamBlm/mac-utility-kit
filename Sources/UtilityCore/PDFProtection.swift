@@ -14,6 +14,7 @@ public struct PDFProtectionOptions: Sendable {
 }
 
 public enum PDFProtection {
+    package static let executableName = "qpdf"
     package static func addPasswordIssue(_ options: PDFProtectionOptions) -> String? {
         if options.password.isEmpty { return "Enter a document password." }
         if !isValidPassword(options.password) {
@@ -120,7 +121,7 @@ public enum PDFProtection {
     ) async throws {
         let manager = FileManager.default
         guard let executable, executable.isFileURL, manager.isExecutableFile(atPath: executable.path) else {
-            throw ToolError.invalid("Choose a local qpdf executable.")
+            throw ToolError.invalid("Choose a local \(executableName) executable.")
         }
         guard output.isFileURL, input.standardizedFileURL != output.standardizedFileURL,
               !manager.fileExists(atPath: output.path) else {
@@ -140,7 +141,7 @@ public enum PDFProtection {
         try manager.setAttributes([.posixPermissions: 0o600], ofItemAtPath: configuration.path)
         do {
             // Pass only the path to the private job document in the process arguments.
-            try await ExternalTool.run(executable, name: "qpdf", arguments: ["--job-json-file=" + configuration.path], directory: folder)
+            try await ExternalTool.run(executable, name: executableName, arguments: ["--job-json-file=" + configuration.path], directory: folder)
         } catch is CancellationError {
             throw CancellationError()
         } catch {

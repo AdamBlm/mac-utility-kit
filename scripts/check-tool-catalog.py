@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 
@@ -36,8 +37,16 @@ def check(binary):
         "wordCounter": "word-count",
         "cleanLinks": "clean-link",
     }
+    single_pdf = {
+        "splitPDF", "organizePDF", "deletePDFPages", "extractPDFPages",
+        "pdfToImages", "signPDF", "cropPDF", "redactPDF",
+    }
+    office_pdf = {"wordToPDF", "powerPointToPDF", "excelToPDF"}
+    file_jobs = {"resizeImages", "mergePDFs", "mediaInfo"}
     for entry in catalog:
         tool = entry["id"]
+        if entry.get("workspaceStatus") != "registered":
+            raise SystemExit(f"Incorrect workspace registration metadata for {tool}.")
         expected = {}
         if tool in expected_cli:
             expected["cliCommand"] = expected_cli[tool]
@@ -45,10 +54,36 @@ def check(binary):
             expected["mcp"] = {"capability": expected_mcp[tool], "requiresExplicitOptIn": True}
         if entry.get("automation") != expected:
             raise SystemExit(f"Incorrect automation metadata for {tool}: {entry.get('automation')}")
+        prerequisites = []
+        if tool in single_pdf:
+            prerequisites.append({"id": "singlePDF", "surface": "app"})
+        if tool in office_pdf:
+            prerequisites.append({"id": "libreOffice", "surface": "app"})
+        if tool in {"addPassword", "removePassword"}:
+            prerequisites.append({"id": "externalExecutable", "surface": "app",
+                                  "executable": "qpdf", "operations": ["export"]})
+        if tool == "downloadVideo":
+            prerequisites.append({"id": "externalExecutable", "surface": "app",
+                                  "executable": "yt-dlp", "operations": ["inspect", "download"]})
+        if tool in file_jobs:
+            prerequisites.append({"id": "existingDestinationDirectory", "surface": "cli"})
+        if tool in expected_mcp:
+            prerequisites.append({"id": "explicitAllow", "surface": "mcp"})
+        if entry.get("prerequisites") != prerequisites:
+            raise SystemExit(f"Incorrect prerequisites for {tool}: {entry.get('prerequisites')}")
     for command in expected_cli.values():
         help_text = subprocess.check_output([binary, command, "--help"], timeout=10, text=True)
         if f"USAGE: muk {command}" not in help_text:
             raise SystemExit(f"The catalog lists an unregistered CLI command: {command}.")
+    with tempfile.TemporaryDirectory() as directory:
+        missing_destination = str(Path(directory) / "missing")
+        for tool in file_jobs:
+            result = subprocess.run(
+                [binary, expected_cli[tool], "--destination", missing_destination, "unused-input"],
+                timeout=10, capture_output=True, text=True,
+            )
+            if result.returncode == 0 or "Choose an existing destination folder." not in result.stderr:
+                raise SystemExit(f"{tool} did not enforce its cataloged destination prerequisite.")
     print("The packaged catalog matches all 102 roadmap tools.")
 
 

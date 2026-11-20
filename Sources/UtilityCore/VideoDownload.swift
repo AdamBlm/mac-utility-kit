@@ -72,6 +72,7 @@ package enum VideoDownloadProgress: Equatable, Sendable {
 }
 
 public enum VideoDownload {
+    package static let executableName = "yt-dlp"
     private static let baseline = ["--ignore-config", "--no-playlist", "--no-warnings", "--no-colors"]
 
     public static func sourceURL(_ input: String) throws -> URL {
@@ -92,7 +93,7 @@ public enum VideoDownload {
         try Data().write(to: report)
         let writer = try FileHandle(forWritingTo: report)
         defer { try? writer.close() }
-        try await ExternalTool.run(executable, name: "yt-dlp",
+        try await ExternalTool.run(executable, name: executableName,
                                    arguments: baseline + ["--dump-single-json", "--skip-download", "--", url.absoluteString],
                                    directory: directory, standardOutput: writer)
         guard let bytes = try report.resourceValues(forKeys: [.fileSizeKey]).fileSize, bytes <= 24 * 1024 * 1024,
@@ -156,7 +157,7 @@ public enum VideoDownload {
         defer { monitor.cancel() }
 
         let template = media.appendingPathComponent("%(title)s [%(id)s].%(ext)s").path
-        try await ExternalTool.run(executable, name: "yt-dlp", arguments: baseline + options + [
+        try await ExternalTool.run(executable, name: executableName, arguments: baseline + options + [
             "--newline", "--progress",
             "--progress-template", "download:MUK:download\t%(info.vcodec)s\t%(info.acodec)s\t%(progress._percent_str)s",
             "--progress-template", "postprocess:MUK:processing",
