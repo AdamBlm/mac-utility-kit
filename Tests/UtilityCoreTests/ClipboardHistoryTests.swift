@@ -1,5 +1,7 @@
 import AppKit
+import ImageIO
 import Testing
+import UniformTypeIdentifiers
 @testable import UtilityCore
 
 @MainActor
@@ -114,6 +116,36 @@ struct ClipboardHistoryTests {
         #expect(history.copy(entry))
         #expect(board.pasteboardItems?.count == 1)
         #expect(board.data(forType: .png) == png)
+        #expect(board.string(forType: .string) == nil)
+    }
+
+    @Test(arguments: [UTType.jpeg, .gif])
+    func recordsOriginalImageBytesFromJPEGAndGIFRepresentations(format: UTType) throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let history = ClipboardHistoryController(pasteboard: { board }, foregroundApp: { ("example.app", "Example") })
+        history.start()
+        defer { history.disable() }
+        let image = try QRTools.generate(.text("fixture"))
+        let bytes = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(bytes, format.identifier as CFString, 1, nil))
+        CGImageDestinationAddImage(destination, image, nil)
+        try #require(CGImageDestinationFinalize(destination))
+        let data = bytes as Data
+        let type = NSPasteboard.PasteboardType(format.identifier)
+
+        let item = NSPasteboardItem()
+        item.setData(data, forType: .png) // The declared format does not match these bytes.
+        item.setData(data, forType: type)
+        item.setString("fallback", forType: .string)
+        board.clearContents()
+        #expect(board.writeObjects([item]))
+        history.poll()
+        let entry = try #require(history.entries.first)
+        #expect(entry.content == .image(data, type))
+        #expect(history.copy(entry))
+        #expect(board.data(forType: type) == data)
+        #expect(board.data(forType: .png) == nil)
         #expect(board.string(forType: .string) == nil)
     }
 
