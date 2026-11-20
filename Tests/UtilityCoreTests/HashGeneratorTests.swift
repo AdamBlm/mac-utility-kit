@@ -3,6 +3,29 @@ import Testing
 @testable import UtilityCore
 
 struct HashGeneratorTests {
+    @Test func exportsChecksumListsThatRoundTripWithDuplicateAndEscapedNames() throws {
+        let a = String(repeating: "a", count: 64)
+        let b = String(repeating: "b", count: 64)
+        let files = ["/tmp/one/file.txt", "/tmp/two/file.txt", "/tmp/back\\slash\nline\rbreak"]
+            .map { URL(fileURLWithPath: $0) }
+        let exported = try HashChecksumList.format([a, b, a], for: files, algorithm: .sha256)
+        #expect(exported == "\(a) */tmp/one/file.txt\n\(b) */tmp/two/file.txt\n\\\(a) */tmp/back\\\\slash\\nline\\rbreak\n")
+        let imported = try HashChecksumList(exported, algorithm: .sha256)
+        #expect(imported.expectations(for: files) == [.digest(a), .digest(b), .digest(a)])
+        #expect(throws: ToolError.self) {
+            try HashChecksumList.format([a, b], for: files, algorithm: .sha256)
+        }
+    }
+
+    @Test func usesFullPathsForMixedFoldersEvenWhenBasenamesDiffer() throws {
+        let digest = String(repeating: "a", count: 64)
+        let left = URL(fileURLWithPath: "/tmp/left/one.txt")
+        let right = URL(fileURLWithPath: "/tmp/right/two.txt")
+        #expect(try HashChecksumList.format([digest], for: [left], algorithm: .sha256) == "\(digest) *one.txt\n")
+        #expect(try HashChecksumList.format([digest, digest], for: [left, right], algorithm: .sha256)
+            == "\(digest) */tmp/left/one.txt\n\(digest) */tmp/right/two.txt\n")
+    }
+
     @Test func routesChecksumListByExactSelectedFilename() throws {
         let a = String(repeating: "A", count: 64)
         let b = String(repeating: "B", count: 64)

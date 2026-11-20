@@ -32,6 +32,14 @@ public enum OrganizeDownloads {
         public var id: Self { self }
     }
 
+    package static func reviewedSelection(
+        from images: [DownloadImage], selected: Set<URL>, visible: Set<URL>
+    ) -> [DownloadImage]? {
+        guard !selected.isEmpty, selected.isSubset(of: visible) else { return nil }
+        let entries = images.filter { selected.contains($0.file) }
+        return entries.count == selected.count ? entries : nil
+    }
+
     public static func scan(_ directory: URL, includesSubfolders: Bool = false) throws -> [DownloadImage] {
         let root = directory.resolvingSymlinksInPath().standardizedFileURL
         guard root.isFileURL, try root.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {

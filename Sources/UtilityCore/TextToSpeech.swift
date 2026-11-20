@@ -85,15 +85,26 @@ public enum TextToSpeech {
         guard (0.5...1.5).contains(request.rate) else {
             throw ToolError.invalid("Choose a speech rate from 50% to 150%.")
         }
+        try Task.checkCancellation()
+        let installed = AVSpeechSynthesisVoice.speechVoices()
         let voice: AVSpeechSynthesisVoice
         if let id = request.voiceID {
-            guard let selected = AVSpeechSynthesisVoice.speechVoices().first(where: { $0.identifier == id }) else {
+            guard let selected = installed.first(where: { $0.identifier == id }) else {
                 throw ToolError.invalid("The selected voice is unavailable. Choose an installed macOS voice.")
             }
             voice = selected
         } else {
-            guard let automatic = AVSpeechSynthesisVoice(language: AVSpeechSynthesisVoice.currentLanguageCode())
-                    ?? AVSpeechSynthesisVoice.speechVoices().first else {
+            let currentLanguage = AVSpeechSynthesisVoice.currentLanguageCode()
+            let detectedLanguage = SpeechLanguageSelection.installedLanguage(
+                for: request.text, currentLanguage: currentLanguage, available: installed.map(\.language)
+            )
+            let detectedVoice = detectedLanguage.flatMap { language in
+                let preferred = AVSpeechSynthesisVoice(language: language)
+                return installed.first { $0.identifier == preferred?.identifier && $0.language == language }
+                    ?? installed.first { $0.language == language }
+            }
+            guard let automatic = detectedVoice ?? AVSpeechSynthesisVoice(language: currentLanguage)
+                    ?? installed.first else {
                 throw ToolError.invalid("Install a voice in macOS System Settings to synthesize speech.")
             }
             voice = automatic

@@ -19,14 +19,13 @@ struct OrganizeDownloadsView: View {
     @State private var typeFilter = ""
     @State private var preview: URL?
     @State private var pending: FileRequest?
-    @State private var confirmPhotos = false
+    @State private var pendingPhotos: [DownloadImage]?
 
     private struct FileRequest {
         let destination: DownloadDestination
         let entries: [DownloadImage]
     }
 
-    private var chosen: [DownloadImage] { draft.items.filter { draft.selected.contains($0.file) } }
     private var originNames: [String] { Set(draft.items.map(originName)).sorted() }
     private var fileTypes: [String] { Set(draft.items.map(\.fileType)).sorted() }
 
@@ -36,7 +35,14 @@ struct OrganizeDownloadsView: View {
         }, by: originName)
     }
 
+    private var reviewedSelection: [DownloadImage]? {
+        OrganizeDownloads.reviewedSelection(from: draft.items, selected: draft.selected,
+                                            visible: Set(visible.values.joined().map(\.file)))
+    }
+
     var body: some View {
+        let groups = visible
+        let visibleFiles = Set(groups.values.joined().map(\.file))
         InteractiveToolLayout(tool: .organizeDownloads) { palette in
             WorkspaceSection("Source Folder", palette: palette) {
                 HStack {
@@ -69,18 +75,33 @@ struct OrganizeDownloadsView: View {
                             ForEach(fileTypes, id: \.self) { Text($0).tag($0) }
                         }
                     }
-                    ForEach(visible.keys.sorted(), id: \.self) { origin in
-                        if let items = visible[origin] { group(origin, items: items) }
+                    ForEach(groups.keys.sorted(), id: \.self) { origin in
+                        if let items = groups[origin] { group(origin, items: items) }
                     }
                 }
                 WorkspaceSection("Export Selection", palette: palette) {
+                    let hidden = draft.selected.subtracting(visibleFiles).count
                     Text("\(draft.selected.count) images selected")
+                    if hidden > 0 {
+                        HStack {
+                            Text(hidden == 1 ? "One selected image is hidden by the filters."
+                                 : "\(hidden) selected images are hidden by the filters.")
+                                .font(.callout).foregroundStyle(.secondary)
+                            Button("Clear Filters") {
+                                originFilter = ""
+                                typeFilter = ""
+                            }
+                        }
+                    }
                     HStack {
                         Button("Copy to Folder…", systemImage: "folder.badge.plus") { chooseDestination(move: false) }
                         Button("Move to Folder…", systemImage: "arrow.right.circle") { chooseDestination(move: true) }
-                        Button("Import into Photos…", systemImage: "photo.on.rectangle") { confirmPhotos = true }
+                        Button("Import into Photos…", systemImage: "photo.on.rectangle") {
+                            guard let entries = reviewedSelection else { return }
+                            pendingPhotos = entries
+                        }
                     }
-                    .disabled(draft.busy || draft.selected.isEmpty)
+                    .disabled(draft.busy || draft.selected.isEmpty || hidden > 0)
                 }
             }
             if let result = draft.result {
@@ -111,10 +132,12 @@ struct OrganizeDownloadsView: View {
         } message: { request in
             Text("Move \(request.entries.count) images out of their original folder.")
         }
-        .confirmationDialog("Import images into Photos?", isPresented: $confirmPhotos, titleVisibility: .visible) {
-            Button("Import Images") { importPhotos() }
-        } message: {
-            Text("Create albums grouped by origin and keep the original files in place.")
+        .confirmationDialog("Import images into Photos?", isPresented: Binding(get: { pendingPhotos != nil }, set: { shown in
+            if !shown { pendingPhotos = nil }
+        }), titleVisibility: .visible, presenting: pendingPhotos) { entries in
+            Button("Import Images") { importPhotos(entries) }
+        } message: { entries in
+            Text("Import \(entries.count) images into albums grouped by origin. The original files stay in place.")
         }
     }
 
@@ -183,16 +206,18 @@ struct OrganizeDownloadsView: View {
     }
 
     private func chooseDestination(move: Bool) {
-        guard let destination = chooseFolder() else { return }
+        guard !draft.busy, reviewedSelection != nil, let destination = chooseFolder(),
+              let entries = reviewedSelection else { return }
         do {
             let approval = try OrganizeDownloads.inspectDestination(destination)
-            let request = FileRequest(destination: approval, entries: chosen)
+            let request = FileRequest(destination: approval, entries: entries)
             if move { pending = request }
             else { export(request, action: .copy) }
         } catch { draft.issue = error.localizedDescription }
     }
 
     private func export(_ request: FileRequest, action: OrganizeDownloads.FileAction) {
+        guard !draft.busy, reviewedSelection?.map(\.file) == request.entries.map(\.file) else { return }
         draft.busy = true
         draft.issue = nil
         draft.result = nil
@@ -217,8 +242,8 @@ struct OrganizeDownloadsView: View {
         }
     }
 
-    private func importPhotos() {
-        let entries = chosen
+    private func importPhotos(_ entries: [DownloadImage]) {
+        guard !draft.busy, reviewedSelection?.map(\.file) == entries.map(\.file) else { return }
         draft.busy = true
         draft.issue = nil
         draft.result = nil

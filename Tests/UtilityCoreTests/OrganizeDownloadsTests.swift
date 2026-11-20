@@ -44,6 +44,13 @@ struct OrganizeDownloadsTests {
         let recursive = try OrganizeDownloads.scan(source, includesSubfolders: true)
         #expect(recursive.map(\.relativePath) == ["Image.png", "Nested/Image.png"])
         #expect(recursive.allSatisfy { $0.origin == nil && $0.fileType == "PNG" })
+        let allFiles = Set(recursive.map(\.file))
+        let first = try #require(recursive.first?.file)
+        #expect(OrganizeDownloads.reviewedSelection(from: recursive, selected: allFiles, visible: [first]) == nil)
+        #expect(OrganizeDownloads.reviewedSelection(from: recursive, selected: [first], visible: [first])?
+            .map(\.file) == [first])
+        #expect(OrganizeDownloads.reviewedSelection(from: recursive, selected: allFiles, visible: allFiles)?
+            .map(\.file) == recursive.map(\.file))
     }
 
     @Test func rejectsReplacedDestinationAndSymlinkOriginWithoutMovingSource() throws {

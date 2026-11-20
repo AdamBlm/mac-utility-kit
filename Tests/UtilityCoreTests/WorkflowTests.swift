@@ -1074,7 +1074,60 @@ func advancedConstantQualityChangesTheEncodedSize() async throws {
     let capabilities = try await VideoCompressionCapabilities.ffmpeg(executable)
     #expect(capabilities.formats == [.mp4, .mov, .m4v])
     #expect(capabilities.supports(.mp4, codec: .hevc))
-    #expect(!capabilities.supports(.mp4, codec: .automatic))
+    #expect(capabilities.supports(.mp4, codec: .automatic))
+
+    let input = folder.appendingPathComponent("SDR.mp4")
+    try await writeVideoFixture(to: input)
+    var options = ToolOptions()
+    options.ffmpegExecutable = executable
+    let automatic = try await VideoCompression.preview(input, options: options, capabilities: capabilities)
+    #expect(automatic.codec == .hevc)
+
+    options.videoCodec = .h264
+    await #expect(throws: ToolError.self) {
+        _ = try await VideoCompression.preview(input, options: options, capabilities: capabilities)
+    }
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+func automaticHEVCFallbackMatchesPreviewSampleAndExport() async throws {
+    let ffmpeg = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    try FileManager.default.createSymbolicLink(at: folder.appending(path: "ffmpeg-real"), withDestinationURL: ffmpeg)
+    let executable = folder.appending(path: "ffmpeg-hevc")
+    let script = #"""
+    #!/bin/sh
+    ffmpeg="$(dirname "$0")/ffmpeg-real"
+    case "$3" in
+      -encoders) "$ffmpeg" "$@" | /usr/bin/awk '$2 != "libx264"';;
+      *) exec "$ffmpeg" "$@";;
+    esac
+    """#
+    try Data(script.utf8).write(to: executable, options: .atomic)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: executable.path)
+    let input = folder.appending(path: "SDR.mp4")
+    try await writeVideoFixture(to: input, width: 160, height: 120, frames: 12)
+    var options = ToolOptions()
+    options.ffmpegExecutable = executable
+    options.keepLargerVideos = true
+
+    let capabilities = try await VideoCompressionCapabilities.ffmpeg(executable)
+    #expect(!capabilities.supports(.mp4, codec: .h264))
+    let preview = try await VideoCompression.preview(input, options: options, capabilities: capabilities)
+    #expect(preview.codec == .hevc)
+    let sample = try await ToolRunner.sampleVideo(input, destination: folder, options: options)
+    let report = try await ToolRunner.run(
+        .compressVideo, inputs: [input], destination: folder, imageSize: 0, options: options
+    ) { _ in }
+    #expect(report.failures.isEmpty)
+    for url in [sample.url, try #require(report.outputs.first)] {
+        let tracks = try await AVURLAsset(url: url).loadTracks(withMediaType: .video)
+        let track = try #require(tracks.first)
+        let descriptions = try await track.load(.formatDescriptions)
+        let description = try #require(descriptions.first)
+        #expect(CMFormatDescriptionGetMediaSubType(description) == kCMVideoCodecType_HEVC)
+    }
 }
 
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))

@@ -8,6 +8,7 @@ struct DocumentConvertControls: View {
     @State private var selected: URL?
     @State private var request: Request?
     @State private var sample: Measurement?
+    @State private var previewChanged = false
 
     private struct Request: Equatable {
         let id = UUID()
@@ -89,8 +90,20 @@ struct DocumentConvertControls: View {
             }
             if self.request == request { self.request = nil }
         }
-        .onChange(of: previewInput) { request = nil }
-        .onChange(of: options) { request = nil }
+        .task(id: sample?.request.id) {
+            guard let sample, case .success(let preview) = sample.result else { return }
+            while !Task.isCancelled, self.sample?.request.id == sample.request.id {
+                if !preview.matchesConversion(sample.request.input, options: sample.request.options) {
+                    self.sample = nil
+                    previewChanged = true
+                    return
+                }
+                do { try await Task.sleep(for: .seconds(1)) }
+                catch { return }
+            }
+        }
+        .onChange(of: previewInput) { resetPreview() }
+        .onChange(of: options) { resetPreview() }
     }
 
     @ViewBuilder
@@ -124,7 +137,10 @@ struct DocumentConvertControls: View {
         }
         HStack {
             Button("Preview Converted Text…", systemImage: "doc.text.magnifyingglass") {
-                if let previewInput { request = Request(input: previewInput, options: options) }
+                if let previewInput {
+                    resetPreview()
+                    request = Request(input: previewInput, options: options)
+                }
             }
             .disabled(request != nil || previewInput.map {
                 DocumentConvert.previewIssue(for: $0, options: options) != nil
@@ -133,6 +149,10 @@ struct DocumentConvertControls: View {
                 ProgressView().controlSize(.small)
                 Button("Cancel") { request = nil }
             }
+        }
+        if previewChanged, request == nil {
+            Text("The source or conversion engine changed. Preview the current file again.")
+                .font(.callout).foregroundStyle(.secondary)
         }
         if let sample, sample.request.input == previewInput, sample.request.options == options, request == nil {
             switch sample.result {
@@ -154,6 +174,12 @@ struct DocumentConvertControls: View {
                 Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func resetPreview() {
+        request = nil
+        sample = nil
+        previewChanged = false
     }
 
     private func enginePicker(_ name: String, url: Binding<URL?>) -> some View {

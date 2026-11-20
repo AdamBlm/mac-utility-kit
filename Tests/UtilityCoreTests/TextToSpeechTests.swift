@@ -5,6 +5,38 @@ import Testing
 
 @Suite(.serialized)
 struct TextToSpeechTests {
+    @Test func automaticVoiceDetectsFrenchWithAnInstalledFrenchVoice() {
+        let passage = "Ce matin, je suis allé au marché pour acheter des pommes et des poires. "
+            + "Ensuite, je suis rentré préparer le déjeuner avec ma famille et discuter de nos vacances."
+        let preferred = SpeechLanguageSelection.installedLanguage(
+            for: passage, currentLanguage: "en-US", available: ["en-US", "fr-FR"]
+        )
+        #expect(preferred == "fr-FR")
+    }
+
+    @Test func automaticVoiceKeepsLocaleForShortAmbiguousOrUnsupportedInput() {
+        let passage = "A paragraph long enough to identify the usual language."
+        #expect(SpeechLanguageSelection.installedLanguage(
+            for: "Bonjour", currentLanguage: "en-US", available: ["fr-FR"], identify: { _ in ["fr": 1] }
+        ) == nil)
+        #expect(SpeechLanguageSelection.installedLanguage(
+            for: passage, currentLanguage: "en-US", available: ["fr-FR"], identify: { _ in ["fr": 0.66, "en": 0.34] }
+        ) == nil)
+        #expect(SpeechLanguageSelection.installedLanguage(
+            for: passage, currentLanguage: "en-US", available: ["en-US"], identify: { _ in ["fr": 1] }
+        ) == nil)
+    }
+
+    @Test func automaticVoiceMatchesScriptAndPrefersTheCurrentRegionWhenCompatible() {
+        let passage = "A paragraph long enough to identify the usual language."
+        #expect(SpeechLanguageSelection.installedLanguage(
+            for: passage, currentLanguage: "zh-CN", available: ["zh-CN", "zh-TW"], identify: { _ in ["zh-Hant": 1] }
+        ) == "zh-TW")
+        #expect(SpeechLanguageSelection.installedLanguage(
+            for: passage, currentLanguage: "en-GB", available: ["en-US", "en-GB"], identify: { _ in ["en": 1] }
+        ) == "en-GB")
+    }
+
     @Test
     @MainActor
     func rejectsInvalidSpeechRequestsAndUnknownVoices() async {

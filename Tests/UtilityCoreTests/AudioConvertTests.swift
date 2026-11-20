@@ -112,6 +112,73 @@ struct AudioConvertTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func automaticMP3UsesCompatibleSourceParametersWithoutChangingStrictMode() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ffmpeg = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let surround = directory.appending(path: "surround.wav")
+        let voice = directory.appending(path: "phone.wav")
+        try Self.runFFmpeg(ffmpeg, ["-f", "lavfi", "-i", "anullsrc=r=96000:cl=5.1", "-t", "0.25", surround.path])
+        try Self.runFFmpeg(ffmpeg, ["-f", "lavfi", "-i", "sine=frequency=600:sample_rate=8000:duration=0.25", voice.path])
+        var options = AudioConvertOptions.recommended
+        options.format = .mp3
+        options.ffmpegExecutable = ffmpeg
+        let surroundSource = try #require(AudioConvert.sourceFormat(surround))
+        let voiceSource = try #require(AudioConvert.sourceFormat(voice))
+        #expect(options.automaticAdjustment(for: surroundSource)?.contains("96 → 48 kHz") == true)
+        #expect(options.automaticAdjustment(for: surroundSource)?.contains("6 channels → stereo") == true)
+        #expect(options.automaticAdjustment(for: voiceSource) == "64 kbps target")
+
+        let surroundOutput = directory.appending(path: "surround.mp3")
+        let voiceOutput = directory.appending(path: "phone.mp3")
+        _ = try await AudioConvert.export(surround, to: surroundOutput, options: options) { _ in }
+        let voiceSummary = try await AudioConvert.export(voice, to: voiceOutput, options: options) { _ in }
+        let stereo = try AVAudioFile(forReading: surroundOutput)
+        let mono = try AVAudioFile(forReading: voiceOutput)
+        #expect(stereo.fileFormat.sampleRate == 48_000 && stereo.fileFormat.channelCount == 2)
+        #expect(mono.fileFormat.sampleRate == 8_000 && mono.fileFormat.channelCount == 1)
+        #expect(voiceSummary.contains("64 kbps target"))
+        options.automaticallyAdjustsSettings = false
+        #expect(options.sourceIssue(surroundSource)?.contains("cannot keep the input sample rate") == true)
+        #expect(options.sourceIssue(voiceSource)?.contains("cannot use this bitrate") == true)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func automaticAACUsesTheNativeEncoderCapabilitiesAndDownmixesSurround() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ffmpeg = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let surround = directory.appending(path: "surround.wav")
+        try Self.runFFmpeg(ffmpeg, ["-f", "lavfi", "-i", "anullsrc=r=192000:cl=5.1", "-t", "0.25", surround.path])
+        let output = directory.appending(path: "automatic.m4a")
+        let options = AudioConvertOptions.recommended
+        let source = try #require(AudioConvert.sourceFormat(surround))
+        #expect(options.automaticAdjustment(for: source)?.contains("6 channels → stereo") == true)
+        _ = try await AudioConvert.export(surround, to: output, options: options) { _ in }
+        let file = try AVAudioFile(forReading: output)
+        #expect(file.fileFormat.sampleRate < 192_000)
+        #expect(file.fileFormat.channelCount == 2)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func automaticAACPreservesACompatibleLowSourceRate() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let ffmpeg = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let source = directory.appending(path: "phone.wav")
+        try Self.runFFmpeg(ffmpeg, ["-f", "lavfi", "-i", "sine=frequency=600:sample_rate=8000:duration=0.25", source.path])
+        let output = directory.appending(path: "automatic.m4a")
+        let sourceFormat = try #require(AudioConvert.sourceFormat(source))
+        let adjustment = try #require(AudioConvertOptions.recommended.automaticAdjustment(for: sourceFormat))
+        #expect(adjustment.contains("kbps target"))
+        let summary = try await AudioConvert.export(source, to: output, options: .recommended) { _ in }
+        #expect(summary.contains(adjustment))
+        let format = try AVAudioFile(forReading: output).fileFormat
+        #expect(format.sampleRate == 8_000)
+        #expect(format.channelCount == 1)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
     func metadataDisabledStripsChaptersFromMP3() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

@@ -29,6 +29,29 @@ import UtilityCore
     #expect(!FileManager.default.fileExists(atPath: preview.output.path))
 }
 
+@Test func automaticImageCompressionKeepsAnAlreadySmallerOriginal() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appending(path: "already-small.jpg")
+    try writeCompressionFixture(to: source, format: .jpeg, withAlpha: false, quality: 0.08)
+    let original = try Data(contentsOf: source)
+    let options = ImageCompressionOptions.recommended
+    let sample = try await ImageCompressionSample.make(source, options: options)
+    let output = directory.appending(path: "export.jpg")
+    let summary = try await ImageCompression.compress(source, to: output, options: options)
+    #expect(summary.contains("Original kept"))
+    #expect(sample.summary == summary)
+    #expect(try Data(contentsOf: output) == original)
+    #expect(try Data(contentsOf: sample.comparison.output) == original)
+
+    var stripping = options
+    stripping.preserveMetadata = false
+    let stripped = directory.appending(path: "stripped.jpg")
+    let strippedSummary = try await ImageCompression.compress(source, to: stripped, options: stripping)
+    #expect(!strippedSummary.contains("Original kept"))
+    #expect(try Data(contentsOf: stripped) != original)
+}
+
 @Test func imageCompressionPreviewCancellationRemovesItsTemporaryDirectory() async throws {
     let directory = try compressionDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }
@@ -228,7 +251,7 @@ private func compressionDirectory() throws -> URL {
     return folder
 }
 
-private func writeCompressionFixture(to url: URL, format: UTType, withAlpha: Bool) throws {
+private func writeCompressionFixture(to url: URL, format: UTType, withAlpha: Bool, quality: Double = 0.97) throws {
     let width = 256
     let height = 192
     var random = UInt32(0x4845_5031)
@@ -249,7 +272,7 @@ private func writeCompressionFixture(to url: URL, format: UTType, withAlpha: Boo
         shouldInterpolate: false, intent: .defaultIntent
     ))
     let writer = try #require(CGImageDestinationCreateWithURL(url as CFURL, format.identifier as CFString, 1, nil))
-    CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: 0.97] as CFDictionary)
+    CGImageDestinationAddImage(writer, image, [kCGImageDestinationLossyCompressionQuality: quality] as CFDictionary)
     try #require(CGImageDestinationFinalize(writer))
 }
 

@@ -148,8 +148,20 @@ struct HashGeneratorView: View {
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     HStack {
-                        Button("Copy results", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(report) }
-                        Button("Export results…", systemImage: "square.and.arrow.up") { export() }
+                        if input.mode == .files, currentResults.allSatisfy({ $0.digest != nil }) {
+                            Button("Copy checksum list", systemImage: "doc.on.doc") { copyChecksums(input) }
+                            Button("Export checksum list…", systemImage: "square.and.arrow.up") {
+                                export(input, asChecksumList: true)
+                            }
+                        } else {
+                            Button("Copy results", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(report) }
+                            Button("Export results…", systemImage: "square.and.arrow.up") { export(input) }
+                        }
+                    }
+                    if input.mode == .files, currentResults.allSatisfy({ $0.digest != nil }),
+                       HashChecksumList.usesAbsolutePaths(for: input.files) {
+                        Text("This checksum list includes full file paths.")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                 }
                 if let exportError, resultsInput == input { Text(exportError).font(.callout).foregroundStyle(.red) }
@@ -219,9 +231,24 @@ struct HashGeneratorView: View {
         fileRevision = UUID()
     }
 
-    private func export() {
+    private func copyChecksums(_ input: Input) {
         do {
-            try DeveloperToolFiles.save(Data(report.utf8), as: "digests.txt")
+            DeveloperToolFiles.copy(try checksumList(input))
+            exportError = nil
+        } catch {
+            exportError = error.localizedDescription
+        }
+    }
+
+    private func checksumList(_ input: Input) throws -> String {
+        try HashChecksumList.format(results.compactMap(\.digest), for: input.files, algorithm: input.algorithm)
+    }
+
+    private func export(_ input: Input, asChecksumList: Bool = false) {
+        do {
+            let data = asChecksumList ? try checksumList(input) : report
+            let suffix = input.algorithm.rawValue.lowercased().replacingOccurrences(of: "-", with: "")
+            try DeveloperToolFiles.save(Data(data.utf8), as: asChecksumList ? "checksums.\(suffix)" : "digests.txt")
             exportError = nil
         } catch {
             exportError = error.localizedDescription

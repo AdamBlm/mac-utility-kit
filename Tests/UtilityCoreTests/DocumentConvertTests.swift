@@ -105,6 +105,84 @@ struct DocumentConvertTests {
         #expect(try DocumentConvert.requiredEngine(for: oldWord, options: options) == .both)
     }
 
+    @Test func compatiblePairsUseAvailableEnginesAndKeepThePreferredEngineWhenBothWork() throws {
+        let input = URL(fileURLWithPath: "/tmp/source.rtf")
+        let missing = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        let installed = URL(fileURLWithPath: "/usr/bin/true")
+        var options = DocumentConvertOptions()
+        options.target = .docx
+        options.prefersLibreOffice = true
+        options.libreOfficeExecutable = missing
+        options.pandocExecutable = installed
+        #expect(try DocumentConvert.requiredEngine(for: input, options: options) == .pandoc)
+        #expect(DocumentConvert.optionIssue(for: input, options: options) == nil)
+
+        options.libreOfficeExecutable = installed
+        #expect(try DocumentConvert.requiredEngine(for: input, options: options) == .libreOffice)
+        options.prefersLibreOffice = false
+        #expect(try DocumentConvert.requiredEngine(for: input, options: options) == .pandoc)
+        options.pandocExecutable = missing
+        #expect(try DocumentConvert.requiredEngine(for: input, options: options) == .libreOffice)
+        #expect(DocumentConvert.optionIssue(for: input, options: options) == nil)
+
+        options.target = .markdown
+        #expect(try DocumentConvert.requiredEngine(for: input, options: options) == .pandoc)
+        #expect(DocumentConvert.optionIssue(for: input, options: options)?.contains("Pandoc") == true)
+    }
+
+    @Test
+    func previewTracksTheActualFileAndExportRejectsChangesDuringConversion() async throws {
+        let folder = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "Source.txt")
+        let output = folder.appending(path: "Output.md")
+        try Data("Before edit".utf8).write(to: source)
+        var options = DocumentConvertOptions()
+        options.target = .markdown
+        let preview = try await DocumentConvert.preview(source, options: options)
+        #expect(preview.matchesSource(source))
+        try Data("After edit".utf8).write(to: source, options: .atomic)
+        #expect(!preview.matchesSource(source))
+        await #expect(throws: ToolError.self) {
+            try await DocumentConvert.export(source, to: output, options: options) { fraction in
+                if fraction == 0.15 {
+                    do { try Data("Changed during export".utf8).write(to: source, options: .atomic) }
+                    catch { Issue.record("Could not replace the fixture: \(error)") }
+                }
+            }
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_PANDOC_TEST"] != nil))
+    func previewAndExportUsePandocWhenPreferredLibreOfficeIsMissing() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let input = directory.appending(path: "Document.rtf")
+        let output = directory.appending(path: "Document.docx")
+        try Data(#"{\rtf1\ansi Routing fixture}"#.utf8).write(to: input)
+
+        var options = DocumentConvertOptions()
+        options.prefersLibreOffice = true
+        options.libreOfficeExecutable = directory.appending(path: "Missing.app")
+        options.pandocExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_PANDOC_TEST"]))
+        #expect(try await DocumentConvert.preview(input, options: options).text.contains("Routing fixture"))
+        let summary = try await DocumentConvert.export(input, to: output, options: options) { _ in }
+        #expect(summary.hasSuffix("Pandoc"))
+        #expect(FileManager.default.fileExists(atPath: output.path))
+
+        let linkedPandoc = directory.appending(path: "pandoc")
+        try FileManager.default.createSymbolicLink(at: linkedPandoc, withDestinationURL: try #require(options.pandocExecutable))
+        options.pandocExecutable = linkedPandoc
+        options.libreOfficeExecutable = URL(fileURLWithPath: "/usr/bin/true")
+        options.prefersLibreOffice = false
+        let preview = try await DocumentConvert.preview(input, options: options)
+        #expect(preview.matchesConversion(input, options: options))
+        try FileManager.default.removeItem(at: linkedPandoc)
+        #expect(preview.matchesSource(input))
+        #expect(!preview.matchesConversion(input, options: options))
+    }
+
     @Test(arguments: [DocumentConvertOptions.Format.docx, .odt])
     func rejectsWrongOfficePackagesBeforePublishing(format: DocumentConvertOptions.Format) async throws {
         let directory = try Self.directory()

@@ -31,7 +31,8 @@ enum VideoOperations {
         let asset = AVURLAsset(url: input)
         try VideoCompression.validate(options)
         if let executable = options.ffmpegExecutable {
-            let source = try await VideoCompression.source(asset, options: options)
+            let capabilities = try await VideoCompressionCapabilities.ffmpeg(executable)
+            let source = try await VideoCompression.source(asset, options: options, capabilities: capabilities)
             try await FFmpegEncoding.export(input, to: output, using: executable, source: source, options: options, sample: sample)
             if options.videoFormat == .webm {
                 try await FFmpegEncoding.verifyWebM(output, source: source, using: executable)

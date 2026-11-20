@@ -1,6 +1,8 @@
 import Foundation
 
 package struct HashChecksumList: Sendable {
+    private static let maximumBytes = 512 * 1024
+
     package enum Expectation: Equatable, Sendable {
         case digest(String), missing, ambiguous
     }
@@ -13,7 +15,7 @@ package struct HashChecksumList: Sendable {
     private let entriesByBasename: [Data: [Entry]]
 
     package init(_ text: String, algorithm: HashAlgorithm) throws {
-        guard text.utf8.count <= 512 * 1024 else {
+        guard text.utf8.count <= Self.maximumBytes else {
             throw ToolError.invalid("Enter a checksum list up to 512 KiB.")
         }
         var entries: [Data: [Entry]] = [:]
@@ -35,6 +37,42 @@ package struct HashChecksumList: Sendable {
         }
         guard !entries.isEmpty else { throw ToolError.invalid("Enter at least one checksum and filename.") }
         entriesByBasename = entries
+    }
+
+    package static func usesAbsolutePaths(for files: [URL]) -> Bool {
+        Set(files.map { $0.standardizedFileURL.deletingLastPathComponent() }).count > 1
+            || Set(files.map { Data($0.lastPathComponent.utf8) }).count < files.count
+    }
+
+    package static func format(_ digests: [String], for files: [URL], algorithm: HashAlgorithm) throws -> String {
+        guard !files.isEmpty, files.count == digests.count else {
+            throw ToolError.invalid("Hash every selected file before exporting a checksum list.")
+        }
+        let absolute = usesAbsolutePaths(for: files)
+        var result = Data()
+        for (file, digest) in zip(files, digests) {
+            guard HashGenerator.isHexDigest(digest.utf8, algorithm: algorithm) else {
+                throw ToolError.invalid("Hash every selected file before exporting a checksum list.")
+            }
+            let path = absolute ? file.standardizedFileURL.path : file.lastPathComponent
+            let escapes = path.utf8.contains { $0 == 92 || $0 == 10 || $0 == 13 }
+            if escapes { result.append(92) }
+            result.append(contentsOf: digest.utf8)
+            result.append(contentsOf: [32, 42])
+            for byte in path.utf8 {
+                switch byte {
+                case 92: result.append(contentsOf: [92, 92])
+                case 10: result.append(contentsOf: [92, 110])
+                case 13: result.append(contentsOf: [92, 114])
+                default: result.append(byte)
+                }
+            }
+            result.append(10)
+            guard result.count <= maximumBytes else {
+                throw ToolError.invalid("Export fewer files to keep the checksum list within 512 KiB.")
+            }
+        }
+        return String(decoding: result, as: UTF8.self)
     }
 
     package func expectations(for files: [URL]) -> [Expectation] {

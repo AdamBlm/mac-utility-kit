@@ -58,23 +58,31 @@ public struct VideoCompressionCapabilities: Sendable {
     }
 
     public var formats: [VideoFormat] {
-        let explicitCodecs: [VideoCodec] = [.h264, .hevc, .vp9]
-        return VideoFormat.allCases.filter { format in
-            explicitCodecs.contains { supports(format, codec: $0) }
-        }
+        VideoFormat.allCases.filter { supports($0, codec: .automatic) }
     }
 
     public func supports(_ format: VideoFormat, codec: VideoCodec) -> Bool {
+        if codec == .automatic {
+            return automaticCodec(for: format, hdr: false) != nil
+        }
         if let encoders, let muxers {
-            if codec == .automatic {
-                return supports(format, codec: format == .webm ? .vp9 : .h264)
-            }
             guard (format == .webm) == (codec == .vp9) else { return false }
             if format == .webm, !encoders.contains("png") || !muxers.contains("image2") { return false }
             let audio = format == .webm ? "libopus" : "aac"
             return muxers.contains(format.muxer) && encoders.contains(codec.ffmpegEncoder) && encoders.contains(audio)
         }
         return format != .webm && codec != .vp9
+    }
+
+    func automaticCodec(for format: VideoFormat, hdr: Bool) -> VideoCodec? {
+        let candidates: [VideoCodec] = if format == .webm {
+            [.vp9]
+        } else if hdr {
+            [.hevc]
+        } else {
+            [.h264, .hevc]
+        }
+        return candidates.first { supports(format, codec: $0) }
     }
 }
 
@@ -98,10 +106,7 @@ public enum VideoCompression {
     public static func preview(
         _ input: URL, options: ToolOptions, capabilities: VideoCompressionCapabilities
     ) async throws -> VideoCompressionPreview {
-        let source = try await source(AVURLAsset(url: input), options: options)
-        guard capabilities.supports(options.videoFormat, codec: source.codec) else {
-            throw ToolError.invalid("The selected engine cannot encode \(source.codec.rawValue) in \(options.videoFormat.rawValue.uppercased()) with its supported audio codec.")
-        }
+        let source = try await source(AVURLAsset(url: input), options: options, capabilities: capabilities)
         let display = CGRect(origin: .zero, size: source.size).applying(source.transform).standardized
         return VideoCompressionPreview(width: Int(display.width.rounded()), height: Int(display.height.rounded()), codec: source.codec)
     }
@@ -116,7 +121,9 @@ public enum VideoCompression {
         let description: CMFormatDescription?
     }
 
-    static func source(_ asset: AVURLAsset, options: ToolOptions) async throws -> Source {
+    static func source(
+        _ asset: AVURLAsset, options: ToolOptions, capabilities: VideoCompressionCapabilities = .macOS
+    ) async throws -> Source {
         try validate(options)
         guard let video = try await asset.loadTracks(withMediaType: .video).first else {
             throw ToolError.invalid("The source has no video track macOS can inspect.")
@@ -132,8 +139,22 @@ public enum VideoCompression {
         }
         let hdr = transfer == (kCMFormatDescriptionTransferFunction_SMPTE_ST_2084_PQ as String)
             || transfer == (kCMFormatDescriptionTransferFunction_ITU_R_2100_HLG as String)
-        let codec = options.videoCodec == .automatic ? (options.videoFormat == .webm ? .vp9 : hdr ? .hevc : .h264) : options.videoCodec
-        if hdr, codec == .h264 { throw ToolError.invalid("This HDR source requires HEVC or VP9 to preserve its transfer function.") }
+        let codec: VideoCodec
+        if options.videoCodec == .automatic {
+            guard let supported = capabilities.automaticCodec(for: options.videoFormat, hdr: hdr) else {
+                if hdr {
+                    throw ToolError.invalid("The selected engine cannot preserve HDR in \(options.videoFormat.rawValue.uppercased()). Choose an engine that can encode HDR for this format.")
+                }
+                throw ToolError.invalid("The selected engine has no supported video and audio encoders for \(options.videoFormat.rawValue.uppercased()).")
+            }
+            codec = supported
+        } else {
+            codec = options.videoCodec
+            if hdr, codec == .h264 { throw ToolError.invalid("This HDR source requires HEVC or VP9 to preserve its transfer function.") }
+            guard capabilities.supports(options.videoFormat, codec: codec) else {
+                throw ToolError.invalid("The selected engine cannot encode \(codec.rawValue) in \(options.videoFormat.rawValue.uppercased()) with its supported audio codec.")
+            }
+        }
         if options.videoFormat == .webm {
             for track in try await asset.loadTracks(withMediaType: .audio) {
                 for format in try await track.load(.formatDescriptions) {

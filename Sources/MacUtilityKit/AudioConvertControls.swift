@@ -29,48 +29,54 @@ struct AudioConvertControls: View {
                 }
                 .labelsHidden()
             }
-            if options.sampleRate == nil && options.channels == .source {
+            if options.automaticallyAdjustsSettings {
+                Text("Automatic keeps the source settings when the output format supports them.")
+                    .font(.callout).foregroundStyle(.secondary)
+            } else if options.sampleRate == nil && options.channels == .source {
                 Text("Defaults to the source sample rate and channels.")
                     .font(.callout).foregroundStyle(.secondary)
             }
             DisclosureGroup("Advanced") {
                 VStack(alignment: .leading, spacing: 10) {
-                    SettingRow("Sample rate") {
-                        Picker("Sample rate", selection: Binding(get: { options.sampleRate }, set: { rate in
-                            options.sampleRate = rate
-                            adjustBitrate()
-                        })) {
-                            Text("Same as input").tag(Int?.none)
-                            ForEach(options.supportedRates, id: \.self) { rate in
-                                Text("\((Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...3)))) kHz")
-                                    .tag(Optional(rate))
-                            }
-                        }
-                        .labelsHidden()
-                    }
-                    SettingRow("Channels") {
-                        Picker("Channels", selection: $options.channels) {
-                            ForEach(AudioConvertOptions.Channels.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                        .labelsHidden()
-                    }
-                    if options.isLossy {
-                        SettingRow("Bitrate") {
-                            Picker("Audio bitrate", selection: $options.bitrate) {
-                                ForEach(options.supportedBitrates, id: \.self) { Text("\($0) kbps").tag($0) }
+                    Toggle("Automatic audio settings", isOn: $options.automaticallyAdjustsSettings)
+                    if !options.automaticallyAdjustsSettings {
+                        SettingRow("Sample rate") {
+                            Picker("Sample rate", selection: Binding(get: { options.sampleRate }, set: { rate in
+                                options.sampleRate = rate
+                                adjustBitrate()
+                            })) {
+                                Text("Same as input").tag(Int?.none)
+                                ForEach(options.supportedRates, id: \.self) { rate in
+                                    Text("\((Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...3)))) kHz")
+                                        .tag(Optional(rate))
+                                }
                             }
                             .labelsHidden()
                         }
-                        if options.format == .mp3 && options.sampleRate == nil {
-                            Text("Available bitrates depend on each input’s sample rate.")
-                                .font(.callout).foregroundStyle(.secondary)
+                        SettingRow("Channels") {
+                            Picker("Channels", selection: $options.channels) {
+                                ForEach(AudioConvertOptions.Channels.allCases) { Text($0.rawValue).tag($0) }
+                            }
+                            .labelsHidden()
                         }
-                    } else if options.format == .flac {
-                        SettingRow("Compression") {
-                            Stepper("Level \(options.losslessCompression)", value: $options.losslessCompression, in: 0...8)
+                        if options.isLossy {
+                            SettingRow("Bitrate") {
+                                Picker("Audio bitrate", selection: $options.bitrate) {
+                                    ForEach(options.supportedBitrates, id: \.self) { Text("\($0) kbps").tag($0) }
+                                }
+                                .labelsHidden()
+                            }
+                            if options.format == .mp3 && options.sampleRate == nil {
+                                Text("Available bitrates depend on each input’s sample rate.")
+                                    .font(.callout).foregroundStyle(.secondary)
+                            }
+                        } else if options.format == .flac {
+                            SettingRow("Compression") {
+                                Stepper("Level \(options.losslessCompression)", value: $options.losslessCompression, in: 0...8)
+                            }
+                        } else {
+                            Text("24-bit PCM").font(.callout).foregroundStyle(.secondary)
                         }
-                    } else {
-                        Text("24-bit PCM").font(.callout).foregroundStyle(.secondary)
                     }
                     if options.supportsMetadata {
                         Toggle("Preserve compatible metadata", isOn: $options.preservesMetadata)
@@ -108,7 +114,8 @@ struct AudioConvertControls: View {
                     guard let format = formats[input] else {
                         return (input, "Source format unavailable. The encoder will check this file.")
                     }
-                    return options.sourceIssue(format).map { (input, $0) }
+                    if let issue = options.sourceIssue(format) { return (input, issue) }
+                    return options.automaticAdjustment(for: format).map { (input, "Automatic · " + $0) }
                 }
                 ForEach(Array(issues.enumerated()), id: \.offset) { _, row in
                     Text("\(row.file.lastPathComponent) · \(row.issue)")

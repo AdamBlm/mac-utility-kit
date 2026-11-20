@@ -140,7 +140,8 @@ struct TextToSpeechView: View {
             WorkspaceSection("Speech", palette: palette) {
                 SettingRow("Voice") {
                     Picker("Voice", selection: $draft.voiceID) {
-                        Text("System default").tag(String?.none)
+                        Text("Automatic").tag(String?.none)
+                            .help("Match the text language when an installed voice is available.")
                         if let id = draft.voiceID, !voices.contains(where: { $0.id == id }) {
                             Text("Unavailable voice").tag(Optional(id))
                         }

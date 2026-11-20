@@ -1,3 +1,4 @@
+import AudioToolbox
 import AVFoundation
 import Foundation
 
@@ -17,6 +18,7 @@ public struct AudioConvertOptions: Equatable, Sendable {
         }
     }
 
+    public var automaticallyAdjustsSettings = false
     public var format = AudioOutputFormat.m4a
     public var channels = Channels.source
     public var sampleRate: Int?
@@ -26,6 +28,12 @@ public struct AudioConvertOptions: Equatable, Sendable {
     public var ffmpegExecutable: URL?
 
     public init() {}
+
+    public static var recommended: Self {
+        var options = Self()
+        options.automaticallyAdjustsSettings = true
+        return options
+    }
 
     public static let sampleRates = [32_000, 44_100, 48_000, 88_200, 96_000]
     public static let bitrates = [64, 96, 128, 160, 192, 224, 256, 320]
@@ -52,10 +60,10 @@ public struct AudioConvertOptions: Equatable, Sendable {
     }
 
     public var validationIssue: String? {
-        if let sampleRate, !supportedRates.contains(sampleRate) {
+        if !automaticallyAdjustsSettings, let sampleRate, !supportedRates.contains(sampleRate) {
             return "The format does not support this sample rate."
         }
-        if isLossy && !supportedBitrates.contains(bitrate) {
+        if !automaticallyAdjustsSettings && isLossy && !supportedBitrates.contains(bitrate) {
             return "Choose a bitrate supported by the selected sample rate."
         }
         if format == .flac && !(0...8).contains(losslessCompression) {
@@ -68,12 +76,93 @@ public struct AudioConvertOptions: Equatable, Sendable {
     }
 
     package func sourceIssue(_ source: AudioConvert.SourceFormat) -> String? {
-        let outputChannels = channels.count ?? source.channels
+        let settings = resolved(for: source)
+        let outputChannels = settings.channels.count ?? source.channels
         if !format.requiresFFmpeg, outputChannels > 2 {
             return "Choose Mono or Stereo for this multichannel input."
         }
-        return mp3Issue(rate: sampleRate ?? source.sampleRate, channels: outputChannels)
+        return settings.mp3Issue(rate: settings.sampleRate ?? source.sampleRate, channels: outputChannels)
     }
+
+    package func automaticAdjustment(for source: AudioConvert.SourceFormat) -> String? {
+        guard automaticallyAdjustsSettings else { return nil }
+        let settings = resolved(for: source)
+        var changes: [String] = []
+        if let rate = settings.sampleRate {
+            let original = (Double(source.sampleRate) / 1000).formatted()
+            let chosen = (Double(rate) / 1000).formatted()
+            changes.append("\(original) → \(chosen) kHz")
+        }
+        if settings.channels == .stereo {
+            changes.append("\(source.channels) channels → stereo")
+        }
+        if settings.bitrate != Self().bitrate {
+            changes.append("\(settings.bitrate) kbps target")
+        }
+        return changes.isEmpty ? nil : changes.joined(separator: " · ")
+    }
+
+    fileprivate func resolved(for source: AudioConvert.SourceFormat?) -> Self {
+        guard automaticallyAdjustsSettings else { return self }
+        var settings = self
+        settings.sampleRate = nil
+        settings.channels = .source
+        settings.bitrate = Self().bitrate
+        guard let source else { return settings }
+
+        if source.channels > 2, format != .flac {
+            settings.channels = .stereo
+        }
+        if format == .mp3, !supportedRates.contains(source.sampleRate) {
+            settings.sampleRate = supportedRates.last(where: { $0 <= source.sampleRate }) ?? supportedRates.first
+        }
+        if format == .m4a, !Self.aacRates.isEmpty, !Self.aacRates.contains(source.sampleRate) {
+            settings.sampleRate = Self.aacRates.last(where: { $0 <= source.sampleRate }) ?? Self.aacRates.first
+        }
+        if format == .mp3 {
+            let available = supportedBitrates(at: settings.sampleRate ?? source.sampleRate)
+            if let bitrate = available.last(where: { $0 <= settings.bitrate }) ?? available.first {
+                settings.bitrate = bitrate
+            }
+        }
+        if format == .m4a {
+            let rate = settings.sampleRate ?? source.sampleRate
+            let channels = settings.channels.count ?? source.channels
+            let available = Self.aacBitrates(rate: rate, channels: channels)
+            if let bitrate = available.last(where: { $0 <= settings.bitrate }) ?? available.first {
+                settings.bitrate = bitrate
+            }
+        }
+        return settings
+    }
+
+    private static func aacBitrates(rate: Int, channels: Int) -> [Int] {
+        guard let pcm = AVAudioFormat(standardFormatWithSampleRate: Double(rate), channels: AVAudioChannelCount(channels)),
+              let aac = AVAudioFormat(settings: [
+                AVFormatIDKey: kAudioFormatMPEG4AAC,
+                AVSampleRateKey: rate,
+                AVNumberOfChannelsKey: channels
+              ]),
+              let converter = AVAudioConverter(from: pcm, to: aac) else { return [] }
+        converter.bitRateStrategy = AVAudioBitRateStrategy_Constant
+        return (converter.applicableEncodeBitRates ?? []).map { $0.intValue / 1_000 }.sorted()
+    }
+
+    private static let aacRates: [Int] = {
+        var format = kAudioFormatMPEG4AAC
+        let formatSize = UInt32(MemoryLayout.size(ofValue: format))
+        let property = kAudioFormatProperty_AvailableEncodeSampleRates
+        var size: UInt32 = 0
+        guard AudioFormatGetPropertyInfo(property, formatSize, &format, &size) == noErr else { return [] }
+        var ranges = [AudioValueRange](repeating: .init(), count: Int(size) / MemoryLayout<AudioValueRange>.stride)
+        let status = ranges.withUnsafeMutableBufferPointer {
+            AudioFormatGetProperty(property, formatSize, &format, &size, $0.baseAddress)
+        }
+        guard status == noErr else { return [] }
+        return ranges.compactMap {
+            return $0.mMinimum == $0.mMaximum ? Int(exactly: $0.mMaximum) : nil
+        }.sorted()
+    }()
 
     func mp3Issue(rate: Int?, channels: Int?) -> String? {
         guard format == .mp3 else { return nil }
@@ -117,11 +206,10 @@ public enum AudioConvert {
             throw ToolError.invalid("Choose a local audio source and a new output file.")
         }
         let source = sourceFormat(input)
+        if let source, let issue = options.sourceIssue(source) { throw ToolError.invalid(issue) }
+        let options = options.resolved(for: source)
         let expectedRate = options.sampleRate ?? source?.sampleRate
         let expectedChannels = options.channels.count ?? source?.channels
-        if let source, let issue = options.sourceIssue(source) {
-            throw ToolError.invalid(issue)
-        }
         let staging = output.deletingLastPathComponent().appending(path: ".audio-convert-\(UUID().uuidString)", directoryHint: .isDirectory)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: staging) }
@@ -169,7 +257,8 @@ public enum AudioConvert {
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let khz = (Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...3)))
-        return "\(input.lastPathComponent) · \(options.format.title) · \(khz) kHz · \(channels == 1 ? "Mono" : channels == 2 ? "Stereo" : "\(channels) channels")"
+        let target = options.automaticallyAdjustsSettings && options.isLossy ? " · \(options.bitrate) kbps target" : ""
+        return "\(input.lastPathComponent) · \(options.format.title) · \(khz) kHz · \(channels == 1 ? "Mono" : channels == 2 ? "Stereo" : "\(channels) channels")" + target
     }
 
     private static func verify(_ codec: AudioFormatID, format: AudioOutputFormat) -> Bool {

@@ -60,7 +60,9 @@ extension ToolWorkspace {
             .labelsHidden()
         }
         if options.mode == .automatic {
-            Text("Chooses compression for the output format. PNG and TIFF stay lossless.")
+            Text(options.format == .original && options.preserveMetadata
+                 ? "Keeps the original image if compression saves no space."
+                 : "Chooses compression for the output format. PNG and TIFF stay lossless.")
                 .font(.callout).foregroundStyle(.secondary)
         }
         Toggle("Set a best-effort size goal", isOn: Binding(

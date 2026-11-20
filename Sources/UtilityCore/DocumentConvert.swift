@@ -43,6 +43,32 @@ public enum DocumentConvert {
     public struct Preview: Sendable {
         public let text: String
         public let truncated: Bool
+        fileprivate let source: SourceVersion
+        fileprivate let engine: Engine
+
+        package func matchesSource(_ input: URL) -> Bool { source.matches(input) }
+
+        package func matchesConversion(_ input: URL, options: DocumentConvertOptions) -> Bool {
+            matchesSource(input) && (try? DocumentConvert.requiredEngine(for: input, options: options)) == engine
+                && DocumentConvert.optionIssue(for: input, options: options) == nil
+        }
+    }
+
+    fileprivate struct SourceVersion: Equatable, Sendable {
+        let path: URL
+        let stamp: DuplicateFileStamp
+
+        init(_ input: URL) throws {
+            guard input.isFileURL else { throw ToolError.invalid("Choose a local document.") }
+            let path = input.resolvingSymlinksInPath().standardizedFileURL
+            guard let stamp = try DuplicateFileIO.inspect(path) else {
+                throw ToolError.invalid("Choose a readable document file.")
+            }
+            self.path = path
+            self.stamp = stamp
+        }
+
+        func matches(_ input: URL) -> Bool { (try? Self(input)) == self }
     }
 
     enum Source: Equatable {
@@ -74,9 +100,13 @@ public enum DocumentConvert {
         }
         if source == .format(.plain), options.target == .markdown || options.target == .html { return .native }
         if source == .legacyWord { return options.target == .markdown ? .both : .libreOffice }
-        if (options.prefersLibreOffice || options.pandocExecutable == nil && options.libreOfficeExecutable != nil),
-           source != .format(.markdown), options.target != .markdown {
-            return .libreOffice
+        if source != .format(.markdown), options.target != .markdown {
+            let officeAvailable = options.libreOfficeExecutable.map(LibreOfficeHeadless.hasExecutable) == true
+            let pandocAvailable = options.pandocExecutable.map(ExternalTool.isExecutable) == true
+            if officeAvailable && (options.prefersLibreOffice || !pandocAvailable) {
+                return .libreOffice
+            }
+            if !pandocAvailable && options.prefersLibreOffice { return .libreOffice }
         }
         return .pandoc
     }
@@ -177,12 +207,16 @@ public enum DocumentConvert {
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local document file.")
         }
+        let sourceVersion = try SourceVersion(input)
         let stage = try staging(in: output.deletingLastPathComponent())
         defer { try? FileManager.default.removeItem(at: stage) }
         let suffix = options.target.fileExtension
         let candidate = stage.appending(path: "Converted." + suffix)
         let engine = try await convert(input, to: candidate, options: options, in: stage, progress: progress)
         try Task.checkCancellation()
+        guard sourceVersion.matches(input) else {
+            throw ToolError.invalid("The source changed during conversion. Try again.")
+        }
         try FileManager.default.moveItem(at: candidate, to: output)
         await progress(1)
         let loss = options.target == .plain ? " · Formatting removed" : ""
@@ -190,6 +224,7 @@ public enum DocumentConvert {
     }
 
     public static func preview(_ input: URL, options: DocumentConvertOptions) async throws -> Preview {
+        let sourceVersion = try SourceVersion(input)
         let stage = try staging(in: FileManager.default.temporaryDirectory)
         defer { try? FileManager.default.removeItem(at: stage) }
         let candidate = stage.appending(path: "Converted." + options.target.fileExtension)
@@ -215,8 +250,11 @@ public enum DocumentConvert {
             }
         }
         try Task.checkCancellation()
+        guard sourceVersion.matches(input) else {
+            throw ToolError.invalid("The source changed during preview. Preview the current file again.")
+        }
         let excerpt = text.prefix(20_000)
-        return Preview(text: String(excerpt), truncated: excerpt.endIndex != text.endIndex)
+        return Preview(text: String(excerpt), truncated: excerpt.endIndex != text.endIndex, source: sourceVersion, engine: used)
     }
 
     private static func convert(

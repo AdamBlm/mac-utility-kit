@@ -59,14 +59,25 @@ public enum ImageCompression {
         guard !fileManager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("The output file already exists.")
         }
-        let format = try selectedFormat(for: input, options: options)
+        let original: DuplicateFile?
+        if options.mode == .automatic && options.format == .original && options.preserveMetadata {
+            let resolved = input.resolvingSymlinksInPath().standardizedFileURL
+            guard let stamp = try DuplicateFileIO.inspect(resolved) else {
+                throw ToolError.invalid("Choose a local image file.")
+            }
+            original = DuplicateFile(url: resolved, stamp: stamp)
+        } else {
+            original = nil
+        }
+        let sourceInput = original?.url ?? input
+        let format = try selectedFormat(for: sourceInput, options: options)
         let target = try targetBytes(options.targetKilobytes)
         let quality = options.mode == .automatic ? ImageCompressionOptions().quality : options.quality
         guard quality.isFinite, (0...1).contains(quality) else {
             throw ToolError.invalid("Choose a quality between 0 and 100%.")
         }
 
-        guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
+        guard let source = CGImageSourceCreateWithURL(sourceInput as CFURL, nil),
               CGImageSourceGetCount(source) > 0 else {
             throw ToolError.invalid("Could not open this image.")
         }
@@ -78,14 +89,14 @@ public enum ImageCompression {
         if options.mode == .automatic && format == .webp && target == nil {
             let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any]
             let depth = properties?[kCGImagePropertyDepth] as? Int ?? 8
-            usesLosslessEncoding = depth <= 8 ? try ImageConversion.hasTransparency(input) : false
+            usesLosslessEncoding = depth <= 8 ? try ImageConversion.hasTransparency(sourceInput) : false
         } else {
             usesLosslessEncoding = inherentlyLossless || options.mode == .lossless
         }
         if usesLosslessEncoding, format != .webp, !inherentlyLossless {
             throw ToolError.invalid("Lossless compression is available for PNG, TIFF and WebP. Choose a lossless format or switch to Lossy.")
         }
-        if format == .jpg, try ImageConversion.hasTransparency(input) {
+        if format == .jpg, try ImageConversion.hasTransparency(sourceInput) {
             throw ToolError.invalid("JPEG cannot preserve transparency. Choose another output format, or use Convert Images to flatten it.")
         }
         if usesLosslessEncoding, format == .webp,
@@ -107,23 +118,53 @@ public enum ImageCompression {
         if encoding.losslessWebP { encoding.quality = 1 }
         let minimumQuality = format == .webp ? Double(ImageMagickWebPEncoding.minimumLossyQuality) / 100 : 0
 
-        let sourceSize = try byteCount(input)
+        let sourceSize = try byteCount(sourceInput)
         let staging = output.deletingLastPathComponent().appendingPathComponent(UUID().uuidString, isDirectory: true)
         try fileManager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? fileManager.removeItem(at: staging) }
 
-        var best = try await encode(input, in: staging, options: encoding)
+        var best = try await encode(sourceInput, in: staging, options: encoding)
         if let target, best.bytes > target, !usesLosslessEncoding, best.quality > minimumQuality {
-            best = try await findCandidate(input, in: staging, options: encoding, initial: best, target: target,
+            best = try await findCandidate(sourceInput, in: staging, options: encoding, initial: best, target: target,
                                            minimumQuality: minimumQuality)
         }
         try Task.checkCancellation()
+        if let original {
+            guard input.resolvingSymlinksInPath().standardizedFileURL == original.url else {
+                throw ToolError.invalid("The source image changed during compression. Try again.")
+            }
+            try DuplicateFileIO.check(original)
+            if best.bytes >= sourceSize {
+                let unchanged = staging.appending(path: "Original.\(format.rawValue)")
+                try copyOriginal(original, to: unchanged)
+                try Task.checkCancellation()
+                guard input.resolvingSymlinksInPath().standardizedFileURL == original.url else {
+                    throw ToolError.invalid("The source image changed during compression. Try again.")
+                }
+                try DuplicateFileIO.check(original)
+                try fileManager.moveItem(at: unchanged, to: output)
+                let bytes = ByteCountFormatter.string(fromByteCount: Int64(sourceSize), countStyle: .file)
+                let goal = target.map { sourceSize <= $0 ? " · Size goal reached" : " · Size goal not reached" } ?? ""
+                return "\(input.lastPathComponent) · Original kept at \(bytes) · No savings\(goal)"
+            }
+        }
         if usesLosslessEncoding {
             try validatePrecision(of: best.url, against: source)
         }
         try fileManager.moveItem(at: best.url, to: output)
         return summary(input, sourceSize: sourceSize, outputSize: best.bytes, target: target,
                        format: format, lossless: usesLosslessEncoding, quality: best.quality)
+    }
+
+    private static func copyOriginal(_ original: DuplicateFile, to destination: URL) throws {
+        guard FileManager.default.createFile(atPath: destination.path, contents: nil,
+                                             attributes: [.posixPermissions: 0o600]) else {
+            throw ToolError.invalid("Could not create the original image copy.")
+        }
+        let writer = try FileHandle(forWritingTo: destination)
+        defer { try? writer.close() }
+        try DuplicateFileIO.forEachVerifiedChunk(original) { try writer.write(contentsOf: $0) }
+        try writer.synchronize()
     }
 
     private struct Candidate {

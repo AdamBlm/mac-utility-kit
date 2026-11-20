@@ -7,7 +7,11 @@ struct ToolDraft {
     var inputs: [URL] = []
     var showsAdvanced = false
     var pixels = 1600
-    var options = ToolOptions()
+    var options: ToolOptions = {
+        var options = ToolOptions()
+        options.audioConvert = .recommended
+        return options
+    }()
     var ranges: [Int: String] = [:]
     var passwords: [Int: String] = [:]
     var mergeInspections: [Int: PDFMergeInspection] = [:]
