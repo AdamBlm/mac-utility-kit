@@ -116,7 +116,7 @@ extension Tool {
         case .removePassword: "lock.open"
         case .extractText: "text.viewfinder"
         case .wordCounter: "number"
-        case .transcribe: "waveform.bubble"
+        case .transcribe: "waveform.badge.mic"
         case .captureText: "viewfinder"
         case .textToSpeech: "speaker.wave.2"
         case .recordAudio: "mic"
