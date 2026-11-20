@@ -29,4 +29,17 @@ package enum ArchiveEntryOrder: String, CaseIterable, Identifiable, Sendable {
             return comparison == .orderedSame ? first.id.ordinal < second.id.ordinal : comparison == .orderedAscending
         }
     }
+
+    package static func extractionSelection(for matches: Set<ArchiveEntry.ID>, in entries: [ArchiveEntry]) -> Set<ArchiveEntry.ID> {
+        // Selecting an explicit directory would also extract all of its descendants.
+        var ancestorsOfHiddenEntries: Set<String> = []
+        for entry in entries where !matches.contains(entry.id) {
+            var path = entry.path[...]
+            while let separator = path.lastIndex(of: "/") {
+                path = path[..<separator]
+                ancestorsOfHiddenEntries.insert(String(path))
+            }
+        }
+        return matches.filter { !$0.directory || !ancestorsOfHiddenEntries.contains($0.path) }
+    }
 }

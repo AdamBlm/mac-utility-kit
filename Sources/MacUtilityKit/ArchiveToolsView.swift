@@ -29,7 +29,7 @@ struct ArchiveToolsView: View {
     @State private var filter = ""
     @State private var entryOrder = ArchiveEntryOrder.archive
     @State private var listingRevision = UUID()
-    @State private var browsedRows: (request: EntryRequest, rows: [ArchiveEntry])?
+    @State private var browsedRows: BrowsedEntries?
     @State private var task: Task<Void, Never>?
     @State private var operation = ""
     @State private var error: String?
@@ -39,6 +39,23 @@ struct ArchiveToolsView: View {
         let revision: UUID
         let order: ArchiveEntryOrder
         let filter: String
+    }
+
+    private struct BrowsedEntries: Sendable {
+        let request: EntryRequest
+        let rows: [ArchiveEntry]
+        let ids: Set<ArchiveEntry.ID>
+    }
+
+    private var request: EntryRequest {
+        EntryRequest(revision: listingRevision, order: entryOrder, filter: filter.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
+    private var canExtractSelection: Bool {
+        guard !selection.isEmpty else { return false }
+        if request.filter.isEmpty { return true }
+        guard let browsedRows, browsedRows.request == request else { return false }
+        return selection.isSubset(of: browsedRows.ids)
     }
 
     var body: some View {
@@ -122,19 +139,30 @@ struct ArchiveToolsView: View {
     }
 
     private func contents(_ entries: [ArchiveEntry]) -> some View {
-        let request = EntryRequest(revision: listingRevision, order: entryOrder,
-                                   filter: filter.trimmingCharacters(in: .whitespacesAndNewlines))
+        let request = self.request
         let isUnfiltered = request.order == .archive && request.filter.isEmpty
-        let visible = isUnfiltered ? entries : (browsedRows?.request == request ? browsedRows?.rows : nil)
+        let current = browsedRows?.request == request ? browsedRows : nil
+        let visible = isUnfiltered ? entries : current?.rows
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text("\(selection.count.formatted()) of \(entries.count.formatted()) selected")
                     .foregroundStyle(.secondary)
                 Spacer()
-                Button("Select All") { selection = Set(entries.map(\.id)) }.disabled(entries.isEmpty)
+                if request.filter.isEmpty {
+                    Button("Select All") { selection = Set(entries.map(\.id)) }.disabled(entries.isEmpty)
+                } else {
+                    Button("Select Matches") {
+                        if let current { selection = ArchiveEntryOrder.extractionSelection(for: current.ids, in: entries) }
+                    }
+                    .disabled(current?.ids.isEmpty != false)
+                }
                 Button("Clear Selection") { selection.removeAll() }.disabled(selection.isEmpty)
             }
             .font(.callout)
+            if !request.filter.isEmpty, current != nil, !selection.isEmpty, !canExtractSelection {
+                Text("Some selected entries are hidden. Select Matches or clear the search before extracting.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
             if !entries.isEmpty {
                 HStack {
                     TextField("Find an entry", text: $filter).textFieldStyle(.roundedBorder)
@@ -173,8 +201,8 @@ struct ArchiveToolsView: View {
             }
         }
         .task(id: request) {
-            guard !isUnfiltered, let rows = await Self.rows(entries, for: request), !Task.isCancelled else { return }
-            browsedRows = (request, rows)
+            guard !isUnfiltered, let result = await Self.rows(entries, for: request), !Task.isCancelled else { return }
+            browsedRows = result
         }
         .disabled(draft.busy)
     }
@@ -195,7 +223,7 @@ struct ArchiveToolsView: View {
             }
             Button("Extract Selected", systemImage: "arrow.down.to.line", action: extract)
                 .buttonStyle(.borderedProminent)
-                .disabled(draft.destination == nil || selection.isEmpty)
+                .disabled(draft.destination == nil || !canExtractSelection)
         }
         .disabled(draft.busy)
     }
@@ -250,8 +278,9 @@ struct ArchiveToolsView: View {
     }
 
     @concurrent
-    private static func rows(_ entries: [ArchiveEntry], for request: EntryRequest) async -> [ArchiveEntry]? {
-        try? request.order.rows(entries, matching: request.filter)
+    private static func rows(_ entries: [ArchiveEntry], for request: EntryRequest) async -> BrowsedEntries? {
+        guard let rows = try? request.order.rows(entries, matching: request.filter) else { return nil }
+        return BrowsedEntries(request: request, rows: rows, ids: Set(rows.map(\.id)))
     }
 
     private func select(_ entry: ArchiveEntry, on: Bool, entries: [ArchiveEntry]) {
@@ -299,7 +328,7 @@ struct ArchiveToolsView: View {
     }
 
     private func extract() {
-        guard let archive = draft.archive, let listing, let destination = draft.destination else { return }
+        guard canExtractSelection, let archive = draft.archive, let listing, let destination = draft.destination else { return }
         let chosen = selection
         let conflicts = draft.conflicts
         let secret = password.isEmpty ? nil : password

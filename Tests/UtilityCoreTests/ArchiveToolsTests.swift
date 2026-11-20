@@ -27,6 +27,16 @@ struct ArchiveToolsTests {
         _ = try await ArchiveTools.extract(archive, to: output, selected: [picked.id], conflicts: .skip)
         let files = try FileManager.default.contentsOfDirectory(atPath: output.appending(path: "Archive files").path)
         #expect(files == ["Clip 10.dat"])
+
+        let filteredOutput = stage.appending(path: "Matches")
+        try filteredOutput.ensureDirectory()
+        let directory = try #require(entries.first { $0.isDirectory })
+        let matches = Set(clips.map(\.id))
+        let scoped = ArchiveEntryOrder.extractionSelection(for: matches.union([directory.id]), in: entries)
+        #expect(scoped == matches)
+        _ = try await ArchiveTools.extract(archive, to: filteredOutput, selected: scoped, conflicts: .skip)
+        let filteredFiles = try FileManager.default.contentsOfDirectory(atPath: filteredOutput.appending(path: "Archive files").path)
+        #expect(Set(filteredFiles) == ["Clip 10.dat", "Clip 2.dat"])
     }
 
     @Test func zipRoundTripSupportsSelectionAndKeepsConflicts() async throws {
