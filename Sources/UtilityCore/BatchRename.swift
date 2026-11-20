@@ -304,11 +304,16 @@ public enum BatchRename {
         init(_ parent: URL) throws {
             caseSensitive = try parent.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey]).volumeSupportsCaseSensitiveNames == true
             let contents = try FileManager.default.contentsOfDirectory(atPath: parent.path)
-            existing = Set(contents.map { [caseSensitive] in caseSensitive ? $0 : $0.lowercased() })
+            existing = Set(contents.map { [caseSensitive] in Self.key($0, caseSensitive: caseSensitive) })
         }
 
         func key(_ url: URL) -> String {
-            caseSensitive ? url.lastPathComponent : url.lastPathComponent.lowercased()
+            Self.key(url.lastPathComponent, caseSensitive: caseSensitive)
+        }
+
+        private static func key(_ name: String, caseSensitive: Bool) -> String {
+            if caseSensitive { return name }
+            return name.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
         }
 
         mutating func insert(_ move: Move) throws {

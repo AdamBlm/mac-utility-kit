@@ -202,6 +202,42 @@ import UtilityCore
         }
     }
 
+    @Test(arguments: [["Σ", "ς"], ["straße", "STRASSE"]])
+    func previewsUnicodeCaseFoldingCollisionsLikeTheVolume(_ equivalents: [String]) throws {
+        try fixture { directory in
+            let first = try file("First.txt", in: directory)
+            let second = try file("Second.txt", in: directory)
+            let occupied = try file(equivalents[0] + ".txt", in: directory)
+            let alternate = directory.appending(path: equivalents[1] + ".txt")
+            let aliases = FileManager.default.fileExists(atPath: alternate.path)
+            let isCaseSensitive = try directory.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+                .volumeSupportsCaseSensitiveNames == true
+            // Different case-insensitive filesystems can use different Unicode tables.
+            guard aliases || isCaseSensitive else { return }
+
+            var rule = BatchRenameRule()
+            rule.search = "First"
+            rule.replacement = equivalents[1]
+            var options = BatchRenameOptions()
+            options.rules = [rule]
+            if aliases {
+                #expect(throws: BatchRenameError.self) { try BatchRename.plan(files: [first], options: options) }
+            } else {
+                #expect(try BatchRename.plan(files: [first], options: options).changes.first?.destination == alternate)
+            }
+
+            try FileManager.default.removeItem(at: occupied)
+            rule.search = "Second"
+            rule.replacement = equivalents[0]
+            options.rules.append(rule)
+            if aliases {
+                #expect(throws: BatchRenameError.self) { try BatchRename.plan(files: [first, second], options: options) }
+            } else {
+                #expect(try BatchRename.plan(files: [first, second], options: options).changes.count == 2)
+            }
+        }
+    }
+
     @Test func newCollisionAfterPreviewDoesNotOverwriteAndUndoChecksOriginalPath() throws {
         try fixture { directory in
             let a = try file("one.txt", in: directory)
