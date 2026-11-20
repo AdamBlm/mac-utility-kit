@@ -36,6 +36,17 @@ struct StorageExplorerTests {
         #expect(result.root.allocatedBytes == real.allocatedBytes + hardlink.allocatedBytes + hole.allocatedBytes)
         #expect(result.root.estimatedReclaimableBytes == hole.allocatedBytes)
         #expect(!result.root.canTrash)
+
+        let linkedBytes = real.allocatedBytes + hardlink.allocatedBytes
+        #expect(linkedBytes > 0)
+        #expect(StorageExplorer.trashPreview([folderItem.id], in: result).estimatedBytes == 0)
+        #expect(StorageExplorer.trashPreview([hardlink.id], in: result).estimatedBytes == 0)
+        #expect(StorageExplorer.trashPreview([real.id, hardlink.id], in: result).estimatedBytes == linkedBytes)
+        #expect(StorageExplorer.trashPreview([folderItem.id, real.id, hardlink.id], in: result).estimatedBytes == linkedBytes)
+
+        let outside = try await StorageExplorer.scan(folder)
+        let observedLink = try #require(outside.items.first { $0.isHardLink })
+        #expect(StorageExplorer.trashPreview([observedLink.id], in: outside).estimatedBytes == 0)
     }
 
     @Test func trashRechecksFilesAndFolderDescendantsAndKeepsMixedOutcomes() async throws {

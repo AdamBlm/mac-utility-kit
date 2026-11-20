@@ -9,7 +9,11 @@ struct StorageTreeScan {
     private var issues: [StorageScanIssue] = []
     private var omittedIssues = 0
     private var limitReached = false
-    private var hardLinks: [DuplicateFileIdentity: Int] = [:]
+    private struct HardLinks {
+        var owner: Int
+        var ids: [Int]
+    }
+    private var hardLinks: [DuplicateFileIdentity: HardLinks] = [:]
     private static let itemLimit = 500_000
 
     static func run(
@@ -110,9 +114,14 @@ struct StorageTreeScan {
         if let parent { items[parent].children.append(item.id) }
         if code == FTS_D { branches.append(item.id) }
         if kind == .file, !item.isPartial, let stamp = item.stamp, stamp.links > 1 {
-            let previous = hardLinks[stamp.identity]
-            if previous.map({ items[$0].url.path.utf8.lexicographicallyPrecedes(item.url.path.utf8) }) != true {
-                hardLinks[stamp.identity] = item.id
+            let previous = hardLinks[stamp.identity]?.owner
+            if let previous {
+                hardLinks[stamp.identity]?.ids.append(item.id)
+                if item.url.path.utf8.lexicographicallyPrecedes(items[previous].url.path.utf8) {
+                    hardLinks[stamp.identity]?.owner = item.id
+                }
+            } else {
+                hardLinks[stamp.identity] = HardLinks(owner: item.id, ids: [item.id])
             }
         }
         items.append(item)
@@ -135,7 +144,7 @@ struct StorageTreeScan {
             var item = items[index]
             ends[index] = item.children.last.map { ends[$0] } ?? index + 1
             if item.kind == .file, !item.isPartial, let stamp = item.stamp {
-                let counted = stamp.links <= 1 || hardLinks[stamp.identity] == index
+                let counted = stamp.links <= 1 || hardLinks[stamp.identity]?.owner == index
                 item.allocatedBytes = counted ? stamp.allocatedBytes : 0
                 item.apparentBytes = counted ? max(0, stamp.bytes) : 0
                 item.estimatedReclaimableBytes = stamp.links == 1 ? stamp.allocatedBytes : 0
@@ -152,7 +161,16 @@ struct StorageTreeScan {
             if unfinishedBranches.contains(index) { item.isPartial = true }
             items[index] = item
         }
-        return StorageScanReport(items: items, issues: issues, omittedIssueCount: omittedIssues, subtreeEnds: ends)
+        var completeGroups: [StorageScanReport.CompleteHardLinkGroup] = []
+        for group in hardLinks.values {
+            try Task.checkCancellation()
+            guard let stamp = items[group.owner].stamp, stamp.links == UInt64(group.ids.count),
+                  group.ids.allSatisfy({ items[$0].stamp == stamp }) else { continue }
+            completeGroups.append(.init(ids: group.ids, bytes: stamp.allocatedBytes))
+        }
+        completeGroups.sort { $0.ids[0] < $1.ids[0] }
+        return StorageScanReport(items: items, issues: issues, omittedIssueCount: omittedIssues, subtreeEnds: ends,
+                                 completeHardLinkGroups: completeGroups)
     }
 
     private mutating func interrupt(reason: String) {

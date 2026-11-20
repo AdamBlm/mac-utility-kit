@@ -31,6 +31,11 @@ public struct StorageScanItem: Identifiable, Sendable {
 }
 
 public struct StorageScanReport: Sendable {
+    struct CompleteHardLinkGroup: Sendable {
+        let ids: [Int]
+        let bytes: Int64
+    }
+
     public let items: [StorageScanItem]
     public let issues: [StorageScanIssue]
     public let omittedIssueCount: Int
@@ -44,6 +49,8 @@ public struct StorageScanReport: Sendable {
     }
 
     let subtreeEnds: [Int]
+    // Groups and members are ordered by their first position in the scan tree.
+    let completeHardLinkGroups: [CompleteHardLinkGroup]
 }
 
 public enum StorageExplorer {

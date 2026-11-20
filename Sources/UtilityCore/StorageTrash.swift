@@ -14,8 +14,38 @@ public struct StorageTrashResult: Sendable {
 extension StorageExplorer {
     public static func trashPreview(_ ids: Set<Int>, in report: StorageScanReport) -> StorageTrashPreview {
         let items = selectedItems(ids, in: report)
-        let bytes = items.reduce(Int64(0)) { sum($0, $1.estimatedReclaimableBytes) }
+        var bytes = items.reduce(Int64(0)) { sum($0, $1.estimatedReclaimableBytes) }
+        let selectedRanges = items.map { $0.id..<report.subtreeEnds[$0.id] }
+        let groups = report.completeHardLinkGroups
+        if !groups.isEmpty {
+            for range in selectedRanges {
+                var index = lowerBound(count: groups.count) { groups[$0].ids[0] < range.lowerBound }
+                while index < groups.count, groups[index].ids[0] < range.upperBound {
+                    let group = groups[index]
+                    if group.ids.dropFirst().allSatisfy({ isSelected($0, in: selectedRanges) }) {
+                        bytes = sum(bytes, group.bytes)
+                    }
+                    index += 1
+                }
+            }
+        }
         return StorageTrashPreview(items: items, estimatedBytes: bytes)
+    }
+
+    private static func isSelected(_ id: Int, in ranges: [Range<Int>]) -> Bool {
+        let index = lowerBound(count: ranges.count) { ranges[$0].upperBound <= id }
+        return index < ranges.count && ranges[index].contains(id)
+    }
+
+    private static func lowerBound(count: Int, precedesTarget: (Int) -> Bool) -> Int {
+        var lower = 0
+        var upper = count
+        while lower < upper {
+            let middle = lower + (upper - lower) / 2
+            if precedesTarget(middle) { lower = middle + 1 }
+            else { upper = middle }
+        }
+        return lower
     }
 
     public static func trash(_ ids: Set<Int>, in report: StorageScanReport) async -> StorageTrashResult {
