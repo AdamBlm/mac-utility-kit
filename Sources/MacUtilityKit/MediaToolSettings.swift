@@ -125,10 +125,11 @@ extension ToolWorkspace {
         }
     }
 
-    func extractionControls() -> some View {
+    func extractionControls(review: Binding<AudioExtractionReview>) -> some View {
         AudioExtractionControls(
             inputs: draft.inputs,
             options: $draft.options.extraction,
+            review: review,
             showsAdvanced: $draft.showsAdvanced,
             previewDisabled: session.isRunning,
             preview: { session.startAudioPreview(draft, input: $0) }
@@ -136,16 +137,34 @@ extension ToolWorkspace {
     }
 }
 
+struct AudioExtractionReview {
+    var inputs: [URL] = []
+    var tracks: [URL: [AudioExtractionTrack]] = [:]
+    var errors: [URL: String] = [:]
+
+    func permitsExport(options: AudioExtractionOptions) -> Bool {
+        inputs.allSatisfy { tracks[$0] != nil || errors[$0] != nil }
+            && tracks.values.contains { (try? AudioExtraction.selectedTrack(in: $0, options: options)) != nil }
+    }
+}
+
 private struct AudioExtractionControls: View {
     let inputs: [URL]
     @Binding var options: AudioExtractionOptions
+    @Binding var review: AudioExtractionReview
     @Binding var showsAdvanced: Bool
     let previewDisabled: Bool
     let preview: (URL) -> Void
-    @State private var tracksBySource: [URL: [AudioExtractionTrack]] = [:]
     @State private var languages: [String] = []
-    @State private var errorsBySource: [URL: String] = [:]
     @State private var chosenPreview: URL?
+    @State private var revision = 0
+
+    private struct Inspection: Equatable {
+        let inputs: [URL]
+        let revision: Int
+    }
+
+    private var tracksBySource: [URL: [AudioExtractionTrack]] { review.inputs == inputs ? review.tracks : [:] }
 
     private var previewInput: URL? {
         if let chosenPreview, inputs.contains(chosenPreview) { return chosenPreview }
@@ -190,9 +209,6 @@ private struct AudioExtractionControls: View {
                     Text("The track number applies to every file.")
                         .font(.caption).foregroundStyle(.secondary)
                 }
-            }
-            if let previewInput, let trackError = errorsBySource[previewInput] {
-                Text(trackError).font(.caption).foregroundStyle(.secondary)
             }
             SettingRow("Output format") {
                 Picker("Output format", selection: Binding(
@@ -245,31 +261,59 @@ private struct AudioExtractionControls: View {
                     }
                 }
                 Button("Preview track", systemImage: "play.rectangle") { preview(previewInput) }
-                    .disabled(previewDisabled)
+                    .disabled(previewDisabled || (try? AudioExtraction.selectedTrack(in: tracks, options: options, forPreview: true)) == nil)
+                Button("Recheck Tracks", systemImage: "arrow.clockwise") {
+                    review = AudioExtractionReview()
+                    languages = []
+                    revision += 1
+                }
+                if review.inputs != inputs || !inputs.allSatisfy({ review.tracks[$0] != nil || review.errors[$0] != nil }) {
+                    ProgressView("Reading audio tracks…").controlSize(.small)
+                } else if options.validationIssue == nil {
+                    ForEach(Array(inputs.enumerated()), id: \.offset) { index, input in
+                        if let issue = trackIssue(input) {
+                            let prefix = inputs.count > 1 ? "\(index + 1). \(input.lastPathComponent) · " : ""
+                            Text(prefix + issue).font(.callout).foregroundStyle(.secondary)
+                        }
+                    }
+                    if inputs.contains(where: { trackIssue($0) != nil }), review.permitsExport(options: options) {
+                        Text("Files with unavailable tracks will be skipped.")
+                            .font(.callout).foregroundStyle(.secondary)
+                    }
+                }
             }
         }
-        .task(id: inputs) {
-            tracksBySource = [:]
+        .task(id: Inspection(inputs: inputs, revision: revision)) { [request = Inspection(inputs: inputs, revision: revision)] in
+            guard !Task.isCancelled, revision == request.revision else { return }
+            review = AudioExtractionReview(inputs: request.inputs)
             languages = []
-            errorsBySource = [:]
             var discoveredLanguages = Set<String>()
-            for input in inputs {
+            for input in request.inputs {
                 do {
                     let discovered = try await AudioExtraction.trackList(input)
-                    guard !Task.isCancelled else { return }
-                    tracksBySource[input] = discovered
-                    if discovered.isEmpty {
-                        errorsBySource[input] = "The preview source has no audio tracks."
-                    }
+                    guard !Task.isCancelled, revision == request.revision else { return }
+                    review.tracks[input] = discovered
                     discoveredLanguages.formUnion(discovered.compactMap(\.languageCode))
                 } catch {
-                    guard !Task.isCancelled else { return }
-                    errorsBySource[input] = error.localizedDescription
+                    guard !Task.isCancelled, revision == request.revision else { return }
+                    review.errors[input] = error.localizedDescription
                 }
             }
             languages = discoveredLanguages.sorted {
                 languageTitle($0).localizedStandardCompare(languageTitle($1)) == .orderedAscending
             }
+        }
+        .onDisappear { review = AudioExtractionReview() }
+    }
+
+    private func trackIssue(_ input: URL) -> String? {
+        if let error = review.errors[input] { return error }
+        guard let tracks = tracksBySource[input] else { return nil }
+        do {
+            _ = try AudioExtraction.selectedTrack(in: tracks, options: options)
+            return nil
+        } catch {
+            return error.localizedDescription
         }
     }
 }

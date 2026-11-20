@@ -181,6 +181,36 @@ private func makeTaggedAudioTracks(
     }
 }
 
+@Test func reviewsSelectedPassthroughTrackBeforeExportingAMixedBatch() async throws {
+    let folder = try audioTestFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let pcm = folder.appending(path: "PCM.mov")
+    try await makeTaggedAudioTracks([(0.8, "fr")], in: folder, at: pcm)
+    let aac = folder.appending(path: "AAC.m4a")
+    _ = try await AudioExtraction.extract(pcm, to: aac, options: .init()) { _ in }
+    var options = ToolOptions()
+    options.extraction.passthrough = true
+    options.extraction.trackLanguage = "fr"
+
+    let pcmTracks = try await AudioExtraction.trackList(pcm)
+    #expect(try AudioExtraction.selectedTrack(in: pcmTracks, options: options.extraction, forPreview: true).codec == "PCM")
+    #expect(throws: ToolError.self) {
+        try AudioExtraction.selectedTrack(in: pcmTracks, options: options.extraction)
+    }
+    let aacTracks = try await AudioExtraction.trackList(aac)
+    #expect(try AudioExtraction.selectedTrack(in: aacTracks, options: options.extraction).codec == "AAC")
+
+    let report = try await ToolRunner.run(.extractAudio, inputs: [pcm, aac], destination: folder,
+                                          imageSize: 0, options: options) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.contains("PCM cannot be copied") == true)
+    #expect(report.outputs.count == 1)
+    let output = try #require(report.outputs.first)
+    let asset = AVURLAsset(url: output)
+    #expect(abs(try await asset.load(.duration).seconds - 0.8) < 0.05)
+    #expect(try await AudioExtraction.trackList(output).first?.languageCode == "fr")
+}
+
 @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
 func extractsAudioUsingFFmpegWhenConfigured() async throws {
     let path = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])

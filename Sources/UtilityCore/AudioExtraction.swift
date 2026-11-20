@@ -52,6 +52,7 @@ public struct AudioExtractionTrack: Identifiable, Sendable {
     public let language: String?
     public let codec: String
     public let channels: Int?
+    let supportsM4APassthrough: Bool
 
     package var languageCode: String? { AudioExtraction.normalizedLanguage(language) }
 
@@ -99,45 +100,23 @@ public enum AudioExtraction {
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue)
         ])
         let tracks = try await asset.loadTracks(withMediaType: .audio)
-        guard !tracks.isEmpty else { throw ToolError.invalid("This file has no audio track.") }
-        let selected: Int
-        if let language = options.trackLanguage {
-            guard let code = normalizedLanguage(language) else {
-                throw ToolError.invalid("Choose a valid audio language.")
-            }
-            var matching: [Int] = []
-            for (index, track) in tracks.enumerated() {
+        var languages: [String?]?
+        if options.trackLanguage != nil {
+            var codes: [String?] = []
+            for track in tracks {
                 try Task.checkCancellation()
-                let tag = try await languageTag(track)
-                if normalizedLanguage(tag) == code { matching.append(index) }
+                codes.append(try await languageTag(track))
             }
-            let title = Locale.current.localizedString(forLanguageCode: code) ?? code
-            guard let index = matching.first else {
-                throw ToolError.invalid("No audio track is tagged \(title) in this file.")
-            }
-            guard matching.count == 1 else {
-                throw ToolError.invalid("Multiple audio tracks are tagged \(title). Select a track by number.")
-            }
-            selected = index
-        } else {
-            guard tracks.indices.contains(options.trackIndex) else {
-                throw ToolError.invalid("The selected audio track number is unavailable in this file.")
-            }
-            selected = options.trackIndex
+            languages = codes
         }
+        let selected = try selectedIndex(trackCount: tracks.count, languages: languages, options: options)
         let track = tracks[selected]
         let description = try await describe(track, index: selected)
 
         guard !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("The audio output file already exists.")
         }
-        if options.passthrough {
-            let subtype = try await track.load(.formatDescriptions).first.map(CMFormatDescriptionGetMediaSubType)
-            guard options.format.supportsPassthrough,
-                  subtype == kAudioFormatMPEG4AAC || subtype == kAudioFormatAppleLossless else {
-                throw ToolError.invalid("\(description.codec) cannot be copied to \(options.format.title). Turn off passthrough to convert the track.")
-            }
-        }
+        try validatePassthrough(description, options: options)
 
         do {
             if options.format.requiresFFmpeg {
@@ -159,6 +138,47 @@ public enum AudioExtraction {
         } catch {
             try? FileManager.default.removeItem(at: output)
             throw error
+        }
+    }
+
+    package static func selectedTrack(
+        in tracks: [AudioExtractionTrack], options: AudioExtractionOptions, forPreview: Bool = false
+    ) throws -> AudioExtractionTrack {
+        let index = try selectedIndex(trackCount: tracks.count, languages: tracks.map(\.language), options: options)
+        let track = tracks[index]
+        if !forPreview {
+            if let issue = options.validationIssue { throw ToolError.invalid(issue) }
+            try validatePassthrough(track, options: options)
+        }
+        return track
+    }
+
+    private static func selectedIndex(trackCount: Int, languages: [String?]?, options: AudioExtractionOptions) throws -> Int {
+        guard trackCount > 0 else { throw ToolError.invalid("This file has no audio track.") }
+        if let language = options.trackLanguage {
+            guard let code = normalizedLanguage(language) else {
+                throw ToolError.invalid("Choose a valid audio language.")
+            }
+            let matching = (languages ?? []).enumerated().filter { normalizedLanguage($0.element) == code }
+            let title = Locale.current.localizedString(forLanguageCode: code) ?? code
+            guard let match = matching.first else {
+                throw ToolError.invalid("No audio track is tagged \(title) in this file.")
+            }
+            guard matching.count == 1 else {
+                throw ToolError.invalid("Multiple audio tracks are tagged \(title). Select a track by number.")
+            }
+            return match.offset
+        }
+        guard (0..<trackCount).contains(options.trackIndex) else {
+            throw ToolError.invalid("The selected audio track number is unavailable in this file.")
+        }
+        return options.trackIndex
+    }
+
+    private static func validatePassthrough(_ track: AudioExtractionTrack, options: AudioExtractionOptions) throws {
+        guard options.passthrough else { return }
+        guard options.format.supportsPassthrough, track.supportsM4APassthrough else {
+            throw ToolError.invalid("\(track.codec) cannot be copied to \(options.format.title). Turn off passthrough to convert the track.")
         }
     }
 
@@ -220,6 +240,8 @@ public enum AudioExtraction {
             codec = String(bytes: bytes, encoding: .ascii)?.trimmingCharacters(in: .whitespaces) ?? "Audio"
         default: codec = "Audio"
         }
-        return AudioExtractionTrack(index: index, language: language, codec: codec, channels: channels)
+        let supportsM4APassthrough = subtype == kAudioFormatMPEG4AAC || subtype == kAudioFormatAppleLossless
+        return AudioExtractionTrack(index: index, language: language, codec: codec, channels: channels,
+                                    supportsM4APassthrough: supportsM4APassthrough)
     }
 }
