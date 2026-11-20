@@ -77,6 +77,13 @@ public enum UnicodeInspector {
     }
 
     public struct Grapheme: Sendable {
+        package struct Preview: Sendable {
+            package let display: String
+            package let utf8: String
+            package let codePointCount: Int
+            package let hasMore: Bool
+        }
+
         public let value: Character
 
         public init(value: Character) { self.value = value }
@@ -89,6 +96,18 @@ public enum UnicodeInspector {
                 return units.map(\.display).joined()
             }
             return String(value)
+        }
+
+        package var preview: Preview {
+            // Extended grapheme clusters can contain arbitrarily many combining marks.
+            let shown = Array(value.unicodeScalars.prefix(16))
+            let prefix = String(String.UnicodeScalarView(shown))
+            let units = shown.map(Scalar.init(value:))
+            let display = units.count == 1 || units.allSatisfy { $0.invisibleMarker != nil }
+                ? units.map(\.display).joined() : prefix
+            let count = value.unicodeScalars.count
+            return Preview(display: display, utf8: UnicodeInspector.hex(prefix.utf8),
+                           codePointCount: count, hasMore: shown.count < count)
         }
     }
 

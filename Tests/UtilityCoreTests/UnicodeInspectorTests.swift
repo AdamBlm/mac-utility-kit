@@ -50,6 +50,23 @@ struct UnicodeInspectorTests {
         #expect(UnicodeInspector.Grapheme(value: "\r\n").display == "[CR][LF]")
     }
 
+    @Test func boundsLongGraphemePreviewWithoutChangingItsSourceBytes() throws {
+        let text = "e" + String(repeating: "\u{301}", count: 100_000)
+        let character = try #require(text.first)
+        #expect(text.count == 1)
+        let preview = UnicodeInspector.Grapheme(value: character).preview
+        #expect(preview.hasMore)
+        #expect(preview.codePointCount == 100_001)
+        #expect(preview.display.unicodeScalars.count == 16)
+        #expect(preview.utf8 == "65" + String(repeating: " CC 81", count: 15))
+        #expect(String(character).utf8.elementsEqual(text.utf8))
+
+        let emoji = UnicodeInspector.Grapheme(value: "👩‍💻").preview
+        #expect(emoji.display == "👩‍💻" && !emoji.hasMore)
+        let invisible = UnicodeInspector.Grapheme(value: "\r\n").preview
+        #expect(invisible.display == "[CR][LF]" && invisible.utf8 == "0D 0A")
+    }
+
     @Test func unicodeDataIncludesSingleAndMultiScalarPrototypes() throws {
         let mapping = try #require(UnicodeInspector.confusables)
         #expect(mapping.count > 5_000)

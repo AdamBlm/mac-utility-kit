@@ -106,19 +106,20 @@ struct UnicodeInspectorView: View {
         if draft.mode == .graphemes {
             ForEach(Array(draft.text.prefix(rowLimit).enumerated()), id: \.offset) { index, character in
                 let grapheme = UnicodeInspector.Grapheme(value: character)
+                let preview = grapheme.preview
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("\(index + 1) · \(grapheme.display)").font(.body.monospaced())
-                    Text("UTF-8 \(grapheme.utf8)").font(.caption.monospaced()).foregroundStyle(.secondary)
+                    Text("\(index + 1) · \(preview.display)\(preview.hasMore ? "…" : "")").font(.body.monospaced())
+                    Text("UTF-8 \(preview.utf8)\(preview.hasMore ? " …" : "")")
+                        .font(.caption.monospaced()).foregroundStyle(.secondary)
                     if character.unicodeScalars.contains(where: { UnicodeInspector.confusables?[$0] != nil }) {
                         Label("Possible lookalike", systemImage: "character.magnify")
                             .font(.caption).foregroundStyle(.secondary)
                     }
-                    DisclosureGroup("\(character.unicodeScalars.count) code points") {
-                        let scalars = grapheme.scalars
-                        ForEach(Array(scalars.prefix(100).enumerated()), id: \.offset) { _, scalar in
-                            scalarDetails(scalar)
+                    DisclosureGroup("\(preview.codePointCount) code points") {
+                        ForEach(Array(character.unicodeScalars.prefix(100).enumerated()), id: \.offset) { _, scalar in
+                            scalarDetails(UnicodeInspector.Scalar(value: scalar))
                         }
-                        if scalars.count > 100 {
+                        if preview.codePointCount > 100 {
                             Text("Use Code Points to inspect the remaining scalars.")
                                 .font(.caption).foregroundStyle(.secondary)
                         }
