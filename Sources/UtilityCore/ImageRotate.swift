@@ -48,16 +48,23 @@ public enum ImageRotate {
 
         public let outputWidth: Int
         public let outputHeight: Int
+        public let format: ImageConversionFormat
     }
 
     public static func outputExtension(_ input: URL, options: ImageRotateOptions) throws -> String {
+        try outputFormat(input, options: options).rawValue
+    }
+
+    package static func outputFormat(_ input: URL, options: ImageRotateOptions) throws -> ImageConversionFormat {
         let source = try ImageConversion.loadSource(input)
-        return try format(source, options: options).rawValue
+        try validateStill(source)
+        return try encodingOptions(for: source, options: options).format
     }
 
     public static func preview(_ input: URL, options: ImageRotateOptions) throws -> Preview {
         let source = try ImageConversion.loadSource(input)
         try validateStill(source)
+        let outputFormat = try encodingOptions(for: source, options: options).format
         let properties = try ImageConversion.imageProperties(source)
         let (width, height) = try ImageConversion.validatedDimensions(properties)
         let orientation = sourceOrientation(properties)
@@ -75,7 +82,8 @@ public enum ImageRotate {
         let displayedHeight = swapsAxes ? width : height
         return Preview(before: before, after: after, sourceWidth: displayedWidth, sourceHeight: displayedHeight,
                        outputWidth: options.turn.swapsAxes ? displayedHeight : displayedWidth,
-                       outputHeight: options.turn.swapsAxes ? displayedWidth : displayedHeight)
+                       outputHeight: options.turn.swapsAxes ? displayedWidth : displayedHeight,
+                       format: outputFormat)
     }
 
     public static func export(_ input: URL, to output: URL, options: ImageRotateOptions) throws -> String {
@@ -83,15 +91,13 @@ public enum ImageRotate {
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local output file.")
         }
-        guard options.quality.isFinite, (0...1).contains(options.quality) else {
-            throw ToolError.invalid("Choose a quality between 0 and 100 percent.")
-        }
         try Task.checkCancellation()
         let source = try ImageConversion.loadSource(input)
         try validateStill(source)
         let properties = try ImageConversion.imageProperties(source)
         _ = try ImageConversion.validatedDimensions(properties)
-        let outputFormat = try format(source, options: options)
+        let encoding = try encodingOptions(for: source, options: options)
+        let outputFormat = encoding.format
         let index = CGImageSourceGetPrimaryImageIndex(source)
         guard let image = CGImageSourceCreateImageAtIndex(source, index, [
             kCGImageSourceShouldAllowFloat: true
@@ -106,10 +112,6 @@ public enum ImageRotate {
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: staging) }
         let candidate = staging.appending(path: "Rotated." + outputFormat.rawValue)
-        var encoding = ImageConversionOptions()
-        encoding.format = outputFormat
-        encoding.preserveMetadata = options.preserveMetadata
-        encoding.quality = options.quality
         try ImageConversion.encode(rendered, to: candidate, format: outputFormat, source: source, options: encoding)
         try Task.checkCancellation()
         guard let written = CGImageSourceCreateWithURL(candidate as CFURL, nil),
@@ -137,6 +139,17 @@ public enum ImageRotate {
         guard CGImageSourceGetCount(source) == 1 else {
             throw ToolError.invalid("Rotate Images accepts still images with a single frame or page.")
         }
+    }
+
+    private static func encodingOptions(
+        for source: CGImageSource, options: ImageRotateOptions
+    ) throws -> ImageConversionOptions {
+        var encoding = ImageConversionOptions()
+        encoding.format = try format(source, options: options)
+        encoding.preserveMetadata = options.preserveMetadata
+        encoding.quality = options.quality
+        if let issue = ImageConversion.optionIssue(encoding) { throw ToolError.invalid(issue) }
+        return encoding
     }
 
     private static func format(_ source: CGImageSource, options: ImageRotateOptions) throws -> ImageConversionFormat {

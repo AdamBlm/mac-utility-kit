@@ -6,6 +6,13 @@ struct ImageRotateControls: View {
     @Binding var options: ImageRotateOptions
     @State private var selected: URL?
     @State private var preview: PreviewResult?
+    @State private var reviewedInputs: [URL] = []
+    @State private var supportsQuality = false
+
+    private var previewInputs: [URL] {
+        var seen = Set<URL>()
+        return inputs.filter { seen.insert($0).inserted }
+    }
 
     private struct PreviewRequest: Equatable, Sendable {
         let input: URL?
@@ -37,9 +44,7 @@ struct ImageRotateControls: View {
                 }
                 .labelsHidden()
             }
-            if options.output == .original && inputs.contains(where: {
-                ["jpeg", "jpg", "heic", "heif", "hif"].contains($0.pathExtension.lowercased())
-            }) {
+            if options.output == .original, reviewedInputs == inputs, supportsQuality {
                 SettingRow("Quality") {
                     Slider(value: $options.quality, in: 0.05...1, step: 0.01) { Text("JPEG and HEIC quality") }
                         .labelsHidden()
@@ -49,14 +54,17 @@ struct ImageRotateControls: View {
                 }
             }
             Toggle("Preserve compatible metadata", isOn: $options.preserveMetadata)
-            if inputs.count > 1 {
+            if previewInputs.count > 1 {
                 SettingRow("Preview file") {
                     Picker("Preview file", selection: Binding(get: { input }, set: { selected = $0 })) {
-                        ForEach(Array(inputs.enumerated()), id: \.offset) { _, url in
-                            Text(url.lastPathComponent).tag(Optional(url))
+                        ForEach(previewInputs, id: \.self) { url in
+                            let name = url.lastPathComponent
+                            let sharesName = previewInputs.contains { $0 != url && $0.lastPathComponent == name }
+                            Text(sharesName ? url.path : name).tag(Optional(url))
                         }
                     }
                     .labelsHidden()
+                    .help(input?.path ?? "")
                 }
             }
             if let preview, preview.request == request {
@@ -64,7 +72,7 @@ struct ImageRotateControls: View {
                 case .success(let pair):
                     HStack(alignment: .top, spacing: 12) {
                         tile("Original", image: pair.before, width: pair.sourceWidth, height: pair.sourceHeight)
-                        tile("Rotated", image: pair.after, width: pair.outputWidth, height: pair.outputHeight)
+                        tile("Rotated · " + pair.format.title, image: pair.after, width: pair.outputWidth, height: pair.outputHeight)
                     }
                 case .failure(let error):
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
@@ -73,6 +81,7 @@ struct ImageRotateControls: View {
                 ProgressView("Loading image preview…").controlSize(.small)
             }
         }
+        .task(id: inputs) { await inspectFormats(inputs) }
         .task(id: request) {
             guard let input = request.input else { return }
             do {
@@ -84,6 +93,21 @@ struct ImageRotateControls: View {
                 preview = PreviewResult(request: request, result: result)
             } catch {}
         }
+    }
+
+    private func inspectFormats(_ inputs: [URL]) async {
+        let worker = Task.detached(priority: .userInitiated) {
+            let options = ImageRotateOptions()
+            return Set(inputs).contains { input in
+                guard !Task.isCancelled,
+                      let format = try? ImageRotate.outputFormat(input, options: options) else { return false }
+                return format == .jpg || format == .heic
+            }
+        }
+        let supported = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+        guard !Task.isCancelled else { return }
+        supportsQuality = supported
+        reviewedInputs = inputs
     }
 
     private func tile(_ title: String, image: CGImage, width: Int, height: Int) -> some View {

@@ -177,6 +177,28 @@ struct ImageRotateTests {
         }
     }
 
+    @Test func rotationPreviewUsesActualImageTypeAndSharesExportFormatRules() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let renamedJPEG = directory.appending(path: "Renamed.png")
+        try Self.writeFixture(renamedJPEG, format: .jpeg, orientation: 1)
+        var options = ImageRotateOptions()
+        #expect(try ImageRotate.preview(renamedJPEG, options: options).format == .jpg)
+        #expect(try ImageRotate.outputExtension(renamedJPEG, options: options) == "jpg")
+
+        let gif = directory.appending(path: "Single.gif")
+        try Self.writeFixture(gif, format: .gif, orientation: 1)
+        #expect(throws: ToolError.self) { try ImageRotate.preview(gif, options: options) }
+        #expect(throws: ToolError.self) { try ImageRotate.outputExtension(gif, options: options) }
+        options.output = .png
+        #expect(try ImageRotate.preview(gif, options: options).format == .png)
+        let output = directory.appending(path: "Converted.png")
+        _ = try ImageRotate.export(gif, to: output, options: options)
+        let written = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+        #expect(CGImageSourceGetType(written) as String? == UTType.png.identifier)
+    }
+
     private static func writeFixture(_ url: URL, format: UTType, orientation: Int, pages: Int = 1) throws {
         let space = try #require(CGColorSpace(name: CGColorSpace.sRGB))
         let context = try #require(CGContext(data: nil, width: 12, height: 8, bitsPerComponent: 8, bytesPerRow: 48, space: space,
