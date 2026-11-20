@@ -1,7 +1,7 @@
 import AVFoundation
 import Foundation
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 @Test func nativeMediaInspectionReadsAudioAndExportsJSON() async throws {
     let folder = try mediaInspectionFolder()
@@ -70,6 +70,31 @@ func ffprobeMediaInspectionPreservesStructuredStreamsWithoutAbsoluteSourcePath()
     #expect(format["filename"] as? String == "tone.wav")
     let streams = try #require(data["streams"] as? [[String: Any]])
     #expect(streams.first?["codec_type"] as? String == "audio")
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFPROBE_TEST"] != nil),
+      arguments: [false, true])
+func ffprobeMediaInspectionReportsObservedCadence(variable: Bool) async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFPROBE_TEST"])
+    let folder = try mediaInspectionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let video = folder.appending(path: "Cadence.mov")
+    let ticks = variable ? [0, 20, 40, 100, 120, 160, 220, 240] : (0..<8).map { 25 * $0 }
+    try await writeInspectionVideo(to: video, ticks: ticks)
+    let report = try await MediaInspection.inspect(video, options: .init(ffprobeExecutable: URL(filePath: executable)))
+    let expected = variable ? "Variable intervals observed" : "Even intervals in sampled frames"
+    #expect(report.summary.contains("Frame rate (average):"))
+    #expect(report.summary.contains("Frame timing: " + expected))
+}
+
+@Test func ffprobeCadenceDoesNotBridgeMissingPresentationTimestamps() {
+    let intervals = FFprobeInspection.adjacentIntervals([0, 40, nil, 120, 160, 200])
+    #expect(intervals == [40, 40, 40])
+}
+
+@Test func ffprobeCadenceAllowsOneTickOfTimestampQuantization() {
+    #expect(MediaInspection.frameTiming(intervals: [0.033, 0.034, 0.033], resolution: 0.001)
+        == "Even intervals in sampled frames")
 }
 
 private func mediaInspectionFolder() throws -> URL {

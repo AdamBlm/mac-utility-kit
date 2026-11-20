@@ -157,10 +157,14 @@ public enum MediaInspection {
                 previous = next
             }
         }
+        return frameTiming(intervals: intervals)
+    }
+
+    static func frameTiming(intervals: [Double], resolution: Double = 0) -> String {
         guard intervals.count > 2, let shortest = intervals.min(), let longest = intervals.max() else {
             return "Unavailable"
         }
-        if longest - shortest > max(0.000_010, shortest * 0.01) {
+        if longest - shortest > max(0.000_010, shortest * 0.01, resolution * 1.01) {
             return "Variable intervals observed"
         }
         return "Even intervals in sampled frames"
