@@ -64,6 +64,7 @@ public struct PDFExtractOptions: Sendable {
     public var range = ""
     public var order: PDFExtractOrder = .document
     public var password = ""
+    package var reviewedSource: PDFSourceStamp?
 
     public init() {}
 }
@@ -83,9 +84,16 @@ public enum PDFPageEditing {
         progress: @Sendable (Double) async -> Void
     ) async throws {
         try Task.checkCancellation()
-        let original = try open(input, password: options.password)
+        let source = try options.reviewedSource ?? PDFSourceStamp.read(input)
+        func verifySource() throws {
+            guard (try? PDFSourceStamp.read(input)) == source else {
+                throw ToolError.invalid("The source PDF changed. Refresh the page preview before extracting.")
+            }
+        }
+        try verifySource()
+        let original = try open(source.resolved, password: options.password)
         let selected = try extractPages(pageCount: original.pageCount, options: options)
-        try writeCopy(selected.map { PDFPageEdit(pageNumber: $0) }, from: original, to: output)
+        try writeCopy(selected.map { PDFPageEdit(pageNumber: $0) }, from: original, to: output, beforePublish: verifySource)
         await progress(1)
     }
 
@@ -274,7 +282,8 @@ public enum PDFPageEditing {
         return staging
     }
 
-    private static func writeCopy(_ pages: [PDFPageEdit], from original: PDFDocument, to output: URL) throws {
+    private static func writeCopy(_ pages: [PDFPageEdit], from original: PDFDocument, to output: URL,
+                                  beforePublish: () throws -> Void = {}) throws {
         let manager = FileManager.default
         guard output.isFileURL, !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a local output PDF path that does not already exist.")
@@ -284,6 +293,7 @@ public enum PDFPageEditing {
         let stagedOutput = staging.appendingPathComponent("Output.pdf")
         try writePages(pages, from: original, to: stagedOutput)
         try Task.checkCancellation()
+        try beforePublish()
         try manager.moveItem(at: stagedOutput, to: output)
     }
 

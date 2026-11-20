@@ -14,9 +14,13 @@ struct PDFEditingSettings: View {
     @State private var rasterReady = false
     @State private var document: PDFDocument?
     @State private var passwordError = false
+    @State private var sourceIssue: String?
 
     var body: some View {
         Group {
+            if tool == .extractPDFPages, input != nil {
+                Button("Refresh Page Preview", systemImage: "arrow.clockwise", action: load)
+            }
             if let document {
                 if document.isLocked {
                     HStack {
@@ -67,7 +71,7 @@ struct PDFEditingSettings: View {
                     }
                 }
             } else if input != nil {
-                Text("Could not open this PDF.").font(.callout).foregroundStyle(.secondary)
+                Text(sourceIssue ?? "Could not open this PDF.").font(.callout).foregroundStyle(.secondary)
             }
         }
         .disabled(!canEdit)
@@ -91,7 +95,8 @@ struct PDFEditingSettings: View {
             else { return false }
             return !removed.isEmpty && removed.count < document.pageCount
         case .extractPDFPages:
-            return (try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options.pdfExtract)) != nil
+            return options.pdfExtract.reviewedSource != nil &&
+                (try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options.pdfExtract)) != nil
         case .pdfToImages:
             return rasterReady
         default:
@@ -115,14 +120,42 @@ struct PDFEditingSettings: View {
 
     private func load() {
         passwordError = false
-        document = input.flatMap { PDFDocument(url: $0) }
+        sourceIssue = nil
+        if tool == .extractPDFPages {
+            document = nil
+            options.pdfExtract.reviewedSource = nil
+            guard let input else { return }
+            do {
+                let source = try PDFSourceStamp.read(input)
+                guard let opened = PDFDocument(url: source.resolved) else {
+                    throw ToolError.invalid("Could not open this PDF.")
+                }
+                guard (try? PDFSourceStamp.read(input)) == source else {
+                    throw ToolError.invalid("The source PDF changed while opening. Refresh the page preview.")
+                }
+                document = opened
+                options.pdfExtract.reviewedSource = source
+            } catch {
+                sourceIssue = error.localizedDescription
+            }
+        } else {
+            document = input.flatMap { PDFDocument(url: $0) }
+        }
         if document?.isLocked == true, !password.wrappedValue.isEmpty { unlock() }
     }
 
     private func unlock() {
-        guard let input, let unlocked = PDFDocument(url: input),
+        guard let input else { return }
+        let reviewedSource = tool == .extractPDFPages ? options.pdfExtract.reviewedSource : nil
+        guard let unlocked = PDFDocument(url: reviewedSource?.resolved ?? input),
               unlocked.unlock(withPassword: password.wrappedValue) else {
             passwordError = true
+            return
+        }
+        if let reviewedSource, (try? PDFSourceStamp.read(input)) != reviewedSource {
+            options.pdfExtract.reviewedSource = nil
+            document = nil
+            sourceIssue = "The source PDF changed while unlocking. Refresh the page preview."
             return
         }
         passwordError = !hasPermission(unlocked)

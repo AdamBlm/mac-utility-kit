@@ -94,3 +94,37 @@ import UtilityCore
         try PDFPageEditing.extractPages(pageCount: 0, options: options)
     }
 }
+
+@Test func extractRejectsSamePathReplacementOfReviewedPages() async throws {
+    let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let input = directory.appending(path: "Source.pdf")
+    let output = directory.appending(path: "Extracted.pdf")
+    func fixture(width: Int) -> Data {
+        pdfFixtureData(objects: [
+            "<< /Type /Catalog /Pages 2 0 R >>",
+            "<< /Type /Pages /Kids [3 0 R] /Count 1 >>",
+            "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 \(width) 300] /Resources <<>> >>"
+        ])
+    }
+    try fixture(width: 220).write(to: input)
+    var options = PDFExtractOptions()
+    options.range = "1"
+    options.reviewedSource = try PDFSourceStamp.read(input)
+    let replacement = fixture(width: 240)
+    try replacement.write(to: input, options: .atomic)
+    #expect(try PDFPageEditing.pageCount(input) == 1)
+    do {
+        try await PDFPageEditing.extract(input, to: output, options: options) { _ in }
+        Issue.record("Extract Pages published unreviewed PDF content.")
+    } catch {
+        #expect(error.localizedDescription.contains("Refresh the page preview"))
+    }
+    #expect(!FileManager.default.fileExists(atPath: output.path))
+
+    options.reviewedSource = try PDFSourceStamp.read(input)
+    try await PDFPageEditing.extract(input, to: output, options: options) { _ in }
+    #expect(PDFDocument(url: output)?.page(at: 0)?.bounds(for: .mediaBox).width == 240)
+    #expect(try Data(contentsOf: input) == replacement)
+}
