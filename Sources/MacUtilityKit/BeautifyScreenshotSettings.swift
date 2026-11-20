@@ -3,9 +3,10 @@ import SwiftUI
 import UtilityCore
 
 struct BeautifyScreenshotSettings: View {
-    let input: URL?
+    let inputs: [URL]
     @Binding var options: BeautifyScreenshotOptions
     @Environment(\.colorScheme) private var colorScheme
+    @State private var selected: URL?
     @State private var image: CGImage?
     @State private var complete: Request?
     @State private var error: String?
@@ -15,7 +16,14 @@ struct BeautifyScreenshotSettings: View {
         let options: BeautifyScreenshotOptions
     }
 
+    private var previewInputs: [URL] {
+        var seen = Set<URL>()
+        return inputs.filter { seen.insert($0).inserted }
+    }
+
     var body: some View {
+        let previews = previewInputs
+        let input = selected.flatMap { previews.contains($0) ? $0 : nil } ?? previews.first
         let request = Request(input: input, options: options)
         let palette = WorkspacePalette(dark: colorScheme == .dark)
         SettingRow("Background") {
@@ -80,6 +88,19 @@ struct BeautifyScreenshotSettings: View {
                     .monospacedDigit().frame(width: 52)
             }
         }
+        if previews.count > 1 {
+            SettingRow("Preview file") {
+                Picker("Preview file", selection: Binding(get: { input }, set: { selected = $0 })) {
+                    ForEach(previews, id: \.self) { url in
+                        let name = url.lastPathComponent
+                        let duplicateName = previews.contains { $0 != url && $0.lastPathComponent == name }
+                        Text(duplicateName ? url.path : name).tag(Optional(url))
+                    }
+                }
+                .labelsHidden()
+                .help(input?.path ?? "")
+            }
+        }
         if complete == request, let image {
             Image(decorative: image, scale: 1)
                 .resizable().aspectRatio(contentMode: .fit)
@@ -114,6 +135,7 @@ struct BeautifyScreenshotSettings: View {
     private func clamp(_ value: CGFloat) -> CGFloat { min(1, max(0, value)) }
 
     private func updatePreview(for request: Request) async {
+        guard !Task.isCancelled else { return }
         image = nil
         error = nil
         guard let input = request.input else { return }

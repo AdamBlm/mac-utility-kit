@@ -251,7 +251,7 @@ struct ToolWorkspace: View {
                         case .rotateImages:
                             ImageRotateControls(inputs: draft.inputs, options: $draft.options.rotation)
                         case .beautifyScreenshot:
-                            BeautifyScreenshotSettings(input: draft.inputs.first, options: $draft.options.beautify)
+                            BeautifyScreenshotSettings(inputs: draft.inputs, options: $draft.options.beautify)
                         case .blurFaces:
                             BlurFacesControls(inputs: draft.inputs, options: $draft.options.blurFaces)
                         case .redactImage:
