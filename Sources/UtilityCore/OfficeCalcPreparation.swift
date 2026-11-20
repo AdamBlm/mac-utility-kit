@@ -112,8 +112,8 @@ enum OfficeCalcPreparation {
             let portraitWidth: String
             let portraitHeight: String
             if let paper = options.paper {
-                portraitWidth = "\(Int(paper.size.width))pt"
-                portraitHeight = "\(Int(paper.size.height))pt"
+                portraitWidth = "\(paper.size.width)pt"
+                portraitHeight = "\(paper.size.height)pt"
             } else {
                 portraitWidth = (savedLandscape ? savedHeight : savedWidth) ?? "210mm"
                 portraitHeight = (savedLandscape ? savedWidth : savedHeight) ?? "297mm"

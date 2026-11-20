@@ -64,6 +64,10 @@ public enum OfficePDF {
               values.isRegularFile == true, let bytes = values.fileSize, bytes <= 256 * 1024 * 1024 else {
             return "Choose a readable document up to 256 MB."
         }
+        if kind == .excel, !options.singlePageSheets,
+           options.spreadsheetPrint.sheetRange.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == "none" {
+            return "Select at least one sheet to print."
+        }
         return nil
     }
 

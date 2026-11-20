@@ -27,6 +27,10 @@ struct OfficeCalcPDFTests {
         second.attribute(forName: "table:name")?.stringValue = "Finance's May"
         let firstCell = try #require(first.nodes(forXPath: "table:table-row/table:table-cell/text:p").first)
         firstCell.stringValue = "Omitted marker"
+        let firstName = try #require(first.attribute(forName: "table:name")?.stringValue)
+        let firstPrintArea = XMLNode.attribute(withName: "table:print-ranges",
+                                               stringValue: "$'\(firstName)'.$A$1:.$A$1")
+        first.addAttribute(try #require(firstPrintArea as? XMLNode))
         let container = try #require(first.parent as? XMLElement)
         container.addChild(second)
         let source = staging.appending(path: "Workbook.fods")
@@ -35,6 +39,27 @@ struct OfficeCalcPDFTests {
                                                           fileExtension: "xlsx", executable: executable,
                                                           in: staging, inputFilter: OfficeCalcPreparation.flatFilter)
         let original = try Data(contentsOf: xlsx)
+
+        var assessment = OfficePDFOptions()
+        assessment.libreOfficeExecutable = executable
+        let defaultPrint = try await OfficePDF.preview(xlsx, kind: .excel, options: assessment)
+        #expect(PDFDocument(data: defaultPrint.pdf)?.string?.contains("Right edge marker") == true)
+        assessment.spreadsheetPrint.fitsOnePageWide = true
+        assessment.spreadsheetPrint.paper = .a4
+        let fittedPrint = try await OfficePDF.preview(xlsx, kind: .excel, options: assessment)
+        #expect(PDFDocument(data: fittedPrint.pdf)?.string?.contains("Right edge marker") == true)
+        let a4 = try OfficePDF.renderedPage(fittedPrint, page: 1).size
+        #expect(abs(a4.width - PDFPrintPaper.a4.size.width) < 0.15)
+        #expect(abs(a4.height - PDFPrintPaper.a4.size.height) < 0.15)
+        assessment.spreadsheetPrint.sheetRange = "none"
+        let emptySelection = staging.appending(path: "No sheets.pdf")
+        do {
+            _ = try await OfficePDF.export(xlsx, to: emptySelection, kind: .excel, options: assessment) { _ in }
+            Issue.record("Calc exported a workbook with no selected sheets.")
+        } catch {
+            #expect(error.localizedDescription == "Select at least one sheet to print.")
+        }
+        #expect(!FileManager.default.fileExists(atPath: emptySelection.path))
 
         var options = OfficeCalcPrintOptions()
         options.sheetRange = "2"
