@@ -6,6 +6,7 @@ public enum CleanLinks {
         public let cleaned: String
         public let removedParameters: [String]
         public let redirectDestination: String?
+        public let keptSignedQuery: Bool
     }
 
     private static let trackingKeys: Set<String> = [
@@ -20,28 +21,40 @@ public enum CleanLinks {
         "x-ms-signature", "policy", "key-pair-id"
     ]
 
-    public static func clean(_ input: String) throws -> Result {
+    public static func clean(_ input: String, unwrapRedirects: Bool = true) throws -> Result {
         let original = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let source = try parse(original)
         let redirect = try redirectDestination(in: source)
+        if let redirect {
+            let wrapperFields = queryFields((source.percentEncodedQuery ?? "").unicodeScalars[...])
+            let signed = wrapperFields.contains { signatureKeys.contains(asciiKey($0.key)) }
+            if !unwrapRedirects || signed {
+                return Result(original: original, cleaned: original, removedParameters: [],
+                              redirectDestination: redirect, keptSignedQuery: signed)
+            }
+        }
         let address = redirect ?? original
         let scalars = address.unicodeScalars
         let fragmentOrEnd = scalars.firstIndex(of: "#") ?? scalars.endIndex
         guard let questionMark = scalars[..<fragmentOrEnd].firstIndex(of: "?") else {
-            return Result(original: original, cleaned: address, removedParameters: [], redirectDestination: redirect)
+            return Result(original: original, cleaned: address, removedParameters: [],
+                          redirectDestination: redirect, keptSignedQuery: false)
         }
         let items = queryFields(scalars[scalars.index(after: questionMark)..<fragmentOrEnd])
         guard !items.contains(where: { signatureKeys.contains(asciiKey($0.key)) }) else {
-            return Result(original: original, cleaned: address, removedParameters: [], redirectDestination: redirect)
+            return Result(original: original, cleaned: address, removedParameters: [],
+                          redirectDestination: redirect, keptSignedQuery: true)
         }
         let removed = items.filter { trackingKeys.contains(asciiKey($0.key)) }
         guard !removed.isEmpty else {
-            return Result(original: original, cleaned: address, removedParameters: [], redirectDestination: redirect)
+            return Result(original: original, cleaned: address, removedParameters: [],
+                          redirectDestination: redirect, keptSignedQuery: false)
         }
         let kept = items.filter { !trackingKeys.contains(asciiKey($0.key)) }.map(\.raw)
         let suffix = kept.isEmpty ? "" : "?" + kept.joined(separator: "&")
         let cleaned = String(scalars[..<questionMark]) + suffix + String(scalars[fragmentOrEnd...])
-        return Result(original: original, cleaned: cleaned, removedParameters: removed.map(\.key), redirectDestination: redirect)
+        return Result(original: original, cleaned: cleaned, removedParameters: removed.map(\.key),
+                      redirectDestination: redirect, keptSignedQuery: false)
     }
 
     private static func parse(_ address: String) throws -> URLComponents {

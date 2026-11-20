@@ -54,4 +54,27 @@ struct CleanLinksTests {
             try CleanLinks.clean("https://www.google.com/url?q=https%3A%2F%2Fexample.test%3A65536%2F")
         }
     }
+
+    @Test func previewsKnownRedirectWithoutRewritingWhenRequested() throws {
+        let input = "https://www.google.com/url?q=https%3a%2f%2fexample.test%2f%3fUTM_Source%3Dx%26id%3D42&gclid=leave#original"
+        let kept = try CleanLinks.clean(input, unwrapRedirects: false)
+        #expect(kept.cleaned.utf8.elementsEqual(input.utf8))
+        #expect(kept.redirectDestination == "https://example.test/?UTM_Source=x&id=42")
+        #expect(kept.removedParameters.isEmpty && !kept.keptSignedQuery)
+        #expect(try CleanLinks.clean(input).cleaned == "https://example.test/?id=42")
+        #expect(try CleanLinks.clean("https://example.test/?utm_source=x&keep=%2f", unwrapRedirects: false).cleaned
+                == "https://example.test/?keep=%2f")
+    }
+
+    @Test func preservesSignaturesOnRedirectWrapperAndDestination() throws {
+        let signedWrapper = "https://www.google.com/url?q=https%3a%2f%2fexample.test%2f&%73ig=abc&utm_source=x"
+        let preserved = try CleanLinks.clean(signedWrapper)
+        #expect(preserved.cleaned.utf8.elementsEqual(signedWrapper.utf8))
+        #expect(preserved.redirectDestination == "https://example.test/")
+        #expect(preserved.keptSignedQuery && preserved.removedParameters.isEmpty)
+        let wrapper = "https://www.google.com/url?q=https%3a%2f%2fexample.test%2f%3fX-Amz-Signature%3Dfoo%26utm_source%3Dx"
+        let destination = try CleanLinks.clean(wrapper)
+        #expect(destination.keptSignedQuery)
+        #expect(destination.cleaned == "https://example.test/?X-Amz-Signature=foo&utm_source=x")
+    }
 }

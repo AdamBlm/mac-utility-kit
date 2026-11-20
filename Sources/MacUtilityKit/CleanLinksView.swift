@@ -4,6 +4,7 @@ import UtilityCore
 struct CleanLinksDraft {
     var input = ""
     var output: [CleanLinkRow] = []
+    var unwrapRedirects = true
 }
 
 struct CleanLinkRow: Identifiable {
@@ -26,6 +27,7 @@ struct CleanLinksView: View {
                     .padding(6)
                     .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
                     .accessibilityLabel("Links, one per line")
+                Toggle("Replace recognized redirects with their destination", isOn: $draft.unwrapRedirects)
                 Button("Clean Links", systemImage: "link", action: clean)
                     .buttonStyle(.borderedProminent)
                     .disabled(draft.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
@@ -47,7 +49,12 @@ struct CleanLinksView: View {
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(result.cleaned).textSelection(.enabled)
                                     if let destination = result.redirectDestination {
-                                        Text("Redirect destination: \(destination)")
+                                        Text(result.cleaned == result.original ? "Kept redirect to \(destination)"
+                                                                             : "Redirect destination: \(destination)")
+                                            .font(.callout).foregroundStyle(.secondary)
+                                    }
+                                    if result.keptSignedQuery {
+                                        Text("Kept the query because the link appears to be signed.")
                                             .font(.callout).foregroundStyle(.secondary)
                                     }
                                     if !result.removedParameters.isEmpty {
@@ -73,6 +80,9 @@ struct CleanLinksView: View {
             draft.output.removeAll()
             issue = nil
         }
+        .onChange(of: draft.unwrapRedirects) {
+            if !draft.output.isEmpty { clean() }
+        }
     }
 
     private func clean() {
@@ -88,7 +98,9 @@ struct CleanLinksView: View {
             return
         }
         draft.output = lines.enumerated().map { index, line in
-            CleanLinkRow(id: index, input: line, result: Result { try CleanLinks.clean(line) })
+            CleanLinkRow(id: index, input: line, result: Result {
+                try CleanLinks.clean(line, unwrapRedirects: draft.unwrapRedirects)
+            })
         }
         issue = nil
     }
