@@ -40,9 +40,10 @@ public enum QRPayload: Equatable, Sendable {
     }
 
     private static func escape(_ value: String) -> String {
-        value.reduce(into: "") { result, character in
-            if "\\;,:\"".contains(character) { result.append("\\") }
-            result.append(character)
+        let delimiters = "\\;,:\"".unicodeScalars
+        return value.unicodeScalars.reduce(into: "") { result, scalar in
+            if delimiters.contains(scalar) { result.append("\\") }
+            result.unicodeScalars.append(scalar)
         }
     }
 }

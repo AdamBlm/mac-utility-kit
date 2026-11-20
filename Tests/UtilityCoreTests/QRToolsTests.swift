@@ -62,6 +62,21 @@ import Testing
         #expect(try open.encoded() == "WIFI:T:nopass;S:Coffee;;")
     }
 
+    @Test func wiFiQRRoundTripsEscapedPunctuationNextToCombiningMarks() throws {
+        let network = "Café;\u{0301}東京"
+        let password = "sample\\\u{0308};\u{0301}1234"
+        let payload = QRPayload.wiFi(name: network, security: .wpa, password: password, hidden: true)
+        let expected = "WIFI:T:WPA;S:Café\\;\u{0301}東京;P:sample\\\\\u{0308}\\;\u{0301}1234;H:true;;"
+        #expect(try Data(payload.encoded().utf8) == Data(expected.utf8))
+
+        let generated = try QRTools.generate(payload)
+        let file = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString + ".png")
+        defer { try? FileManager.default.removeItem(at: file) }
+        try QRTools.png(generated).write(to: file)
+        let decoded = try QRTools.detect(in: file)
+        #expect(decoded.map { Data($0.payload.utf8) } == [Data(expected.utf8)])
+    }
+
     @Test func rejectsIncompleteAndNonHTTPURLs() throws {
         #expect(throws: QRToolError.self) { try QRPayload.url("example.org").encoded() }
         #expect(throws: QRToolError.self) { try QRPayload.url("https://example.com/has space").encoded() }
