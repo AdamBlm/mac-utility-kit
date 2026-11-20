@@ -26,7 +26,11 @@ struct PDFCompressionControls: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             SettingRow("Preset") {
-                Picker("Compression preset", selection: $options.preset) {
+                Picker("Compression preset", selection: Binding(get: { options.preset }, set: { preset in
+                    options.preset = preset
+                    options.imageQuality = nil
+                    options.imageDPI = nil
+                })) {
                     ForEach(PDFCompressionOptions.Preset.allCases) { Text($0.rawValue).tag($0) }
                 }
                 .labelsHidden()
@@ -48,6 +52,8 @@ struct PDFCompressionControls: View {
                 Text("Reduce embedded image DPI. Use qpdf for interactive forms and annotations.")
                     .font(.callout).foregroundStyle(.secondary)
             }
+            Text(effectiveSettings)
+                .font(.callout).foregroundStyle(.secondary)
             DisclosureGroup("Image Settings") {
                 imageSettings.padding(.top, 9)
             }
@@ -78,6 +84,14 @@ struct PDFCompressionControls: View {
         }
         .onChange(of: previewInput) { pending = nil }
         .onChange(of: options) { pending = nil }
+    }
+
+    private var effectiveSettings: String {
+        if options.isLossless { return "Lossless · embedded images stay unchanged" }
+        let quality = options.imageQuality ?? options.defaultQuality
+        return options.engine == .qpdf
+            ? "JPEG quality \(quality) · image dimensions stay unchanged"
+            : "JPEG quality \(quality) · target \(options.imageDPI ?? options.defaultDPI) DPI"
     }
 
     private var imageSettings: some View {
@@ -134,16 +148,20 @@ struct PDFCompressionControls: View {
             switch result.result {
             case .success(let sample):
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(sample.samplePages == sample.totalPages
-                         ? "Compressed size: \(bytes(sample.candidateBytes))"
+                    let isWholeFile = sample.samplePages == sample.totalPages
+                    let keepsOriginal = isWholeFile && options.keepsOriginalIfLarger
+                        && sample.candidateBytes >= sample.originalBytes
+                    Text(isWholeFile
+                         ? "Export size: \(bytes(keepsOriginal ? sample.originalBytes : sample.candidateBytes))"
                          : "Estimated compressed size: \(bytes(sample.estimatedBytes))")
                         .font(.callout.weight(.medium))
-                    Text("\(sample.samplePages) of \(sample.totalPages) pages sampled · \(bytes(sample.originalBytes)) → \(bytes(sample.candidateBytes))")
+                    Text("\(sample.samplePages) of \(sample.totalPages) pages sampled · \(sample.originalBytes.formatted()) → \(sample.candidateBytes.formatted()) bytes")
                         .font(.callout).foregroundStyle(.secondary)
                     if sample.candidateBytes >= sample.originalBytes {
-                        Text(options.keepsOriginalIfLarger
-                             ? "The sample did not shrink. Export keeps the original PDF if the full result also saves no space."
-                             : "The sample did not shrink.")
+                        Text(keepsOriginal ? "Export will keep an unchanged copy of the original PDF."
+                             : options.keepsOriginalIfLarger
+                                 ? "The sample did not shrink. Export keeps the original PDF if the full result also saves no space."
+                                 : "The sample did not shrink.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     if let image = sample.preview {

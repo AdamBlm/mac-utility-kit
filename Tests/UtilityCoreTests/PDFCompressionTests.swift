@@ -88,6 +88,25 @@ struct PDFCompressionTests {
         #expect(resultImages.contains { $0 < 300 })
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"] != nil))
+    func ghostscriptPresetsApplyDistinctDefaultImageResolutions() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try Self.linkedPDF(in: directory, count: 1, links: false, raster: true)
+        var options = PDFCompressionOptions()
+        options.engine = .ghostscript
+        options.ghostscriptExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"]))
+        options.keepsOriginalIfLarger = false
+        var widths: [Int] = []
+        for preset in PDFCompressionOptions.Preset.allCases {
+            options.preset = preset
+            let output = directory.appending(path: preset.rawValue + ".pdf")
+            _ = try await PDFCompression.export(source, to: output, options: options) { _ in }
+            widths.append(try #require(Self.imageWidths(output).max()))
+        }
+        #expect(widths[0] < widths[1] && widths[1] < widths[2])
+    }
+
     @Test(arguments: [0.1, 0.8])
     func rejectsInputReplacedBeforeCompressionOrFallback(progressMarker: Double) async throws {
         let folder = try Self.directory()
