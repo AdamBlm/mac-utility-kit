@@ -103,7 +103,11 @@ struct ToolLauncherView: View {
             TextField("Find a tool", text: $query)
                 .textFieldStyle(.roundedBorder)
                 .focused($searchFocused)
-                .onSubmit { if let tool = selection ?? results.first { launch(tool) } }
+                .onSubmit {
+                    let matches = results
+                    let selectedMatch = selection.flatMap { matches.contains($0) ? $0 : nil }
+                    if let tool = selectedMatch ?? matches.first { launch(tool) }
+                }
                 .onKeyPress(.downArrow) { moveSelection(by: 1) }
                 .onKeyPress(.upArrow) { moveSelection(by: -1) }
             if results.isEmpty {

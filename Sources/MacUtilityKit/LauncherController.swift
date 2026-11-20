@@ -67,10 +67,12 @@ final class LauncherController {
     }
 
     func showWorkspace(tool: Tool? = nil) {
+        // Activation alone can leave windows hidden. Restore their visibility before routing.
+        if NSApp.isHidden { NSApp.unhide(nil) }
         NSApp.activate()
         routes = routes.filter { $0.value.window != nil }
         let visible = NSApp.orderedWindows.first { $0.isVisible && routes[ObjectIdentifier($0)] != nil }
-        let minimized = routes.values.compactMap(\.window).first(where: \.isMiniaturized)
+        let minimized = NSApp.windows.first { $0.isMiniaturized && routes[ObjectIdentifier($0)] != nil }
         if let window = visible ?? minimized, let route = routes[ObjectIdentifier(window)] {
             if let tool { route.openTool(tool) }
             if window.isMiniaturized { window.deminiaturize(nil) }
