@@ -31,6 +31,7 @@ def check(binary):
         "mediaInfo": "media-info",
         "hashGenerator": "hash",
         "jsonFormatter": "format-json",
+        "csvJSON": "convert-table",
     }
     expected_mcp = {
         "jsonFormatter": "format-json",
@@ -84,7 +85,34 @@ def check(binary):
             )
             if result.returncode == 0 or "Choose an existing destination folder." not in result.stderr:
                 raise SystemExit(f"{tool} did not enforce its cataloged destination prerequisite.")
+    check_table_conversion(binary)
     print("The packaged catalog matches all 102 roadmap tools.")
+
+
+def check_table_conversion(binary):
+    def convert(*args, content=b""):
+        return subprocess.run([binary, "convert-table", *args], input=content, capture_output=True, timeout=10)
+
+    csv = 'id;note\r\n001;"a;b\nété"\r\n002;\r\n'.encode()
+    with tempfile.TemporaryDirectory() as directory:
+        source = Path(directory) / "input file.csv"
+        source.write_bytes(csv)
+        encoded = convert("csv-to-json", str(source), "--delimiter", "auto")
+        assert source.read_bytes() == csv
+    assert encoded.returncode == 0 and not encoded.stderr, encoded.stderr
+    assert json.loads(encoded.stdout) == [{"id": "001", "note": "a;b\nété"}, {"id": "002", "note": ""}]
+    decoded = convert("json-to-csv", "--delimiter", "semicolon", content=encoded.stdout)
+    assert decoded.returncode == 0 and decoded.stdout == csv.replace(b"002;\r\n", b'002;""\r\n'), decoded.stderr
+    markdown = convert("csv-to-markdown", "--no-headers", content=b"001,a|b\n")
+    assert markdown.returncode == 0 and b"Column&#32;1" in markdown.stdout and b"a&#124;b" in markdown.stdout
+    invalid = convert("csv-to-json", content=b"a,b\n1\n")
+    assert invalid.returncode != 0 and not invalid.stdout and b"Row 2" in invalid.stderr, invalid.stderr
+    no_delimiter = convert("json-to-csv", "--delimiter", "auto", content=b"[]")
+    assert no_delimiter.returncode != 0 and b"explicit delimiter" in no_delimiter.stderr
+    ambiguous = convert("csv-to-json", "--delimiter", "auto", content=b"a,b;c\n1,2;3\n")
+    assert ambiguous.returncode != 0 and b"Several delimiters fit" in ambiguous.stderr
+    non_utf8 = convert("csv-to-json", content=b"\xff")
+    assert non_utf8.returncode != 0 and b"UTF-8" in non_utf8.stderr
 
 
 if __name__ == "__main__":

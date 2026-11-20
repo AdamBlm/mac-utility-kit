@@ -63,20 +63,25 @@ struct FormatJSON: CatalogCommandBinding {
     }
 
     func run() throws {
-        let limit = 16 * 1024 * 1024
-        let handle = file == "-" ? FileHandle.standardInput : try FileHandle(forReadingFrom: URL(filePath: file))
-        defer { if file != "-" { try? handle.close() } }
-        var data = Data()
-        while data.count <= limit, let chunk = try handle.read(upToCount: min(64 * 1024, limit + 1 - data.count)), !chunk.isEmpty {
-            data.append(chunk)
-        }
-        guard data.count <= limit, let source = String(data: data, encoding: .utf8) else {
-            throw ValidationError("Provide UTF-8 JSON up to 16 MB.")
-        }
+        let source = try readUTF8Text(file: file, limit: 16 * 1024 * 1024,
+                                      invalidInput: "Provide UTF-8 JSON up to 16 MB.")
         let result = try JSONFormatter.format(source, indentation: indentation.style, sortKeys: sortKeys)
         print(result.text)
         for key in result.duplicateKeys { writeError("Duplicate key kept: \(key)") }
     }
+}
+
+func readUTF8Text(file: String, limit: Int, invalidInput: String) throws -> String {
+    let handle = file == "-" ? FileHandle.standardInput : try FileHandle(forReadingFrom: URL(filePath: file))
+    defer { if file != "-" { try? handle.close() } }
+    var data = Data()
+    while data.count <= limit, let chunk = try handle.read(upToCount: min(64 * 1024, limit + 1 - data.count)), !chunk.isEmpty {
+        data.append(chunk)
+    }
+    guard data.count <= limit, let source = String(data: data, encoding: .utf8) else {
+        throw ValidationError(invalidInput)
+    }
+    return source
 }
 
 private func writeError(_ message: String) {
