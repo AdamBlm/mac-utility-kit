@@ -1,3 +1,4 @@
+import Foundation
 import Testing
 import UtilityCore
 
@@ -20,5 +21,15 @@ struct LoremIpsumTests {
         #expect(throws: ToolError.self) {
             try LoremIpsum.generate(count: LoremIpsum.Unit.paragraphs.limit + 1, unit: .paragraphs, format: .plain)
         }
+    }
+
+    @Test func changesFormatWithoutRegeneratingParagraphs() throws {
+        let document = try LoremIpsum.document(count: 4, unit: .paragraphs)
+        let plain = document.rendered(as: .plain)
+        let paragraphs = plain.components(separatedBy: "\n\n")
+        #expect(paragraphs.count == 4)
+        #expect(document.rendered(as: .html) == paragraphs.map { "<p>\($0)</p>" }.joined(separator: "\n"))
+        #expect(document.rendered(as: .markdown) == plain)
+        #expect(document.rendered(as: .plain) == plain)
     }
 }

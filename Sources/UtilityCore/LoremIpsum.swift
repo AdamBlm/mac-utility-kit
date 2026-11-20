@@ -41,7 +41,23 @@ public enum LoremIpsum {
     vel auctor aliquet sollicitudin ultrices sapien varius tempus dignissim integer posuere metus vitae lectus
     """.split(whereSeparator: \.isWhitespace).map(String.init)
 
+    package struct Document: Sendable {
+        fileprivate let paragraphs: [String]
+
+        package func rendered(as format: Format) -> String {
+            if format == .html {
+                // The corpus contains only Latin letters, spaces, and sentence punctuation.
+                return paragraphs.map { "<p>\($0)</p>" }.joined(separator: "\n")
+            }
+            return paragraphs.joined(separator: "\n\n")
+        }
+    }
+
     public static func generate(count: Int, unit: Unit, format: Format, startsWithLorem: Bool = true) throws -> String {
+        try document(count: count, unit: unit, startsWithLorem: startsWithLorem).rendered(as: format)
+    }
+
+    package static func document(count: Int, unit: Unit, startsWithLorem: Bool = true) throws -> Document {
         guard (1...unit.limit).contains(count) else {
             throw ToolError.invalid("Choose 1 to \(unit.limit) \(unit.rawValue.lowercased()).")
         }
@@ -50,16 +66,16 @@ public enum LoremIpsum {
         switch unit {
         case .words:
             let text = words(count: count, startsWithLorem: &startsWithLorem, random: &random).joined(separator: " ")
-            return format == .html ? htmlParagraph(text) : text
+            return Document(paragraphs: [text])
         case .sentences:
             let text = (0..<count).map { _ in sentence(startsWithLorem: &startsWithLorem, random: &random) }.joined(separator: " ")
-            return format == .html ? htmlParagraph(text) : text
+            return Document(paragraphs: [text])
         case .paragraphs:
             let paragraphs = (0..<count).map { _ in
                 let length = Int.random(in: 3...6, using: &random)
                 return (0..<length).map { _ in sentence(startsWithLorem: &startsWithLorem, random: &random) }.joined(separator: " ")
             }
-            return format == .html ? paragraphs.map(htmlParagraph).joined(separator: "\n") : paragraphs.joined(separator: "\n\n")
+            return Document(paragraphs: paragraphs)
         }
     }
 
@@ -81,10 +97,5 @@ public enum LoremIpsum {
             lastIndex = index
         }
         return output
-    }
-
-    private static func htmlParagraph(_ text: String) -> String {
-        // The corpus contains only Latin letters, spaces, and sentence punctuation.
-        "<p>\(text)</p>"
     }
 }

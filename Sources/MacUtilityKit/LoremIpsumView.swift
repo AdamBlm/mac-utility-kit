@@ -6,15 +6,16 @@ struct LoremIpsumDraft {
     var format: LoremIpsum.Format = .plain
     var count = "3"
     var startsWithLorem = true
+    var document: LoremIpsum.Document?
 }
 
 struct LoremIpsumView: View {
     @Binding var draft: LoremIpsumDraft
-    @State private var output = ""
-    @State private var generatedFormat: LoremIpsum.Format = .plain
     @State private var issue: String?
 
     var body: some View {
+        let format = draft.format
+        let output = draft.document?.rendered(as: format) ?? ""
         InteractiveToolLayout(tool: .loremIpsum) { palette in
             WorkspaceSection("Generate", palette: palette) {
                 SettingRow("Unit") {
@@ -38,13 +39,13 @@ struct LoremIpsumView: View {
                         .buttonStyle(.borderedProminent)
                     Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(output) }
                         .disabled(output.isEmpty)
-                    Button("Save…", systemImage: "square.and.arrow.up", action: save)
+                    Button("Save…", systemImage: "square.and.arrow.up") { save(output, format: format) }
                         .disabled(output.isEmpty)
                 }
                 if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             }
             if !output.isEmpty {
-                WorkspaceSection(generatedFormat.rawValue, palette: palette) {
+                WorkspaceSection(format.rawValue, palette: palette) {
                     ScrollView {
                         Text(output).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -58,18 +59,16 @@ struct LoremIpsumView: View {
     private func generate() {
         do {
             let count = Int(draft.count.trimmingCharacters(in: .whitespacesAndNewlines)) ?? 0
-            output = try LoremIpsum.generate(count: count, unit: draft.unit, format: draft.format,
-                                            startsWithLorem: draft.startsWithLorem)
-            generatedFormat = draft.format
+            draft.document = try LoremIpsum.document(count: count, unit: draft.unit, startsWithLorem: draft.startsWithLorem)
             issue = nil
         } catch {
             issue = error.localizedDescription
         }
     }
 
-    private func save() {
+    private func save(_ output: String, format: LoremIpsum.Format) {
         do {
-            try DeveloperToolFiles.save(Data((output + "\n").utf8), as: "Lorem Ipsum." + generatedFormat.fileExtension)
+            try DeveloperToolFiles.save(Data((output + "\n").utf8), as: "Lorem Ipsum." + format.fileExtension)
             issue = nil
         } catch {
             issue = error.localizedDescription
