@@ -60,6 +60,7 @@ struct TimestampConverterView: View {
                             draft.selectedMatch = nil
                         }))
                             .accessibilityLabel("Local date and time or ISO 8601 timestamp")
+                            .help("Accepts explicit offsets such as +05:30 or +0530.")
                     }
                     Button("Now", systemImage: "clock", action: useNow)
                 }
@@ -138,6 +139,16 @@ struct TimestampConverterView: View {
                 resultRow(draft.unit.rawValue, value: timestamp.formatted(in: draft.unit))
             }
             resultRow("ISO 8601", value: result.iso8601)
+            Button("Reverse Conversion", systemImage: "arrow.left.arrow.right") {
+                if draft.direction == .toDate {
+                    draft.localInput = result.iso8601
+                    draft.selectedMatch = nil
+                    draft.direction = .toUnix
+                } else {
+                    draft.unixInput = timestamp.formatted(in: draft.unit)
+                    draft.direction = .toDate
+                }
+            }
         case .failure(let error):
             failure(error.localizedDescription)
         }

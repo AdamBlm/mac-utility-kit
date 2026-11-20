@@ -100,7 +100,7 @@ public enum TimestampConverter {
     /// Resolves a local date using the selected zone, or an ISO 8601 date using its explicit offset.
     public static func resolveDate(_ input: String, in zone: TimeZone) throws -> [LocalTimestampMatch] {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let parts = text.wholeMatch(of: /(.+?)([Zz]|[+-][0-9]{2}:[0-9]{2}| UTC[+-][0-9]{2}:[0-9]{2}(?::[0-9]{2})?)/) else {
+        guard let parts = text.wholeMatch(of: /(.+?)([Zz]|[+-][0-9]{2}:?[0-9]{2}| UTC[+-][0-9]{2}:[0-9]{2}(?::[0-9]{2})?)/) else {
             return try resolveLocal(text, in: zone)
         }
         let (nominal, micros) = try civilDate(String(parts.1))
@@ -110,9 +110,14 @@ public enum TimestampConverter {
         if numeric == "Z" || numeric == "z" {
             offset = 0
         } else {
-            let fields = numeric.dropFirst().split(separator: ":").compactMap { Int($0) }
+            let digits = numeric.dropFirst()
+            let fields = if digits.count == 4 {
+                [digits.prefix(2), digits.suffix(2)].compactMap { Int($0) }
+            } else {
+                digits.split(separator: ":").compactMap { Int($0) }
+            }
             guard (2...3).contains(fields.count), fields[0] < 24, fields.dropFirst().allSatisfy({ $0 < 60 }) else {
-                throw ToolError.invalid("Enter a valid offset in Z, ±HH:MM, or UTC±HH:MM[:SS] format.")
+                throw ToolError.invalid("Enter a valid offset in Z, ±HHMM, ±HH:MM, or UTC±HH:MM[:SS] format.")
             }
             let magnitude = fields[0] * 3_600 + fields[1] * 60 + (fields.count == 3 ? fields[2] : 0)
             offset = numeric.first == "-" ? -magnitude : magnitude
@@ -121,7 +126,7 @@ public enum TimestampConverter {
         guard (minimumCivilSecond...maximumCivilSecond).contains(seconds) else {
             throw ToolError.invalid("This offset places the timestamp outside Gregorian years 0001 to 9999.")
         }
-        let label = numeric == "-00:00" ? "Unknown local offset (UTC−00:00)" : offsetLabel(offset)
+        let label = numeric == "-00:00" || numeric == "-0000" ? "Unknown local offset (UTC−00:00)" : offsetLabel(offset)
         return [LocalTimestampMatch(timestamp: .init(microseconds: seconds * 1_000_000 + micros), offset: label)]
     }
 

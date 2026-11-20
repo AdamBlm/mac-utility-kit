@@ -54,6 +54,21 @@ import UtilityCore
         }
     }
 
+    @Test func compactISOOffsetsAcceptExactMicrosecondsWithoutChangingControls() throws {
+        let zone = try #require(TimeZone(identifier: "America/New_York"))
+        let east = try #require(try TimestampConverter.resolveDate("1970-01-01T05:29:59.999999+0530", in: zone).first)
+        #expect(east.timestamp.microseconds == -1 && east.offset == "UTC+05:30")
+        let west = try #require(try TimestampConverter.resolveDate("1969-12-31T19:00:00.000001-0500", in: zone).first)
+        #expect(west.timestamp.microseconds == 1 && west.offset == "UTC-05:00")
+        let unknown = try #require(try TimestampConverter.resolveDate("1970-01-01T00:00:00-0000", in: zone).first)
+        #expect(unknown.timestamp.microseconds == 0 && unknown.offset.contains("Unknown local offset"))
+        for malformed in ["+2400", "-0560", "+050", "+0:500"] {
+            #expect(throws: ToolError.self) {
+                try TimestampConverter.resolveDate("1970-01-01T00:00:00" + malformed, in: zone)
+            }
+        }
+    }
+
     @Test func copiedLocalTimePreservesHistoricalOffsetSeconds() throws {
         let paris = try #require(TimeZone(identifier: "Europe/Paris"))
         let occurrence = try #require(TimestampConverter.resolveLocal("1911-03-10 23:55:00.123456", in: paris).first)
