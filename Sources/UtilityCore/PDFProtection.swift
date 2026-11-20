@@ -13,18 +13,24 @@ public struct PDFProtectionOptions: Sendable {
 }
 
 public enum PDFProtection {
+    package static func addPasswordIssue(_ options: PDFProtectionOptions) -> String? {
+        if options.password.isEmpty { return "Enter a document password." }
+        if !isValidPassword(options.password) {
+            return "Use a document password of at most 127 UTF-8 bytes with no null characters."
+        }
+        if options.password != options.confirmation { return "Confirm the document password." }
+        if !isValidPassword(options.ownerPassword) {
+            return "Use an owner password of at most 127 UTF-8 bytes with no null characters."
+        }
+        if options.ownerPassword == options.password { return "Choose a different owner password." }
+        return nil
+    }
+
     public static func add(
         _ input: URL, to output: URL, options: PDFProtectionOptions
     ) async throws -> String {
-        guard !options.password.isEmpty, options.password == options.confirmation else {
-            throw ToolError.invalid("Enter and confirm the document password.")
-        }
-        try validatePassword(options.password)
+        if let issue = addPasswordIssue(options) { throw ToolError.invalid(issue) }
         let owner = options.ownerPassword.isEmpty ? UUID().uuidString + UUID().uuidString : options.ownerPassword
-        try validatePassword(owner)
-        guard owner != options.password else {
-            throw ToolError.invalid("Choose a different owner password.")
-        }
         guard let original = open(input), !original.isEncrypted, original.pageCount > 0 else {
             throw ToolError.invalid("Choose a readable, unencrypted PDF.")
         }
@@ -71,9 +77,13 @@ public enum PDFProtection {
     }
 
     private static func validatePassword(_ value: String) throws {
-        guard value.utf8.count <= 127, !value.unicodeScalars.contains(where: { $0.value == 0 }) else {
+        guard isValidPassword(value) else {
             throw ToolError.invalid("Use a password of at most 127 UTF-8 bytes with no null characters.")
         }
+    }
+
+    private static func isValidPassword(_ value: String) -> Bool {
+        value.utf8.count <= 127 && !value.utf8.contains(0)
     }
 
     private static func open(_ url: URL) -> PDFDocument? {

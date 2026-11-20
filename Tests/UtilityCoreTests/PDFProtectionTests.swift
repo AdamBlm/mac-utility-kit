@@ -5,6 +5,25 @@ import Testing
 import UtilityCore
 
 struct PDFProtectionTests {
+    @Test func preflightDetectsUTF8ByteLimitAndCredentialRoleIssues() {
+        var choices = PDFProtectionOptions()
+        choices.password = String(repeating: "é", count: 63) + "a"
+        choices.confirmation = choices.password
+        #expect(choices.password.utf8.count == 127)
+        #expect(PDFProtection.addPasswordIssue(choices) == nil)
+
+        choices.password = String(repeating: "é", count: 64)
+        choices.confirmation = choices.password
+        #expect(PDFProtection.addPasswordIssue(choices)?.contains("document password of at most 127 UTF-8 bytes") == true)
+        choices.password = "reader"
+        #expect(PDFProtection.addPasswordIssue(choices) == "Confirm the document password.")
+        choices.confirmation = choices.password
+        choices.ownerPassword = "reader"
+        #expect(PDFProtection.addPasswordIssue(choices) == "Choose a different owner password.")
+        choices.ownerPassword = "owner\0password"
+        #expect(PDFProtection.addPasswordIssue(choices)?.contains("owner password of at most 127 UTF-8 bytes") == true)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"] != nil))
     func encryptsAndDecryptsWithVerifiedRestrictionsAndNoPartialFile() async throws {
         let executable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"]))
@@ -30,12 +49,17 @@ struct PDFProtectionTests {
 
         var choices = PDFProtectionOptions()
         choices.executable = executable
-        choices.password = "Review 2026"
+        choices.password = String(repeating: "a", count: 127)
         choices.confirmation = choices.password
         choices.ownerPassword = "Independent owner"
         choices.allowsPrinting = false
         choices.allowsCopying = false
         let protected = folder.appendingPathComponent("protected.pdf")
+        var longPassword = choices
+        longPassword.password += "b"
+        longPassword.confirmation = longPassword.password
+        await #expect(throws: ToolError.self) { try await PDFProtection.add(source, to: protected, options: longPassword) }
+        #expect(!FileManager.default.fileExists(atPath: protected.path))
         _ = try await PDFProtection.add(source, to: protected, options: choices)
         let saved = try #require(PDFDocument(url: protected))
         #expect(saved.isEncrypted && saved.isLocked)

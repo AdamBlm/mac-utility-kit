@@ -18,8 +18,7 @@ struct PDFProtectionView: View {
     private var canExport: Bool {
         guard input != nil, options.executable != nil, task == nil else { return false }
         if removesPassword { return verifiedPreview != nil }
-        return !options.password.isEmpty && options.password == options.confirmation
-            && (options.ownerPassword.isEmpty || options.password != options.ownerPassword)
+        return PDFProtection.addPasswordIssue(options) == nil
     }
 
     var body: some View {
@@ -50,6 +49,10 @@ struct PDFProtectionView: View {
                     } else {
                         SecureField("Confirm document password", text: $options.confirmation)
                         SecureField("Owner password (optional)", text: $options.ownerPassword)
+                        if let passwordIssue = PDFProtection.addPasswordIssue(options),
+                           !options.password.isEmpty || !options.confirmation.isEmpty || !options.ownerPassword.isEmpty {
+                            Text(passwordIssue).font(.callout).foregroundStyle(.secondary)
+                        }
                         Toggle("Allow printing", isOn: $options.allowsPrinting)
                         Toggle("Allow copying text and images", isOn: $options.allowsCopying)
                         Text("PDF viewers enforce these permissions. Leave the owner password blank to generate one.")
