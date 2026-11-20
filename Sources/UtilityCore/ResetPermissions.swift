@@ -1,3 +1,4 @@
+import Darwin
 import Foundation
 
 public enum ResetPermissionCategory: String, CaseIterable, Identifiable, Sendable {
@@ -23,18 +24,19 @@ public struct PermissionResetTarget: Equatable, Sendable {
     public let app: URL
     public let name: String
     public let bundleIdentifier: String
+    fileprivate let bundleStamp: DuplicateFileStamp
+    fileprivate let metadataStamp: DuplicateFileStamp
 }
 
 public enum ResetPermissions {
     public static func inspect(_ input: URL) throws -> PermissionResetTarget {
         let app = input.resolvingSymlinksInPath().standardizedFileURL
         guard app.isFileURL, app.pathExtension.lowercased() == "app",
-              try app.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
+              let bundleStamp = directoryStamp(app) else {
             throw ToolError.invalid("Choose a macOS application bundle.")
         }
         let infoURL = app.appending(path: "Contents/Info.plist")
-        guard let values = try? infoURL.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-              values.isRegularFile == true, let fileSize = values.fileSize, fileSize <= 1024 * 1024,
+        guard let metadataStamp = try? DuplicateFileIO.inspect(infoURL), metadataStamp.bytes <= 1024 * 1024,
               let info = try PropertyListSerialization.propertyList(from: Data(contentsOf: infoURL), format: nil) as? [String: Any],
               info["CFBundlePackageType"] as? String == "APPL", let identifier = info["CFBundleIdentifier"] as? String,
               validIdentifier(identifier) else {
@@ -42,7 +44,11 @@ public enum ResetPermissions {
         }
         let label = (info["CFBundleDisplayName"] as? String) ?? (info["CFBundleName"] as? String)
             ?? app.deletingPathExtension().lastPathComponent
-        return PermissionResetTarget(app: app, name: label, bundleIdentifier: identifier)
+        guard directoryStamp(app) == bundleStamp, try DuplicateFileIO.inspect(infoURL) == metadataStamp else {
+            throw ToolError.invalid("The selected app changed. Choose it again before resetting permissions.")
+        }
+        return PermissionResetTarget(app: app, name: label, bundleIdentifier: identifier,
+                                     bundleStamp: bundleStamp, metadataStamp: metadataStamp)
     }
 
     public static func reset(_ target: PermissionResetTarget, category: ResetPermissionCategory) async throws {
@@ -62,10 +68,17 @@ public enum ResetPermissions {
     ) async throws {
         try Task.checkCancellation()
         let current = try inspect(target.app)
-        guard current.app == target.app, current.bundleIdentifier == target.bundleIdentifier else {
+        guard current == target else {
             throw ToolError.invalid("The selected app changed. Choose it again before resetting permissions.")
         }
+        try Task.checkCancellation()
         try await invoke(["reset", category.rawValue, current.bundleIdentifier])
+    }
+
+    private static func directoryStamp(_ url: URL) -> DuplicateFileStamp? {
+        var info = stat()
+        guard lstat(url.path, &info) == 0, info.st_mode & S_IFMT == S_IFDIR else { return nil }
+        return DuplicateFileStamp(info)
     }
 
     private static func validIdentifier(_ identifier: String) -> Bool {

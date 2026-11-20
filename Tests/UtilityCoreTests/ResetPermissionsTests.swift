@@ -31,6 +31,24 @@ struct ResetPermissionsTests {
         #expect(throws: ToolError.self) { try ResetPermissions.inspect(app) }
     }
 
+    @Test(arguments: [false, true])
+    func unchangedIdentifierCannotAuthorizeChangedAppAtSamePath(replaceBundle: Bool) async throws {
+        let root = try root()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let app = root.appending(path: "Example.app")
+        let original = root.appending(path: "Previous.app")
+        try writeBundle(app, identifier: "com.example.fixture")
+        let reviewed = try ResetPermissions.inspect(app)
+        if replaceBundle { try FileManager.default.moveItem(at: app, to: original) }
+        try writeBundle(app, identifier: "com.example.fixture")
+        #expect(try ResetPermissions.inspect(app).bundleIdentifier == reviewed.bundleIdentifier)
+        await #expect(throws: ToolError.self) {
+            try await ResetPermissions.reset(reviewed, category: .camera) { _ in
+                Issue.record("Stale app evidence must not invoke tccutil.")
+            }
+        }
+    }
+
     private func root() throws -> URL {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
