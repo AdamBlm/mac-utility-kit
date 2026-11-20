@@ -10,6 +10,16 @@ struct CaseConverterTests {
         #expect(try CaseConverter.convert("helloWorld—Grüße", to: .kebab) == "hello-world-grüße")
     }
 
+    @Test func preservesCamelCaseBoundariesBeforeNumberLeadingWords() throws {
+        let turkish = Locale(identifier: "tr")
+        #expect(try CaseConverter.convert("Version 1-2", to: .camel) == "version_1_2")
+        #expect(try CaseConverter.convert("Version12", to: .camel) == "version12")
+        let input = "Istanbul—42—İş_ID2"
+        let identifier = try CaseConverter.convert(input, to: .camel, locale: turkish)
+        #expect(identifier == "ıstanbul_42İşId2")
+        #expect(try CaseConverter.convert(identifier, to: .camel, locale: turkish) == identifier)
+    }
+
     @Test func respectsLocaleAndPreservesUnselectedLinesAndBreaks() throws {
         let input = "first\r\niş\r\nlast\n"
         let turkish = Locale(identifier: "tr")

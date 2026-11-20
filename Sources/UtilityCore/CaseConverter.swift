@@ -79,7 +79,10 @@ public enum CaseConverter {
         case .camel:
             words(input).enumerated().map { index, word in
                 let lower = word.lowercased(with: locale)
-                return index == 0 ? lower : capitalizingInitial(lower, locale: locale)
+                if index == 0 { return lower }
+                // Preserve boundaries that capitalization cannot mark, as in change-case.
+                if lower.first?.isNumber == true { return "_" + lower }
+                return capitalizingInitial(lower, locale: locale)
             }.joined()
         }
     }
