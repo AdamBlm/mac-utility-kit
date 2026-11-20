@@ -5,6 +5,16 @@ import Testing
 import UtilityCore
 
 @Suite struct BurnSubtitlesTests {
+    @Test func importsUnicodeAndLegacySubRipWithoutChangingCueText() throws {
+        let subtitle = "1\r\n00:00:00,000 --> 00:00:01,000\r\nCafé €\r\n"
+        for encoding in [String.Encoding.utf8, .utf16, .windowsCP1252] {
+            let data = try #require(subtitle.data(using: encoding))
+            let loaded = try SubRip.decode(data)
+            #expect(loaded == subtitle)
+            #expect(try SubRip.parse(loaded).first?.text == "Café €")
+        }
+    }
+
     @Test func rejectsAnInvalidEncoderBeforeReadingTheVideo() async {
         let folder = FileManager.default.temporaryDirectory
         var options = BurnSubtitlesOptions()

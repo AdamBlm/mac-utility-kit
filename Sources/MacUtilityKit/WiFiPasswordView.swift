@@ -11,32 +11,43 @@ struct WiFiPasswordView: View {
     @State private var isRetrievedPassword = false
     @State private var hidden = false
     @State private var revealed = false
-    @State private var qr: CGImage?
+    @State private var qr: Preview?
     @State private var message: String?
     @State private var inventory: Task<Void, Never>?
     @State private var lookup: Task<Void, Never>?
 
+    private struct Preview {
+        let payload: Data
+        let image: CGImage
+    }
+
     private var selected: WiFiPassword.SavedNetwork? { networks.first { $0.id == selectedID } }
 
     private var security: QRPayload.Security? {
-        guard let selected else { return manualSecurity }
+        guard let selected else { return selectedID == nil ? manualSecurity : nil }
         if case .shareable(let value) = selected.security { return value }
         return nil
+    }
+
+    private var payload: QRPayload? {
+        guard let security else { return nil }
+        return .wiFi(name: selected?.name ?? manualName, security: security, password: password, hidden: hidden)
+    }
+
+    private func isCurrent(_ preview: Preview) -> Bool {
+        guard let payload, let bytes = try? payload.encodedBytes() else { return false }
+        return preview.payload == bytes
     }
 
     var body: some View {
         InteractiveToolLayout(tool: .wifiPasswordQR) { palette in
             WorkspaceSection("Network", palette: palette) {
                 HStack {
-                    Picker("Source", selection: $selectedID) {
+                    Picker("Source", selection: Binding(get: { selectedID }, set: selectNetwork)) {
                         Text("Enter manually").tag(WiFiPassword.SavedNetwork.ID?.none)
                         ForEach(networks) { network in
                             Text(networkLabel(network)).tag(Optional(network.id))
                         }
-                    }
-                    .onChange(of: selectedID) {
-                        clearCredentials()
-                        hidden = false
                     }
                     Button("Refresh saved networks", systemImage: "arrow.clockwise", action: refresh)
                         .disabled(inventory != nil || lookup != nil)
@@ -54,8 +65,10 @@ struct WiFiPasswordView: View {
                         Text(security.rawValue).foregroundStyle(.secondary)
                     }
                 } else {
-                    TextField("Network name (SSID)", text: $manualName)
-                        .onChange(of: manualName) { clearCredentials() }
+                    TextField("Network name (SSID)", text: Binding(get: { manualName }, set: { name in
+                        if !manualName.utf8.elementsEqual(name.utf8) { clearCredentials() }
+                        manualName = name
+                    }))
                     Picker("Security", selection: $manualSecurity) {
                         ForEach(QRPayload.Security.allCases, id: \.self) { value in
                             Text(value.rawValue).tag(value)
@@ -75,9 +88,9 @@ struct WiFiPasswordView: View {
                 if let message { Text(message).foregroundStyle(.secondary) }
             }
 
-            if let qr {
+            if let qr, isCurrent(qr) {
                 WorkspaceSection("Wi-Fi QR", palette: palette) {
-                    Image(decorative: qr, scale: 1).resizable().interpolation(.none)
+                    Image(decorative: qr.image, scale: 1).resizable().interpolation(.none)
                         .frame(width: 200, height: 200).accessibilityLabel("Network connection QR code")
                     if security != .open {
                         Text("Anyone with this code can read the network password.")
@@ -103,9 +116,12 @@ struct WiFiPasswordView: View {
         VStack(alignment: .leading, spacing: 8) {
             SecureField("Wi-Fi password", text: Binding(
                 get: { password },
-                set: { password = $0; isRetrievedPassword = false }
+                set: { value in
+                    if !password.utf8.elementsEqual(value.utf8) { qr = nil }
+                    password = value
+                    isRetrievedPassword = false
+                }
             ))
-                .onChange(of: password) { qr = nil }
                 .disabled(lookup != nil)
             if selected != nil {
                 Text("macOS controls access to saved passwords and may ask you to authorize this lookup.")
@@ -142,16 +158,18 @@ struct WiFiPasswordView: View {
         inventory = Task {
             let available = await WiFiPassword.savedNetworks()
             guard !Task.isCancelled else { return }
+            var refreshIssue: String?
             if isRetrievedPassword, let selected {
                 do {
                     _ = try WiFiPassword.credentialSSID(for: selected, in: available)
                 } catch {
                     clearCredentials()
-                    message = error.localizedDescription
+                    refreshIssue = error.localizedDescription
                 }
             }
             networks = available
-            if let selectedID, !networks.contains(where: { $0.id == selectedID }) { self.selectedID = nil }
+            if let selectedID, !networks.contains(where: { $0.id == selectedID }) { selectNetwork(nil) }
+            if let refreshIssue { message = refreshIssue }
             inventory = nil
         }
     }
@@ -192,10 +210,19 @@ struct WiFiPasswordView: View {
         message = nil
     }
 
+    private func selectNetwork(_ id: WiFiPassword.SavedNetwork.ID?) {
+        guard selectedID != id else { return }
+        clearCredentials()
+        hidden = false
+        selectedID = id
+    }
+
     private func generate() {
-        guard let security else { return }
+        guard let payload, case .wiFi(let name, let security, let password, let hidden) = payload else { return }
         do {
-            qr = try WiFiPassword.qr(name: selected?.name ?? manualName, security: security, password: password, hidden: hidden)
+            qr = try Preview(payload: payload.encodedBytes(), image: WiFiPassword.qr(
+                name: name, security: security, password: password, hidden: hidden
+            ))
             message = nil
         } catch {
             qr = nil
@@ -208,10 +235,11 @@ struct WiFiPasswordView: View {
         if item.setString(password, forType: .string) { writePrivateClipboardItem(item) }
     }
 
-    private func copyQR(_ image: CGImage) {
+    private func copyQR(_ preview: Preview) {
+        guard isCurrent(preview) else { return }
         do {
             let item = NSPasteboardItem()
-            if item.setData(try QRTools.png(image), forType: .png) { writePrivateClipboardItem(item) }
+            if item.setData(try QRTools.png(preview.image), forType: .png) { writePrivateClipboardItem(item) }
         } catch {
             message = error.localizedDescription
         }
@@ -221,8 +249,9 @@ struct WiFiPasswordView: View {
         message = ConcealedClipboard.write(item) ? "Copied to clipboard." : "Could not copy to the clipboard."
     }
 
-    private func exportQR(_ image: CGImage) {
-        do { try DeveloperToolFiles.save(QRTools.png(image), as: "Wi-Fi QR.png") }
+    private func exportQR(_ preview: Preview) {
+        guard isCurrent(preview) else { return }
+        do { try DeveloperToolFiles.save(QRTools.png(preview.image), as: "Wi-Fi QR.png") }
         catch { message = error.localizedDescription }
     }
 }

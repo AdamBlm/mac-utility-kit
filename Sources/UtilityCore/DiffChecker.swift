@@ -56,16 +56,14 @@ public enum DiffChecker {
     }
 
     public static func loadText(_ input: URL) async throws -> String {
-        try Task.checkCancellation()
-        guard input.isFileURL else { throw InputError.invalidFile }
-        let values = try input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey])
-        guard values.isRegularFile == true else { throw InputError.invalidFile }
-        if let size = values.fileSize, size > maximumTextBytes { throw InputError.tooManyBytes }
-        let file = try FileHandle(forReadingFrom: input)
-        defer { try? file.close() }
-        let data = try file.read(upToCount: maximumTextBytes + 1) ?? Data()
-        try Task.checkCancellation()
-        guard data.count <= maximumTextBytes else { throw InputError.tooManyBytes }
+        let data: Data
+        do {
+            data = try await PlainTextDecoding.loadVerifiedBytes(input, maximumBytes: maximumTextBytes)
+        } catch PlainTextDecoding.ReadIssue.tooLarge {
+            throw InputError.tooManyBytes
+        } catch PlainTextDecoding.ReadIssue.notRegular, PlainTextDecoding.ReadIssue.nonLocal {
+            throw InputError.invalidFile
+        }
         guard let text = PlainTextDecoding.decode(data) else { throw InputError.unsupportedEncoding }
         guard text.utf8.count <= maximumTextBytes else { throw InputError.tooManyBytes }
         return text

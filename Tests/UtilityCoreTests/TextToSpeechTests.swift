@@ -67,6 +67,45 @@ struct TextToSpeechTests {
         }
     }
 
+    @Test func recognizesScanTextAlongsideEmbeddedTextOnlyOnSelectedPDFPages() async throws {
+        let folder = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let pdf = folder.appending(path: "Mixed PDF.pdf")
+        let bounds = CGRect(x: 0, y: 0, width: 450, height: 160)
+        var mediaBox = bounds
+        let document = try #require(CGContext(pdf as CFURL, mediaBox: &mediaBox, nil))
+        let colorSpace = CGColorSpaceCreateDeviceRGB()
+        let scan = try #require(CGContext(data: nil, width: 900, height: 120, bitsPerComponent: 8, bytesPerRow: 0,
+                                          space: colorSpace, bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue))
+        let attributes: [NSAttributedString.Key: Any] = [
+            NSAttributedString.Key(kCTFontAttributeName as String): CTFontCreateWithName("Helvetica" as CFString, 40, nil)
+        ]
+        scan.setFillColor(CGColor(gray: 1, alpha: 1))
+        scan.fill(CGRect(x: 0, y: 0, width: 900, height: 120))
+        scan.textPosition = CGPoint(x: 40, y: 45)
+        CTLineDraw(CTLineCreateWithAttributedString(NSAttributedString(string: "Scanned checklist", attributes: attributes)), scan)
+        let scanImage = try #require(scan.makeImage())
+        for (index, text) in ["Outside selection", "Digital heading", ""].enumerated() {
+            document.beginPDFPage(nil)
+            document.textPosition = CGPoint(x: 20, y: 40)
+            CTLineDraw(CTLineCreateWithAttributedString(NSAttributedString(string: text, attributes: attributes)), document)
+            if index > 0 {
+                document.draw(scanImage, in: CGRect(x: 0, y: 90, width: bounds.width, height: 60))
+            }
+            document.endPDFPage()
+        }
+        document.closePDF()
+
+        #expect(try await SpeechDocument.loadForSpeech(pdf, pages: "2") == "Digital heading")
+        await #expect(throws: ToolError.self) { try await SpeechDocument.loadForSpeech(pdf, pages: "3") }
+        let mixed = try await SpeechDocument.loadForSpeech(pdf, pages: "2", password: "", recognizesScans: true)
+        #expect(mixed.components(separatedBy: "Digital heading").count == 2)
+        #expect(mixed.contains("Scanned checklist"))
+        #expect(!mixed.contains("Outside selection"))
+        let scanned = try await SpeechDocument.loadForSpeech(pdf, pages: "3", password: "", recognizesScans: true)
+        #expect(scanned == "Scanned checklist")
+    }
+
     @Test func importsReadableMarkdownContentForSpeech() async throws {
         let folder = try Self.folder()
         defer { try? FileManager.default.removeItem(at: folder) }

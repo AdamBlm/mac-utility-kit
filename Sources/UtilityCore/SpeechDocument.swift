@@ -14,12 +14,15 @@ public enum SpeechDocument {
         try await loadForSpeech(url, pages: pages, password: "")
     }
 
-    package static func loadForSpeech(_ url: URL, pages: String, password: String) async throws -> String {
-        try await load(url, renderMarkdown: true, pages: pages, password: password)
+    @concurrent
+    package static func loadForSpeech(
+        _ url: URL, pages: String, password: String, recognizesScans: Bool = false
+    ) async throws -> String {
+        try await load(url, renderMarkdown: true, pages: pages, password: password, recognizesScans: recognizesScans)
     }
 
     private static func load(
-        _ url: URL, renderMarkdown: Bool, pages: String = "", password: String = ""
+        _ url: URL, renderMarkdown: Bool, pages: String = "", password: String = "", recognizesScans: Bool = false
     ) async throws -> String {
         try Task.checkCancellation()
         guard url.isFileURL else { throw ToolError.invalid("Choose a local document.") }
@@ -31,7 +34,7 @@ public enum SpeechDocument {
         let markdown = ["md", "markdown"].contains(url.pathExtension.lowercased())
         let text: String
         if type?.conforms(to: .pdf) == true {
-            text = try extractPDF(url, range: pages, password: password)
+            text = try extractPDF(url, range: pages, password: password, recognizesScans: recognizesScans)
         } else if type?.conforms(to: .rtf) == true {
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
             text = try readRTF(data)
@@ -52,6 +55,9 @@ public enum SpeechDocument {
         }
         try Task.checkCancellation()
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            if renderMarkdown, type?.conforms(to: .pdf) == true, !recognizesScans {
+                throw ToolError.invalid("The selected PDF pages have no embedded text. Try Recognize Text in Scans.")
+            }
             throw ToolError.invalid("This document does not contain readable text.")
         }
         guard text.utf8.count <= 2 * 1024 * 1024 else {
@@ -60,7 +66,7 @@ public enum SpeechDocument {
         return text
     }
 
-    private static func extractPDF(_ url: URL, range: String, password: String) throws -> String {
+    private static func extractPDF(_ url: URL, range: String, password: String, recognizesScans: Bool) throws -> String {
         let source = try PDFSourceStamp.read(url)
         guard source.bytes <= maximumDocumentBytes else { throw ToolError.invalid("Choose a local document under 24 MB.") }
         let pdf = try TextExtraction.openPDF(source.resolved, password: password)
@@ -68,9 +74,23 @@ public enum SpeechDocument {
         var bytes = 0
         let selected = try PageSelection.indices(range, pageCount: pdf.pageCount).sorted()
         guard !selected.isEmpty else { throw ToolError.invalid("Choose at least one PDF page to speak.") }
+        var recognition = SearchablePDFOptions()
+        recognition.skipsSearchablePages = false
         for index in selected {
             try Task.checkCancellation()
-            guard let text = pdf.page(at: index)?.string, !text.isEmpty else { continue }
+            guard let page = pdf.page(at: index) else { continue }
+            let text: String?
+            if recognizesScans {
+                do {
+                    text = try SearchablePDF.recognitionResult(for: page, index: index, options: recognition).text
+                } catch {
+                    try Task.checkCancellation()
+                    throw ToolError.invalid("Could not recognize PDF page \(index + 1). \(error.localizedDescription)")
+                }
+            } else {
+                text = page.string
+            }
+            guard let text, !text.isEmpty else { continue }
             bytes += text.utf8.count
             guard bytes <= 2 * 1024 * 1024 else {
                 throw ToolError.invalid("Choose PDF pages with less than 2 MB of extracted text.")

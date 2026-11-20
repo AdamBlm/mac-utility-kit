@@ -8,8 +8,12 @@ private enum DiffViewMode: String, CaseIterable {
 }
 
 struct DiffCheckerDraft {
-    var original = ""
-    var modified = ""
+    fileprivate struct Source {
+        var text = ""
+        var url: URL?
+    }
+    fileprivate var original = Source()
+    fileprivate var modified = Source()
     var ignoreCase = false
     var ignoreWhitespace = false
     var ignoreBlankLines = false
@@ -21,7 +25,7 @@ struct DiffCheckerView: View {
         case original = "Original"
         case modified = "Modified"
 
-        var text: WritableKeyPath<DiffCheckerDraft, String> {
+        var source: WritableKeyPath<DiffCheckerDraft, DiffCheckerDraft.Source> {
             self == .original ? \.original : \.modified
         }
     }
@@ -30,9 +34,11 @@ struct DiffCheckerView: View {
     @State private var revision = 0
     @State private var comparison: (revision: Int, outcome: Result<DiffChecker.Result, Error>)?
     @State private var activeChange: Int?
-    @State private var loadingFiles: Set<Side> = []
+    @State private var fileTasks: [Side: Task<Void, Never>] = [:]
     @State private var fileErrors: [Side: String] = [:]
-    @State private var fileNames: [Side: String] = [:]
+    private var hasInput: Bool {
+        !draft.original.text.isEmpty || !draft.modified.text.isEmpty || draft.original.url != nil || draft.modified.url != nil
+    }
 
     var body: some View {
         InteractiveToolLayout(tool: .diffChecker) { palette in
@@ -41,21 +47,29 @@ struct DiffCheckerView: View {
                     editor(.original)
                     editor(.modified)
                 }
+                Button("Swap Sides", systemImage: "arrow.left.arrow.right") {
+                    let original = draft.original
+                    draft.original = draft.modified
+                    draft.modified = original
+                    fileErrors.removeAll()
+                    invalidate()
+                }
+                .disabled(!hasInput || !fileTasks.isEmpty)
                 HStack(spacing: 20) {
                     Toggle("Ignore whitespace", isOn: $draft.ignoreWhitespace)
                     Toggle("Ignore blank lines", isOn: $draft.ignoreBlankLines)
                     Toggle("Ignore case", isOn: $draft.ignoreCase)
                 }
             }
-            if !draft.original.isEmpty || !draft.modified.isEmpty {
+            if hasInput {
                 WorkspaceSection("Comparison", palette: palette) {
-                    if loadingFiles.isEmpty, let comparison, comparison.revision == revision {
+                    if fileTasks.isEmpty, let comparison, comparison.revision == revision {
                         switch comparison.outcome {
                         case .success(let result): resultView(result)
                         case .failure(let error): Text(error.localizedDescription).font(.callout)
                         }
                     } else {
-                        ProgressView(loadingFiles.isEmpty ? "Comparing…" : "Reading File…")
+                        ProgressView(fileTasks.isEmpty ? "Comparing…" : "Reading File…")
                             .controlSize(.small)
                     }
                 }
@@ -64,35 +78,43 @@ struct DiffCheckerView: View {
         .onChange(of: draft.ignoreCase) { invalidate() }
         .onChange(of: draft.ignoreWhitespace) { invalidate() }
         .onChange(of: draft.ignoreBlankLines) { invalidate() }
+        .onDisappear { for task in fileTasks.values { task.cancel() } }
         .task(id: revision) { await compare() }
     }
 
     private func editor(_ side: Side) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
+        let isLoading = fileTasks[side] != nil
+        return VStack(alignment: .leading, spacing: 8) {
             HStack {
                 Text(side.rawValue).font(.headline)
                 Spacer()
                 Button("Open…", systemImage: "folder") { open(side) }
-                    .disabled(loadingFiles.contains(side))
+                    .disabled(isLoading)
                     .help("Open UTF-8 or BOM-marked UTF-16 or UTF-32")
                     .accessibilityLabel("Open \(side.rawValue.lowercased()) text file")
                 ClipboardFileButton(allowedTypes: [.data], buttonOnlyTitle: "Paste \(side.rawValue) File",
                                     onPasteFile: { load($0, side) })
                     .labelStyle(.iconOnly)
                     .help("Paste a file on the \(side.rawValue.lowercased()) side")
-                    .disabled(loadingFiles.contains(side))
+                    .disabled(isLoading)
             }
-            TextEditor(text: Binding(get: { draft[keyPath: side.text] }, set: {
-                draft[keyPath: side.text] = $0
+            TextEditor(text: Binding(get: { draft[keyPath: side.source].text }, set: {
+                draft[keyPath: side.source] = .init(text: $0)
                 fileErrors[side] = nil
                 invalidate()
             }))
             .font(.body.monospaced())
             .frame(minHeight: 108, maxHeight: 160)
-            .disabled(loadingFiles.contains(side))
+            .disabled(isLoading)
             .accessibilityLabel("\(side.rawValue) text")
-            if let name = fileNames[side] {
-                Text(name).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+            if let url = draft[keyPath: side.source].url {
+                HStack {
+                    Text(url.lastPathComponent).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        .help(url.path)
+                    Button("Reload \(side.rawValue) File", systemImage: "arrow.clockwise") { load(url, side) }
+                        .labelStyle(.iconOnly)
+                        .disabled(isLoading)
+                }
             }
             if let issue = fileErrors[side] {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
@@ -211,10 +233,10 @@ struct DiffCheckerView: View {
     }
 
     private func compare() async {
-        guard !draft.original.isEmpty || !draft.modified.isEmpty else { return }
+        guard hasInput else { return }
         let jobRevision = revision
-        let original = draft.original
-        let modified = draft.modified
+        let original = draft.original.text
+        let modified = draft.modified.text
         let options = DiffChecker.Options(ignoreWhitespace: draft.ignoreWhitespace, ignoreCase: draft.ignoreCase,
                                           ignoreBlankLines: draft.ignoreBlankLines)
         do {
@@ -240,17 +262,20 @@ struct DiffCheckerView: View {
     }
 
     private func load(_ url: URL, _ side: Side) {
-        guard !loadingFiles.contains(side) else { return }
-        loadingFiles.insert(side)
+        guard fileTasks[side] == nil else { return }
         fileErrors[side] = nil
-        Task {
-            defer { loadingFiles.remove(side) }
+        fileTasks[side] = Task {
+            defer { fileTasks[side] = nil }
             do {
-                draft[keyPath: side.text] = try await DiffChecker.loadText(url)
-                fileNames[side] = url.lastPathComponent
+                let text = try await DiffChecker.loadText(url)
+                try Task.checkCancellation()
+                draft[keyPath: side.source] = .init(text: text, url: url)
                 invalidate()
+            } catch is CancellationError {
             } catch {
-                fileErrors[side] = url.lastPathComponent + " — " + error.localizedDescription
+                if !Task.isCancelled {
+                    fileErrors[side] = url.lastPathComponent + " — " + error.localizedDescription
+                }
             }
         }
     }

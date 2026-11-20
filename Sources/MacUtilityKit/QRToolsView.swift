@@ -47,9 +47,7 @@ struct QRToolsView: View {
 
         static func == (lhs: Self, rhs: Self) -> Bool {
             guard lhs.options == rhs.options, lhs.payload == rhs.payload else { return false }
-            let left = try? lhs.payload.encoded()
-            let right = try? rhs.payload.encoded()
-            return left.map { Data($0.utf8) } == right.map { Data($0.utf8) }
+            return (try? lhs.payload.encodedBytes()) == (try? rhs.payload.encodedBytes())
         }
     }
 

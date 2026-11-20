@@ -40,6 +40,10 @@ public enum QRPayload: Equatable, Sendable {
         }
     }
 
+    package func encodedBytes() throws -> Data {
+        Data(try encoded().utf8)
+    }
+
     private static func escape(_ value: String) -> String {
         let delimiters = "\\;,:\"".unicodeScalars
         return value.unicodeScalars.reduce(into: "") { result, scalar in
@@ -142,7 +146,7 @@ public enum QRTools {
     public static func generate(_ payload: QRPayload, options: QRCodeOptions = QRCodeOptions()) throws -> CGImage {
         guard (128...4096).contains(options.size) else { throw QRToolError.unsupportedSize }
         let filter = CIFilter.qrCodeGenerator()
-        filter.message = Data(try payload.encoded().utf8)
+        filter.message = try payload.encodedBytes()
         filter.correctionLevel = options.correction.rawValue
         guard let output = filter.outputImage, !output.extent.isEmpty else {
             throw QRToolError.encoding

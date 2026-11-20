@@ -32,6 +32,7 @@ struct TextToSpeechView: View {
     @State private var exportTask: Task<Void, Never>?
     @State private var importTask: Task<Void, Never>?
     @State private var pdfPassword = ""
+    @State private var recognizesScans = false
     @State private var issue: String?
 
     private struct Artifact {
@@ -86,17 +87,28 @@ struct TextToSpeechView: View {
                             draft.pdfSource = nil
                             draft.pdfPages = ""
                             pdfPassword = ""
+                            recognizesScans = false
                             issue = nil
                         }
                     }
                     Spacer()
-                    if importTask != nil { ProgressView().controlSize(.small) }
+                    if importTask != nil {
+                        ProgressView().controlSize(.small)
+                        Button("Cancel Import") {
+                            importTask?.cancel()
+                            importTask = nil
+                        }
+                    }
                     else if let name = draft.sourceName { Text(name).lineLimit(1).foregroundStyle(.secondary) }
                 }
                 if let pdf = draft.pdfSource {
+                    Toggle("Recognize Text in Scans", isOn: $recognizesScans)
+                        .disabled(importTask != nil)
                     SettingRow("PDF password") {
                         SecureField("If required", text: $pdfPassword)
-                            .onSubmit { loadDocument(pdf, pages: draft.pdfPages, password: pdfPassword) }
+                            .onSubmit {
+                                loadDocument(pdf, pages: draft.pdfPages, password: pdfPassword, recognizesScans: recognizesScans)
+                            }
                     }
                     .disabled(importTask != nil)
                     SettingRow("PDF pages") {
@@ -108,7 +120,9 @@ struct TextToSpeechView: View {
                         TextField("All or e.g. 1, 3–5", text: $draft.pdfPages)
                             .accessibilityLabel("PDF pages from \(pdf.lastPathComponent)")
                             .help(pdf.path)
-                        Button("Load Pages") { loadDocument(pdf, pages: draft.pdfPages, password: pdfPassword) }
+                        Button("Load Pages") {
+                            loadDocument(pdf, pages: draft.pdfPages, password: pdfPassword, recognizesScans: recognizesScans)
+                        }
                             .help("Load text from \(pdf.lastPathComponent)")
                     }
                     .disabled(importTask != nil)
@@ -221,15 +235,18 @@ struct TextToSpeechView: View {
         draft.pdfSource = UTType(filenameExtension: url.pathExtension)?.conforms(to: .pdf) == true ? url : nil
         draft.pdfPages = ""
         pdfPassword = ""
+        recognizesScans = false
         loadDocument(url, pages: "", password: "")
     }
 
-    private func loadDocument(_ url: URL, pages: String, password: String) {
+    private func loadDocument(_ url: URL, pages: String, password: String, recognizesScans: Bool = false) {
         importTask?.cancel()
         issue = nil
         importTask = Task {
             do {
-                let loaded = try await SpeechDocument.loadForSpeech(url, pages: pages, password: password)
+                let loaded = try await SpeechDocument.loadForSpeech(
+                    url, pages: pages, password: password, recognizesScans: recognizesScans
+                )
                 guard !Task.isCancelled else { return }
                 selection = nil
                 draft.text = loaded

@@ -3,6 +3,24 @@ import Testing
 import UtilityCore
 
 struct DiffCheckerTests {
+    @Test func rereadsASelectedFileFromItsCurrentContentsAndPreservesDirection() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let file = folder.appending(path: "draft.txt")
+        try Data("shared\r\n".utf8).write(to: file)
+        let original = try await DiffChecker.loadText(file)
+        let new = "shared\r\nadded\r\n"
+        try (Data([0xFF, 0xFE]) + #require(new.data(using: .utf16LittleEndian))).write(to: file, options: .atomic)
+        let modified = try await DiffChecker.loadText(file)
+        #expect(modified.utf8.elementsEqual(new.utf8))
+        let forward = try DiffChecker.compare(original, modified)
+        let reverse = try DiffChecker.compare(modified, original)
+        #expect(forward.changeStarts == [1] && reverse.changeStarts == [1])
+        #expect(forward.rows[1].original == nil && forward.rows[1].modified?.text == "added")
+        #expect(reverse.rows[1].modified == nil && reverse.rows[1].original?.text == "added")
+    }
+
     @Test func comparesBOMMarkedFilesAndRejectsMalformedOrOversizedInput() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)

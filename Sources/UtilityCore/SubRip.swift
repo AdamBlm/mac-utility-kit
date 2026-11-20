@@ -13,6 +13,22 @@ public struct SubtitleCue: Equatable, Sendable {
 }
 
 public enum SubRip {
+    private static let maximumImportBytes = 8 * 1024 * 1024
+
+    package static func load(_ url: URL) async throws -> String {
+        let data = try await PlainTextDecoding.loadVerifiedBytes(url, maximumBytes: maximumImportBytes)
+        try Task.checkCancellation()
+        return try decode(data)
+    }
+
+    package static func decode(_ data: Data) throws -> String {
+        if let text = String(data: data, encoding: .utf8) { return text }
+        if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]),
+           let text = String(data: data, encoding: .utf16) { return text }
+        if let text = String(data: data, encoding: .windowsCP1252) { return text }
+        throw ToolError.invalid("Could not read this SRT file as UTF-8, UTF-16, or Windows-1252.")
+    }
+
     public static func parse(_ source: String) throws -> [SubtitleCue] {
         let source = source.hasPrefix("\u{FEFF}") ? String(source.dropFirst()) : source
         let lines = source.replacingOccurrences(of: "\r\n", with: "\n")

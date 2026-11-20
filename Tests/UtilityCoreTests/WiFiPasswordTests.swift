@@ -75,6 +75,21 @@ struct WiFiPasswordTests {
         }
     }
 
+    @Test func previewIdentityDistinguishesEquivalentTextWithDifferentNetworkBytes() throws {
+        let decomposed = "e\u{0301}"
+        let composed = "é"
+        let old = QRPayload.wiFi(name: "Network", security: .wpa, password: "sample-\(decomposed)", hidden: false)
+        let new = QRPayload.wiFi(name: "Network", security: .wpa, password: "sample-\(composed)", hidden: false)
+        #expect(old == new)
+        let oldBytes = try old.encodedBytes()
+        let newBytes = try new.encodedBytes()
+        #expect(oldBytes != newBytes)
+
+        let image = try QRTools.generate(new)
+        let scanned = try #require(QRTools.detect(in: image).first)
+        #expect(Data(scanned.payload.utf8) == newBytes)
+    }
+
     @Test func roundTripsEachSupportedWiFiQRFormat() throws {
         let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)

@@ -17,7 +17,9 @@ struct BurnSubtitlesSettings: View {
     @State private var previewError: String?
     @State private var inputError: String?
     @State private var importError: String?
-    @State private var importing = false
+    @State private var importTask: Task<Void, Never>?
+    private var importing: Bool { importTask != nil }
+    private var subtitleType: UTType { UTType(filenameExtension: "srt") ?? .plainText }
     @State private var batchReview: BatchReview?
 
     private struct BatchRequest: Equatable, Sendable {
@@ -75,16 +77,23 @@ struct BurnSubtitlesSettings: View {
         HStack {
             Button("Import SRT…", systemImage: "folder", action: importSRT)
                 .disabled(importing)
+            ClipboardFileButton(allowedTypes: [subtitleType], buttonOnlyTitle: "Paste SRT File", onPasteFile: loadSRT)
+                .disabled(importing)
             if let input, let onTranscribe {
                 Button("Generate Captions…", systemImage: "waveform") { onTranscribe(input) }
                     .disabled(importing)
             }
-            if importing { ProgressView().controlSize(.small) }
         }
         .task(id: input) { await load(input) }
         if inputs.count > 1, onTranscribe != nil {
             Text("Sending captions back from Transcribe replaces this batch with the captioned video.")
                 .font(.caption).foregroundStyle(.secondary)
+        }
+        if importing {
+            HStack {
+                ProgressView("Reading subtitles…").controlSize(.small)
+                Button("Cancel Import", action: cancelImport)
+            }
         }
         TextEditor(text: $options.srt)
             .font(.body.monospaced())
@@ -124,6 +133,7 @@ struct BurnSubtitlesSettings: View {
             .pickerStyle(.segmented)
         }
         executablePicker("FFmpeg with libass", selection: $options.ffmpegExecutable)
+            .onDisappear(perform: cancelImport)
         if let issue = options.engineIssue {
             Text(issue).font(.callout).foregroundStyle(.secondary)
         }
@@ -270,28 +280,29 @@ struct BurnSubtitlesSettings: View {
     }
 
     private func importSRT() {
-        let filter = UTType(filenameExtension: "srt") ?? .plainText
-        guard let url = DeveloperToolFiles.choose(allowedTypes: [filter]) else { return }
+        guard let url = DeveloperToolFiles.choose(allowedTypes: [subtitleType]) else { return }
+        loadSRT(url)
+    }
+
+    private func loadSRT(_ url: URL) {
+        guard importTask == nil else { return }
         importError = nil
-        importing = true
-        Task {
-            defer { importing = false }
+        importTask = Task {
             do {
-                let data = try await DeveloperToolFiles.read(url)
-                if let utf8 = String(data: data, encoding: .utf8) {
-                    options.srt = utf8
-                } else if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]),
-                          let utf16 = String(data: data, encoding: .utf16) {
-                    options.srt = utf16
-                } else if let legacy = String(data: data, encoding: .windowsCP1252) {
-                    options.srt = legacy
-                } else {
-                    throw CocoaError(.fileReadInapplicableStringEncoding)
-                }
+                let subtitles = try await SubRip.load(url)
+                try Task.checkCancellation()
+                options.srt = subtitles
             } catch {
+                guard !Task.isCancelled else { return }
                 importError = error.localizedDescription
             }
+            importTask = nil
         }
+    }
+
+    private func cancelImport() {
+        importTask?.cancel()
+        importTask = nil
     }
 
     private func colorBinding(_ value: Binding<UInt32>) -> Binding<Color> {
