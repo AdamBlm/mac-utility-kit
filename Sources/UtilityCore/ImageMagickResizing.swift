@@ -40,12 +40,8 @@ enum ImageMagickResizing {
         }
         arguments.append(stagedOutput.lastPathComponent)
         try await ExternalTool.run(executable, name: "ImageMagick", arguments: arguments, directory: directory)
-        guard let result = CGImageSourceCreateWithURL(stagedOutput as CFURL, nil),
-              let info = CGImageSourceCopyPropertiesAtIndex(result, 0, nil) as? [CFString: Any],
-              info[kCGImagePropertyPixelWidth] as? Int == size.width,
-              info[kCGImagePropertyPixelHeight] as? Int == size.height else {
-            throw ToolError.invalid("ImageMagick did not produce the requested dimensions.")
-        }
+        try ImageResizing.verifyOutput(stagedOutput, size: size, format: format)
+        try Task.checkCancellation()
         try FileManager.default.moveItem(at: stagedOutput, to: output)
     }
 }

@@ -398,6 +398,52 @@ private func writePDF(widths: [Int], to url: URL) throws {
     #expect(image.width == 20 && image.height == 1)
 }
 
+@Test(arguments: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] == nil ? [false] : [false, true])
+func resizeImageRejectsMultiplePagesAndPublishesOrientedStill(useImageMagick: Bool) async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let still = folder.appending(path: "still.tiff")
+    let multi = folder.appending(path: "multiple.tiff")
+    let image = try #require(CGContext(data: nil, width: 32, height: 16, bitsPerComponent: 8,
+                                      bytesPerRow: 0, space: CGColorSpaceCreateDeviceRGB(),
+                                      bitmapInfo: CGImageAlphaInfo.noneSkipLast.rawValue)?.makeImage())
+    for (destination, count) in [(still, 1), (multi, 2)] {
+        let writer = try #require(CGImageDestinationCreateWithURL(destination as CFURL, UTType.tiff.identifier as CFString, count, nil))
+        for _ in 0..<count {
+            CGImageDestinationAddImage(writer, image, [kCGImagePropertyOrientation: 6] as CFDictionary)
+        }
+        try #require(CGImageDestinationFinalize(writer))
+    }
+    let firstBytes = try Data(contentsOf: still)
+    let multiBytes = try Data(contentsOf: multi)
+    var settings = ToolOptions()
+    settings.imageSizing = .percentage
+    settings.imagePercentage = 50
+    settings.imageFormat = .png
+    if useImageMagick {
+        let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
+        settings.imageMagickExecutable = URL(fileURLWithPath: executable)
+    }
+
+    #expect(try ToolRunner.imagePreview(still, longestEdge: 0, options: settings) == "8 × 16")
+    let previewError = #expect(throws: ToolError.self) {
+        try ToolRunner.imagePreview(multi, longestEdge: 0, options: settings)
+    }
+    #expect(previewError?.localizedDescription.contains("single frame or page") == true)
+    let report = try await ToolRunner.run(.resizeImages, inputs: [multi, still], destination: folder,
+                                          imageSize: 0, options: settings) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.contains("single frame or page") == true)
+    #expect(report.outputs.count == 1)
+    let output = try #require(report.outputs.first)
+    let decoded = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
+    let raster = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+    #expect(raster.width == 8 && raster.height == 16)
+    #expect(CGImageSourceGetType(decoded) as String? == UTType.png.identifier)
+    #expect(try Data(contentsOf: still) == firstBytes)
+    #expect(try Data(contentsOf: multi) == multiBytes)
+}
+
 @Test func videoSampleAndExportUseSelectedFormat() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

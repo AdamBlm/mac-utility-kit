@@ -68,6 +68,8 @@ enum ImageResizing {
         guard CGImageDestinationFinalize(writer) else {
             throw ToolError.invalid("Could not write the selected image format.")
         }
+        try verifyOutput(output, size: size, format: options.imageFormat)
+        try Task.checkCancellation()
     }
 
     static func preview(_ input: URL, longestEdge: Int, options: ToolOptions) throws -> String {
@@ -78,13 +80,31 @@ enum ImageResizing {
     }
 
     private static func orientedSource(_ input: URL) throws -> (CGImageSource, Int, Int) {
-        guard let source = CGImageSourceCreateWithURL(input as CFURL, nil),
-              let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+        guard input.isFileURL, let source = CGImageSourceCreateWithURL(input as CFURL, nil),
+              CGImageSourceGetCount(source) > 0 else {
+            throw ToolError.invalid("Could not open this image.")
+        }
+        guard CGImageSourceGetCount(source) == 1 else {
+            throw ToolError.invalid("Resize Images accepts a single frame or page. Use Convert Images to export the primary image.")
+        }
+        guard let props = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
               let width = props[kCGImagePropertyPixelWidth] as? Int,
               let height = props[kCGImagePropertyPixelHeight] as? Int
         else { throw ToolError.invalid("Could not read the image dimensions.") }
         let rotated = (5...8).contains(props[kCGImagePropertyOrientation] as? Int ?? 1)
         return (source, rotated ? height : width, rotated ? width : height)
+    }
+
+    static func verifyOutput(_ output: URL, size: (width: Int, height: Int), format: ImageFormat) throws {
+        guard let source = CGImageSourceCreateWithURL(output as CFURL, nil),
+              CGImageSourceGetType(source) as String? == format.type.identifier,
+              CGImageSourceGetCount(source) == 1,
+              let info = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [CFString: Any],
+              info[kCGImagePropertyPixelWidth] as? Int == size.width,
+              info[kCGImagePropertyPixelHeight] as? Int == size.height,
+              (info[kCGImagePropertyOrientation] as? Int ?? 1) == 1 else {
+            throw ToolError.invalid("The encoded image did not match the requested format, dimensions, or orientation.")
+        }
     }
 
     private static func imageDimensions(width: Int, height: Int, longestEdge: Int, options: ToolOptions)
