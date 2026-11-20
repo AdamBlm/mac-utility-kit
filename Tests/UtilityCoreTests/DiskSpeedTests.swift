@@ -102,16 +102,25 @@ struct DiskSpeedTests {
         let temporary = parent.appending(path: "target")
         let moved = parent.appending(path: "moved")
         try FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
+        let sentinel = temporary.appending(path: "Existing.txt")
+        try Data("Keep".utf8).write(to: sentinel)
         var options = DiskSpeedOptions()
-        options.sizeMiB = 1
+        options.sizeMiB = 2
+        let fractions = Mutex<[Double]>([])
         await #expect(throws: ToolError.self) {
             try await DiskSpeed.run(in: temporary, options: options) { event in
-                if event.phase == .read && event.fraction == 0 {
+                if event.phase == .read { Issue.record("A replaced folder must stop the write phase immediately.") }
+                fractions.withLock { $0.append(event.fraction) }
+                if event.phase == .write && event.fraction == 0.5 {
                     try? FileManager.default.moveItem(at: temporary, to: moved)
+                    try? FileManager.default.createDirectory(at: temporary, withIntermediateDirectories: false)
                 }
             }
         }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: moved.path).isEmpty)
+        #expect(fractions.withLock { $0 } == [0, 0.5])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: moved.path) == [sentinel.lastPathComponent])
+        #expect(try Data(contentsOf: moved.appending(path: sentinel.lastPathComponent)) == Data("Keep".utf8))
+        #expect(try FileManager.default.contentsOfDirectory(atPath: temporary.path).isEmpty)
     }
 
     private static func folder() throws -> URL {

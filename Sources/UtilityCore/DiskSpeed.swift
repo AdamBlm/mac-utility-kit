@@ -127,6 +127,7 @@ public enum DiskSpeed {
             try checkVolume(path, identity: identity)
             guard ftruncate(descriptor, 0) == 0 else { throw ioError("Could not reset the temporary file") }
             await progress(.init(phase: .write, pass: pass, passes: passes, fraction: 0))
+            try checkVolume(path, identity: identity)
             var elapsed = Duration.zero
             for index in 0..<options.sizeMiB {
                 try Task.checkCancellation()
@@ -140,6 +141,7 @@ public enum DiskSpeed {
                 if index.isMultiple(of: 16) || index == options.sizeMiB - 1 {
                     await progress(.init(phase: .write, pass: pass, passes: passes,
                                          fraction: Double(index + 1) / Double(options.sizeMiB)))
+                    try checkVolume(path, identity: identity)
                 }
             }
             try Task.checkCancellation()
@@ -150,7 +152,9 @@ public enum DiskSpeed {
             }
             elapsed += flushStart.duration(to: .now)
             let write = rate(bytes, elapsed: elapsed)
+            try checkVolume(path, identity: identity)
             await progress(.init(phase: .read, pass: pass, passes: passes, fraction: 0))
+            try checkVolume(path, identity: identity)
             elapsed = .zero
             for index in 0..<options.sizeMiB {
                 try Task.checkCancellation()
@@ -164,9 +168,9 @@ public enum DiskSpeed {
                 if index.isMultiple(of: 16) || index == options.sizeMiB - 1 {
                     await progress(.init(phase: .read, pass: pass, passes: passes,
                                          fraction: Double(index + 1) / Double(options.sizeMiB)))
+                    try checkVolume(path, identity: identity)
                 }
             }
-            try checkVolume(path, identity: identity)
             measured.append(.init(writeMegabytesPerSecond: write, readMegabytesPerSecond: rate(bytes, elapsed: elapsed)))
         }
         try Task.checkCancellation()
