@@ -97,6 +97,44 @@ import UtilityCore
         #expect(try Data(contentsOf: alias) == Data(contentsOf: source))
     }
 
+    @Test(arguments: [
+        (ByteEncoding.base64, "YWJj \n_"),
+        (.base64URL, "YWJj \n+"),
+        (.hex, "abcd \né"),
+        (.binary, "0101 \n2")
+    ])
+    func locatesInvalidAlphabetByteInOriginalText(format: ByteEncoding, text: String) {
+        let error = #expect(throws: ByteEncodingError.self) { try format.decode(text) }
+        guard case .invalidCharacterAt(byte: 7)? = error else {
+            Issue.record("Expected the invalid alphabet byte at its original offset.")
+            return
+        }
+    }
+
+    @Test func locatesInvalidFileByteAfterWhitespaceAndChunkBoundaries() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "input")
+        let output = folder.appending(path: "output")
+        let prefix = Data(String(repeating: "YWJj", count: 16_384).utf8)
+        let shortError = #expect(throws: ByteEncodingError.self) {
+            try ByteEncoding.base64.decode(bytes: Data([13, 10, 9, 0xFF]))
+        }
+        guard case .invalidCharacterAt(byte: 4)? = shortError else {
+            Issue.record("Expected the invalid raw byte in a small input.")
+            return
+        }
+        try (prefix + Data([13, 10, 9, 0xFF])).write(to: source)
+        let error = await #expect(throws: ByteEncodingError.self) {
+            try await ByteEncoding.base64.convertFile(source, to: output, decoding: true, padded: true, wrapAt: 0)
+        }
+        guard case .invalidCharacterAt(byte: 65_540)? = error else {
+            Issue.record("Expected the invalid raw byte after the first chunk.")
+            return
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+    }
 
     @Test func formatsAllEncodings() throws {
         let bytes = Data([0xfb, 0xff])

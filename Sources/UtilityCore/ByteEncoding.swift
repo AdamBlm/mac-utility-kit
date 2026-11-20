@@ -49,7 +49,37 @@ public enum ByteEncoding: String, CaseIterable, Identifiable, Sendable {
     }
 
     public func decode(_ text: String) throws -> Data {
-        let bytes = text.utf8.filter { $0 != 9 && $0 != 10 && $0 != 13 && $0 != 32 }
+        try decodeDigits(filteredDigits(text.utf8))
+    }
+
+    package func decode(bytes: Data) throws -> Data {
+        try decodeDigits(filteredDigits(bytes))
+    }
+
+    func filteredDigits(_ bytes: some Collection<UInt8>, after previousBytes: Int = 0) throws -> [UInt8] {
+        var digits: [UInt8] = []
+        digits.reserveCapacity(bytes.count)
+        for (index, byte) in bytes.enumerated() {
+            if byte == 9 || byte == 10 || byte == 13 || byte == 32 { continue }
+            let valid: Bool
+            switch self {
+            case .base64, .base64URL:
+                valid = switch byte {
+                case 48...57, 65...90, 97...122, 61: true
+                case 43, 47: self == .base64
+                case 45, 95: self == .base64URL
+                default: false
+                }
+            case .hex: valid = (48...57).contains(byte) || (65...70).contains(byte) || (97...102).contains(byte)
+            case .binary: valid = byte == 48 || byte == 49
+            }
+            guard valid else { throw ByteEncodingError.invalidCharacterAt(byte: previousBytes + index + 1) }
+            digits.append(byte)
+        }
+        return digits
+    }
+
+    func decodeDigits(_ bytes: [UInt8]) throws -> Data {
         switch self {
         case .base64, .base64URL:
             return try decodeBase64(bytes)
@@ -113,12 +143,14 @@ public enum ByteEncoding: String, CaseIterable, Identifiable, Sendable {
 
 public enum ByteEncodingError: LocalizedError {
     case invalidCharacter
+    case invalidCharacterAt(byte: Int)
     case invalidPadding
     case incompleteByte(Int)
 
     public var errorDescription: String? {
         switch self {
         case .invalidCharacter: "Input contains a character outside the selected alphabet."
+        case .invalidCharacterAt(let byte): "Input byte \(byte) is outside the selected alphabet."
         case .invalidPadding: "Input has an invalid Base64 length, padding, or trailing bits."
         case .incompleteByte(let width): "Each byte requires exactly \(width) digits."
         }

@@ -99,16 +99,18 @@ private struct FileByteConversion {
     let wrapAt: Int
     var pending = Data()
     var column = 0
+    var consumedInputBytes = 0
 
     mutating func consume(_ chunk: Data) throws -> Data {
         if decoding {
-            pending.append(contentsOf: chunk.filter { $0 != 9 && $0 != 10 && $0 != 13 && $0 != 32 })
+            pending.append(contentsOf: try format.filteredDigits(chunk, after: consumedInputBytes))
+            consumedInputBytes += chunk.count
             let group = format.supportsPadding ? 4 : format == .hex ? 2 : 8
             // Keep the final padded group until EOF to reject data after padding.
             let padding = format.supportsPadding ? pending.firstIndex(of: 61) : nil
             let prefixCount = padding ?? pending.count
             let count = prefixCount - prefixCount % group
-            let result = try format.decode(String(decoding: pending.prefix(count), as: UTF8.self))
+            let result = try format.decodeDigits(Array(pending.prefix(count)))
             pending = Data(pending.dropFirst(count))
             if padding != nil, pending.count > group { throw ByteEncodingError.invalidPadding }
             return result
@@ -122,7 +124,7 @@ private struct FileByteConversion {
     }
 
     mutating func finish() throws -> Data {
-        if decoding { return try format.decode(String(decoding: pending, as: UTF8.self)) }
+        if decoding { return try format.decodeDigits(Array(pending)) }
         return wrap(format.encode(pending, padded: padded))
     }
 

@@ -1,5 +1,6 @@
 import AppKit
 import SwiftUI
+import UniformTypeIdentifiers
 import UtilityCore
 
 struct Base64ToolDraft {
@@ -51,7 +52,7 @@ struct Base64ToolView: View {
             let work = Task.detached(priority: .userInitiated) {
                 try Task.checkCancellation()
                 if decoding {
-                    let decoded = try format.decode(DeveloperToolFiles.utf8(source))
+                    let decoded = try format.decode(bytes: source)
                     let text = String(data: decoded, encoding: .utf8)
                     let printable = text?.unicodeScalars.allSatisfy {
                         $0.properties.generalCategory != .control || [9, 10, 13].contains($0.value)
@@ -122,6 +123,8 @@ struct Base64ToolView: View {
                     Button("Open file…", systemImage: "folder") {
                         if let url = DeveloperToolFiles.choose() { draft.file = url }
                     }
+                    ClipboardFileButton(allowedTypes: [.data], buttonOnlyTitle: "Paste File",
+                                        onPasteFile: { draft.file = $0 })
                     Button("Paste", systemImage: "doc.on.clipboard") {
                         if let text = NSPasteboard.general.string(forType: .string) {
                             draft.file = nil
