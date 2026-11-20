@@ -127,9 +127,11 @@ struct SearchablePDFTests {
         let report = try await SearchablePDF.export(alias, to: output, options: .init()) { _ in }
 
         #expect(report.pages.map(\.status) == [.alreadySearchable])
+        let sourceText = try #require(PDFDocument(url: source)?.page(at: 0)?.string)
+        #expect(sourceText.trimmingCharacters(in: .whitespacesAndNewlines) == "Existing native text")
         try FileManager.default.removeItem(at: source)
         #expect(try Data(contentsOf: output) == original)
-        #expect(PDFDocument(url: output)?.page(at: 0)?.string == "Existing native text")
+        #expect(PDFDocument(url: output)?.page(at: 0)?.string == sourceText)
     }
 
     @Test(arguments: [false, true])
