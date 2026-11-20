@@ -26,6 +26,16 @@ open "build/Mac Utility Kit.app"
 
 This builds an ad hoc signed preview for local use. See [Contributing](CONTRIBUTING.md) for tests and disk-image packaging.
 
+### Opening a preview download for the first time
+
+Preview downloads use an ad hoc signature. macOS may block the first launch because the preview has no Apple Developer ID signature or notarization.
+
+1. If you downloaded the preview from this project's GitHub Releases page and trust the source, drag **Mac Utility Kit.app** into **Applications** and try opening it.
+2. If macOS blocks it, open **System Settings → Privacy & Security**, then select **Open Anyway**.
+3. Confirm when prompted. macOS saves the exception for this copy of the app. Managed Macs may restrict this option. [Apple's first-launch guidance](https://support.apple.com/en-us/102445)
+
+I’m keeping the preview simple while I see how much interest there is. If enough people find the app useful, I’d like to cover the cost of Apple Developer Program membership so I can offer signed and notarized downloads.
+
 ## Optional engines
 
 Many tools work with the frameworks that ship with macOS. If a feature needs an additional engine, open **Settings → Engines** or follow the setup instructions in that tool. Setup panels can provide a Homebrew command or let you select an installed executable.
