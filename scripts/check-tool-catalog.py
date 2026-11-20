@@ -24,6 +24,31 @@ def check(binary):
         for entry in catalog
     ):
         raise SystemExit("The packaged catalog is missing accepted input type identifiers.")
+    expected_cli = {
+        "resizeImages": "resize-images",
+        "mergePDFs": "merge-pdfs",
+        "mediaInfo": "media-info",
+        "hashGenerator": "hash",
+        "jsonFormatter": "format-json",
+    }
+    expected_mcp = {
+        "jsonFormatter": "format-json",
+        "wordCounter": "word-count",
+        "cleanLinks": "clean-link",
+    }
+    for entry in catalog:
+        tool = entry["id"]
+        expected = {}
+        if tool in expected_cli:
+            expected["cliCommand"] = expected_cli[tool]
+        if tool in expected_mcp:
+            expected["mcp"] = {"capability": expected_mcp[tool], "requiresExplicitOptIn": True}
+        if entry.get("automation") != expected:
+            raise SystemExit(f"Incorrect automation metadata for {tool}: {entry.get('automation')}")
+    for command in expected_cli.values():
+        help_text = subprocess.check_output([binary, command, "--help"], timeout=10, text=True)
+        if f"USAGE: muk {command}" not in help_text:
+            raise SystemExit(f"The catalog lists an unregistered CLI command: {command}.")
     print("The packaged catalog matches all 102 roadmap tools.")
 
 

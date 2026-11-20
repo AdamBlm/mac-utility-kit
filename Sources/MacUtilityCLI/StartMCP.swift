@@ -13,6 +13,14 @@ struct StartMCP: AsyncParsableCommand {
         case wordCount = "word-count"
         case cleanLink = "clean-link"
 
+        var catalogTool: UtilityCore.Tool {
+            switch self {
+            case .formatJSON: .jsonFormatter
+            case .wordCount: .wordCounter
+            case .cleanLink: .cleanLinks
+            }
+        }
+
         var definition: MCP.Tool {
             MCP.Tool(name: rawValue, description: description, inputSchema: .object([
                 "type": .string("object"),

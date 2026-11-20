@@ -14,7 +14,15 @@ def check(binary):
         "MCP did not reject startup without an explicit allow list"
     )
 
-    command = [binary, "mcp", "--allow", "format-json", "--allow", "clean-link"]
+    catalog = json.loads(subprocess.check_output([binary, "catalog"], timeout=10))
+    mcp = {entry["id"]: entry["automation"]["mcp"]
+           for entry in catalog if "mcp" in entry["automation"]}
+    selected = {mcp[tool]["capability"] for tool in ("jsonFormatter", "cleanLinks")}
+    assert set(mcp) == {"jsonFormatter", "wordCounter", "cleanLinks"}
+    assert all(entry["requiresExplicitOptIn"] is True for entry in mcp.values())
+    command = [binary, "mcp"]
+    for capability in sorted(selected):
+        command.extend(["--allow", capability])
     with subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE) as server:
         received = bytearray()
 
@@ -55,7 +63,7 @@ def check(binary):
             assert initialized["serverInfo"]["name"] == "Mac Utility Kit"
             send("notifications/initialized")
             listing = send("tools/list", request_id=2)
-            assert {tool["name"] for tool in listing["tools"]} == {"format-json", "clean-link"}
+            assert {tool["name"] for tool in listing["tools"]} == selected
             for tool in listing["tools"]:
                 assert tool["inputSchema"] == {
                     "type": "object",

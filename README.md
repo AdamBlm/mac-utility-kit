@@ -169,7 +169,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 
 ### Terminal and local MCP
 
-The app bundle includes the `muk` executable in `Contents/MacOS`. In a source checkout, run `swift run muk --help`. Use `muk catalog` to list the app’s tool IDs, categories, and declared file input type identifiers as JSON. The CLI reuses the app’s image resize, PDF merge, media inspection, file hashing, and JSON formatting operations. File-producing commands print a JSON report with output paths and per-input failures.
+The app bundle includes the `muk` executable in `Contents/MacOS`. In a source checkout, run `swift run muk --help`. Use `muk catalog` to list the app’s tool IDs, categories, and declared file input type identifiers as JSON. Each entry’s `automation` field lists its CLI command or its opt-in MCP capability where available. An empty object indicates an app-only tool. The CLI reuses the app’s image resize, PDF merge, media inspection, file hashing, and JSON formatting operations. File-producing commands print a JSON report with output paths and per-input failures.
 
 To enable specific MCP operations in a local client, set its command to the app bundle’s absolute `Contents/MacOS/muk` path and give it these arguments:
 

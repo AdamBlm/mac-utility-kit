@@ -2,8 +2,9 @@ import ArgumentParser
 import Foundation
 import UtilityCore
 
-struct Hash: AsyncParsableCommand {
-    static let configuration = CommandConfiguration(abstract: "Hash files with a selected digest algorithm.")
+struct Hash: AsyncParsableCommand, CatalogCommandBinding {
+    static let configuration = CommandConfiguration(commandName: "hash", abstract: "Hash files with a selected digest algorithm.")
+    static let catalogTool = Tool.hashGenerator
 
     @Option(help: "Digest algorithm. MD5 and SHA-1 are legacy.")
     var algorithm = Algorithm.sha256
@@ -40,8 +41,9 @@ struct Hash: AsyncParsableCommand {
     }
 }
 
-struct FormatJSON: ParsableCommand {
+struct FormatJSON: CatalogCommandBinding {
     static let configuration = CommandConfiguration(commandName: "format-json", abstract: "Format lossless JSON from a file or standard input.")
+    static let catalogTool = Tool.jsonFormatter
 
     @Argument(help: "UTF-8 JSON file, or - for standard input.") var file = "-"
     @Option(help: "Indentation: two, four, tab or minified.") var indentation = Indentation.two

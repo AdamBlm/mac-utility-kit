@@ -51,8 +51,9 @@ struct FileJobArguments: ParsableArguments, Sendable {
     }
 }
 
-struct ResizeImages: AsyncParsableCommand {
+struct ResizeImages: AsyncParsableCommand, CatalogCommandBinding {
     static let configuration = CommandConfiguration(commandName: "resize-images", abstract: "Resize images by their longest edge.")
+    static let catalogTool = Tool.resizeImages
 
     @OptionGroup var job: FileJobArguments
     @Option(help: "Maximum pixels on the longest edge.") var longestEdge = 1600
@@ -67,12 +68,13 @@ struct ResizeImages: AsyncParsableCommand {
         var options = ToolOptions()
         options.imageFormat = ImageFormat(rawValue: format.rawValue) ?? .png
         options.upscale = upscale
-        try await job.execute(.resizeImages, imageSize: longestEdge, options: options)
+        try await job.execute(Self.catalogTool, imageSize: longestEdge, options: options)
     }
 }
 
-struct MergePDFs: AsyncParsableCommand {
+struct MergePDFs: AsyncParsableCommand, CatalogCommandBinding {
     static let configuration = CommandConfiguration(commandName: "merge-pdfs", abstract: "Merge unencrypted PDFs or images in argument order.")
+    static let catalogTool = Tool.mergePDFs
 
     @OptionGroup var job: FileJobArguments
     @Option(help: "Output PDF filename.") var name = "Merged.pdf"
@@ -86,15 +88,16 @@ struct MergePDFs: AsyncParsableCommand {
         var options = ToolOptions()
         options.pdfOutputName = name
         options.pageRanges = pages
-        try await job.execute(.mergePDFs, options: options)
+        try await job.execute(Self.catalogTool, options: options)
     }
 }
 
-struct MediaInfo: AsyncParsableCommand {
+struct MediaInfo: AsyncParsableCommand, CatalogCommandBinding {
     static let configuration = CommandConfiguration(commandName: "media-info", abstract: "Write local media inspection reports.")
+    static let catalogTool = Tool.mediaInfo
     @OptionGroup var job: FileJobArguments
 
     func run() async throws {
-        try await job.execute(.mediaInfo)
+        try await job.execute(Self.catalogTool)
     }
 }
