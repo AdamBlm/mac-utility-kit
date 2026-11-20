@@ -9,9 +9,11 @@ public enum UUIDGenerator {
     }
 
     public struct Inspection: Equatable, Sendable {
+        public let canonicalUUID: String
         public let version: Int?
         public let variant: String
         public let unixMilliseconds: UInt64?
+        public var urn: String { "urn:uuid:" + canonicalUUID }
 
         public var date: Date? {
             unixMilliseconds.map { Date(timeIntervalSince1970: Double($0) / 1000) }
@@ -45,7 +47,9 @@ public enum UUIDGenerator {
     public static func inspect(_ input: String) throws -> Inspection {
         let text = input.trimmingCharacters(in: .whitespacesAndNewlines)
         let canonical: String
-        if text.utf8.count == 32, text.utf8.allSatisfy(isHexDigit) {
+        if text.prefix(9).lowercased() == "urn:uuid:" {
+            canonical = String(text.dropFirst(9))
+        } else if text.utf8.count == 32, text.utf8.allSatisfy(isHexDigit) {
             let characters = Array(text)
             canonical = [0..<8, 8..<12, 12..<16, 16..<20, 20..<32].map { String(characters[$0]) }.joined(separator: "-")
         } else {
@@ -57,8 +61,9 @@ public enum UUIDGenerator {
                   [8, 13, 18, 23].contains(index) ? byte == 45 : isHexDigit(byte)
               }),
               let uuid = UUID(uuidString: canonical) else {
-            throw ToolError.invalid("Enter a UUID with 32 hex digits, with or without standard hyphens.")
+            throw ToolError.invalid("Enter a UUID with 32 hex digits or a urn:uuid: identifier with standard hyphens.")
         }
+        let value = uuid.uuidString.lowercased()
         let bytes = uuid.uuid
         let variant = bytes.8
         guard variant & 0xC0 == 0x80 else {
@@ -66,13 +71,13 @@ public enum UUIDGenerator {
             if variant & 0x80 == 0 { name = "NCS" }
             else if variant & 0xE0 == 0xC0 { name = "Microsoft" }
             else { name = "Reserved" }
-            return Inspection(version: nil, variant: name, unixMilliseconds: nil)
+            return Inspection(canonicalUUID: value, version: nil, variant: name, unixMilliseconds: nil)
         }
         let version = Int(bytes.6 >> 4)
         let timestamp = version == 7
             ? [bytes.0, bytes.1, bytes.2, bytes.3, bytes.4, bytes.5].reduce(UInt64(0)) { ($0 << 8) | UInt64($1) }
             : nil
-        return Inspection(version: version, variant: "RFC 9562", unixMilliseconds: timestamp)
+        return Inspection(canonicalUUID: value, version: version, variant: "RFC 9562", unixMilliseconds: timestamp)
     }
 
     private static func timestamped(milliseconds: UInt64, random: inout SystemRandomNumberGenerator) -> UUID {

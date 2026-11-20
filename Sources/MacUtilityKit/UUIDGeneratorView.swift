@@ -54,11 +54,12 @@ struct UUIDGeneratorView: View {
                 }
             }
             WorkspaceSection("Inspect", palette: palette) {
-                TextField("Paste a UUID", text: $draft.inspectionInput)
+                TextField("Paste a UUID or UUID URN", text: $draft.inspectionInput)
                     .font(.body.monospaced())
                 if !draft.inspectionInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                     switch Result(catching: { try UUIDGenerator.inspect(draft.inspectionInput) }) {
                     case .success(let inspection):
+                        Text(inspection.canonicalUUID).font(.body.monospaced()).textSelection(.enabled)
                         LabeledContent("Variant", value: inspection.variant)
                         if let version = inspection.version {
                             LabeledContent("Version", value: String(version))
@@ -66,6 +67,10 @@ struct UUIDGeneratorView: View {
                         if let milliseconds = inspection.unixMilliseconds, let date = inspection.date {
                             LabeledContent("Unix milliseconds", value: String(milliseconds))
                             LabeledContent("Timestamp", value: date.ISO8601Format(.iso8601(timeZone: .gmt, includingFractionalSeconds: true)))
+                        }
+                        HStack {
+                            Button("Copy UUID") { DeveloperToolFiles.copy(inspection.canonicalUUID) }
+                            Button("Copy URN") { DeveloperToolFiles.copy(inspection.urn) }
                         }
                     case .failure(let error):
                         Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)

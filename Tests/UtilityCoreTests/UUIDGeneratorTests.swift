@@ -32,4 +32,24 @@ struct UUIDGeneratorTests {
         #expect(throws: ToolError.self) { try UUIDGenerator.inspect("invalid") }
         #expect(throws: ToolError.self) { try UUIDGenerator.generate(.random, count: 0) }
     }
+
+    @Test func acceptsAndCopiesCanonicalUUIDURN() throws {
+        let bare = "017f22e2-79b0-7cc3-98c4-dc0c0c07398f"
+        let details = try UUIDGenerator.inspect("  URN:UUID:\(bare.uppercased())\n")
+        #expect(details.canonicalUUID == bare)
+        #expect(details.urn == "urn:uuid:" + bare)
+        #expect(details.version == 7 && details.unixMilliseconds == 1_645_557_742_000)
+        #expect(try UUIDGenerator.inspect(details.urn) == details)
+        #expect(try UUIDGenerator.inspect(bare.replacingOccurrences(of: "-", with: "")) == details)
+    }
+
+    @Test(arguments: [
+        "urn:uuid:017f22e279b07cc398c4dc0c0c07398f",
+        "urn:uuid:017f22e2-79b0-7cc3-98c4-dc0c0c07398f?+query",
+        "urn:other:017f22e2-79b0-7cc3-98c4-dc0c0c07398f",
+        "urn:uuid: 017f22e2-79b0-7cc3-98c4-dc0c0c07398f"
+    ])
+    func rejectsUnsupportedUUIDInputForms(_ input: String) {
+        #expect(throws: ToolError.self) { try UUIDGenerator.inspect(input) }
+    }
 }
