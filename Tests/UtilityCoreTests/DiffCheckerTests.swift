@@ -70,6 +70,22 @@ struct DiffCheckerTests {
         #expect(try DiffChecker.compare("é", "e\u{301}").changeStarts == [0])
     }
 
+    @Test func ignoresBlankLinesAndRetainsOriginalLineNumbersAndChangeNavigation() throws {
+        let options = DiffChecker.Options(ignoreBlankLines: true)
+        let original = "header\r\n \r\nold blue\r\n\r\nkeep\r\nold green\r\n"
+        let modified = "\nheader\nnew blue\nkeep\n\t\nnew green\n \n"
+        let result = try DiffChecker.compare(original, modified, options: options)
+        #expect(result.changeStarts == [1, 3])
+        #expect(result.rows.map { $0.original?.number } == [1, 3, 5, 6, 7])
+        #expect(result.rows.map { $0.modified?.number } == [2, 3, 4, 6, 7])
+        #expect(result.rows[1].original?.segments.filter(\.changed).map(\.text) == ["old"])
+        #expect(result.rows[3].modified?.segments.filter(\.changed).map(\.text) == ["new"])
+        #expect(try DiffChecker.compare("x\n\n", "\nx\n\t", options: options).changeStarts.isEmpty)
+        #expect(try DiffChecker.compare("x", "x\n\t", options: options).changeStarts == [1])
+        #expect(try DiffChecker.compare("", " \n\t", options: options).changeStarts.isEmpty)
+        #expect(try DiffChecker.compare("x\ny", "x\n\ny").changeStarts == [1])
+    }
+
     @Test func capsExpensiveAlignmentAndRetainsMatchingEdges() throws {
         let original = "anchor\n" + Array(repeating: "before", count: 1_005).joined(separator: "\n") + "\nend"
         let modified = "anchor\n" + Array(repeating: "after", count: 1_005).joined(separator: "\n") + "\nend"

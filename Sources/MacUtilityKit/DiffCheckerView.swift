@@ -12,6 +12,7 @@ struct DiffCheckerDraft {
     var modified = ""
     var ignoreCase = false
     var ignoreWhitespace = false
+    var ignoreBlankLines = false
     fileprivate var mode = DiffViewMode.sideBySide
 }
 
@@ -42,6 +43,7 @@ struct DiffCheckerView: View {
                 }
                 HStack(spacing: 20) {
                     Toggle("Ignore whitespace", isOn: $draft.ignoreWhitespace)
+                    Toggle("Ignore blank lines", isOn: $draft.ignoreBlankLines)
                     Toggle("Ignore case", isOn: $draft.ignoreCase)
                 }
             }
@@ -61,6 +63,7 @@ struct DiffCheckerView: View {
         }
         .onChange(of: draft.ignoreCase) { invalidate() }
         .onChange(of: draft.ignoreWhitespace) { invalidate() }
+        .onChange(of: draft.ignoreBlankLines) { invalidate() }
         .task(id: revision) { await compare() }
     }
 
@@ -212,7 +215,8 @@ struct DiffCheckerView: View {
         let jobRevision = revision
         let original = draft.original
         let modified = draft.modified
-        let options = DiffChecker.Options(ignoreWhitespace: draft.ignoreWhitespace, ignoreCase: draft.ignoreCase)
+        let options = DiffChecker.Options(ignoreWhitespace: draft.ignoreWhitespace, ignoreCase: draft.ignoreCase,
+                                          ignoreBlankLines: draft.ignoreBlankLines)
         do {
             try await Task.sleep(for: .milliseconds(180))
             let job = Task.detached(priority: .userInitiated) {

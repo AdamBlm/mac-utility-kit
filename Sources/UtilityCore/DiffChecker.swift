@@ -7,10 +7,12 @@ public enum DiffChecker {
     public struct Options: Sendable {
         public var ignoreWhitespace: Bool
         public var ignoreCase: Bool
+        public var ignoreBlankLines: Bool
 
-        public init(ignoreWhitespace: Bool = false, ignoreCase: Bool = false) {
+        public init(ignoreWhitespace: Bool = false, ignoreCase: Bool = false, ignoreBlankLines: Bool = false) {
             self.ignoreWhitespace = ignoreWhitespace
             self.ignoreCase = ignoreCase
+            self.ignoreBlankLines = ignoreBlankLines
         }
     }
 
@@ -73,13 +75,12 @@ public enum DiffChecker {
         guard original.utf8.count <= maximumTextBytes, modified.utf8.count <= maximumTextBytes else {
             throw InputError.tooManyBytes
         }
-        let before = lines(original)
-        let after = lines(modified)
-        guard before.count <= maximumLines, after.count <= maximumLines else { throw InputError.tooManyLines }
+        let before = try numberedLines(original, ignoreBlankLines: options.ignoreBlankLines)
+        let after = try numberedLines(modified, ignoreBlankLines: options.ignoreBlankLines)
         try Task.checkCancellation()
 
-        let beforeKeys = before.map { key($0, options: options) }
-        let afterKeys = after.map { key($0, options: options) }
+        let beforeKeys = before.map { key($0.text, options: options) }
+        let afterKeys = after.map { key($0.text, options: options) }
         let lineChanges = try lineChanges(beforeKeys, afterKeys)
         var rows: [Row] = []
         var changeStarts: [Int] = []
@@ -101,19 +102,19 @@ public enum DiffChecker {
                     let modifiedText = modifiedIndex < right ? after[modifiedIndex] : nil
                     var segments: ([Segment], [Segment]) = ([], [])
                     if let originalText, let modifiedText {
-                        segments = changedWords(originalText, modifiedText, options: options)
+                        segments = changedWords(originalText.text, modifiedText.text, options: options)
                     }
                     rows.append(Row(
-                        original: originalText.map { Line(number: originalIndex + 1, text: $0, segments: segments.0) },
-                        modified: modifiedText.map { Line(number: modifiedIndex + 1, text: $0, segments: segments.1) },
+                        original: originalText.map { Line(number: $0.number, text: $0.text, segments: segments.0) },
+                        modified: modifiedText.map { Line(number: $0.number, text: $0.text, segments: segments.1) },
                         changed: true
                     ))
                 }
             }
             if left < before.count, right < after.count {
                 rows.append(Row(
-                    original: Line(number: left + 1, text: before[left], segments: []),
-                    modified: Line(number: right + 1, text: after[right], segments: []),
+                    original: before[left],
+                    modified: after[right],
                     changed: false
                 ))
                 left += 1
@@ -123,11 +124,23 @@ public enum DiffChecker {
         return Result(rows: rows, changeStarts: changeStarts, usedCoarseAlignment: lineChanges.coarse)
     }
 
-    private static func lines(_ text: String) -> [String] {
+    private static func numberedLines(_ text: String, ignoreBlankLines: Bool) throws -> [Line] {
         guard !text.isEmpty else { return [] }
-        return text.split(maxSplits: maximumLines, omittingEmptySubsequences: false, whereSeparator: {
+        let lines = text.split(maxSplits: maximumLines, omittingEmptySubsequences: false, whereSeparator: {
             $0 == "\n" || $0 == "\r" || $0 == "\r\n"
-        }).map(String.init)
+        })
+        guard lines.count <= maximumLines else { throw InputError.tooManyLines }
+        var result: [Line] = []
+        for (index, line) in lines.enumerated() {
+            if index.isMultiple(of: 512) { try Task.checkCancellation() }
+            if ignoreBlankLines, line.allSatisfy(\.isWhitespace) { continue }
+            result.append(Line(number: index + 1, text: String(line), segments: []))
+        }
+        if ignoreBlankLines, let lastContent = result.last, lastContent.number < lines.count {
+            // Keep the break immediately after the last nonblank line.
+            result.append(Line(number: lastContent.number + 1, text: "", segments: []))
+        }
+        return result
     }
 
     private static func key(_ text: String, options: Options) -> Data {
