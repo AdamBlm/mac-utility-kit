@@ -67,6 +67,14 @@ public struct AudioConvertOptions: Equatable, Sendable {
         return nil
     }
 
+    package func sourceIssue(_ source: AudioConvert.SourceFormat) -> String? {
+        let outputChannels = channels.count ?? source.channels
+        if !format.requiresFFmpeg, outputChannels > 2 {
+            return "Choose Mono or Stereo for this multichannel input."
+        }
+        return mp3Issue(rate: sampleRate ?? source.sampleRate, channels: outputChannels)
+    }
+
     func mp3Issue(rate: Int?, channels: Int?) -> String? {
         guard format == .mp3 else { return nil }
         if let rate, !supportedRates.contains(rate) {
@@ -83,6 +91,20 @@ public struct AudioConvertOptions: Equatable, Sendable {
 }
 
 public enum AudioConvert {
+    package struct SourceFormat: Sendable {
+        package let sampleRate: Int
+        package let channels: Int
+    }
+
+    package static func sourceFormat(_ input: URL) -> SourceFormat? {
+        guard input.isFileURL,
+              (try? input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+              let file = try? AVAudioFile(forReading: input) else { return nil }
+        let rate = file.fileFormat.sampleRate.rounded()
+        guard rate.isFinite, rate > 0, rate < Double(Int.max) else { return nil }
+        return SourceFormat(sampleRate: Int(rate), channels: Int(file.fileFormat.channelCount))
+    }
+
     public static func export(
         _ input: URL, to output: URL, options: AudioConvertOptions,
         progress: @escaping @Sendable (Double) async -> Void
@@ -94,18 +116,16 @@ public enum AudioConvert {
               !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a local audio source and a new output file.")
         }
+        let source = sourceFormat(input)
+        let expectedRate = options.sampleRate ?? source?.sampleRate
+        let expectedChannels = options.channels.count ?? source?.channels
+        if let source, let issue = options.sourceIssue(source) {
+            throw ToolError.invalid(issue)
+        }
         let staging = output.deletingLastPathComponent().appending(path: ".audio-convert-\(UUID().uuidString)", directoryHint: .isDirectory)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: staging) }
         let candidate = staging.appending(path: "Converted." + options.format.rawValue)
-        let inputFormat = try? AVAudioFile(forReading: input).fileFormat
-        let originalRate = inputFormat.map { Int($0.sampleRate.rounded()) }
-        let originalChannels = inputFormat.map { Int($0.channelCount) }
-        let expectedRate = options.sampleRate ?? originalRate
-        let expectedChannels = options.channels.count ?? originalChannels
-        if let issue = options.mp3Issue(rate: expectedRate, channels: expectedChannels) {
-            throw ToolError.invalid(issue)
-        }
         if options.format.requiresFFmpeg {
             try await FFmpegAudioConvert.export(input, to: candidate, options: options, mp3Rate: expectedRate)
         } else {
@@ -115,9 +135,6 @@ public enum AudioConvert {
             ])
             guard let track = try await asset.loadTracks(withMediaType: .audio).first else {
                 throw ToolError.invalid("The input has no readable audio track.")
-            }
-            if options.channels == .source, let originalChannels, originalChannels > 2 {
-                throw ToolError.invalid("Choose Mono or Stereo for this multichannel input.")
             }
             var extraction = AudioExtractionOptions()
             extraction.format = options.format

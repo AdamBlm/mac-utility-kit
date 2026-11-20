@@ -4,6 +4,16 @@ import UtilityCore
 struct AudioConvertControls: View {
     let inputs: [URL]
     @Binding var options: AudioConvertOptions
+    @State private var reviewRevision = 0
+    @State private var reviewed: ReviewRequest?
+    @State private var formats: [URL: AudioConvert.SourceFormat] = [:]
+
+    private struct ReviewRequest: Equatable {
+        let inputs: [URL]
+        let revision: Int
+    }
+
+    private var request: ReviewRequest { ReviewRequest(inputs: inputs, revision: reviewRevision) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -67,8 +77,48 @@ struct AudioConvertControls: View {
             }
             if let issue = options.validationIssue {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
+            } else {
+                sourceReview
             }
         }
+        .task(id: request) { [request] in await inspect(request) }
+    }
+
+    @ViewBuilder
+    private var sourceReview: some View {
+        if !inputs.isEmpty {
+            if reviewed != request {
+                ProgressView("Reading audio formats…").controlSize(.small)
+            } else {
+                let issues = inputs.compactMap { input -> (file: URL, issue: String)? in
+                    guard let format = formats[input] else {
+                        return (input, "Source format unavailable. The encoder will check this file.")
+                    }
+                    return options.sourceIssue(format).map { (input, $0) }
+                }
+                ForEach(Array(issues.enumerated()), id: \.offset) { _, row in
+                    Text("\(row.file.lastPathComponent) · \(row.issue)")
+                        .font(.callout).foregroundStyle(.secondary).help(row.file.path)
+                }
+                Button("Recheck Audio Formats", systemImage: "arrow.clockwise") { reviewRevision += 1 }
+            }
+        }
+    }
+
+    private func inspect(_ request: ReviewRequest) async {
+        let inputs = request.inputs
+        let worker = Task.detached(priority: .userInitiated) {
+            var result: [URL: AudioConvert.SourceFormat] = [:]
+            for input in Set(inputs) {
+                guard !Task.isCancelled else { break }
+                result[input] = AudioConvert.sourceFormat(input)
+            }
+            return result
+        }
+        let inspected = await withTaskCancellationHandler { await worker.value } onCancel: { worker.cancel() }
+        guard !Task.isCancelled else { return }
+        formats = inspected
+        reviewed = request
     }
 
     private func adjustBitrate() {

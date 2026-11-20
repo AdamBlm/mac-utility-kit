@@ -73,6 +73,11 @@ struct AudioConvertTests {
         options.format = .mp3
         options.ffmpegExecutable = ffmpeg
         options.bitrate = 320
+        let highFormat = try #require(AudioConvert.sourceFormat(high))
+        let lowFormat = try #require(AudioConvert.sourceFormat(low))
+        #expect(highFormat.sampleRate == 96_000 && lowFormat.sampleRate == 24_000)
+        #expect(options.sourceIssue(highFormat)?.contains("cannot keep the input sample rate") == true)
+        #expect(options.sourceIssue(lowFormat)?.contains("cannot use this bitrate") == true)
         let rejected = directory.appending(path: "rejected.mp3")
         let sampleRateError = await #expect(throws: ToolError.self) {
             try await AudioConvert.export(high, to: rejected, options: options) { _ in }
@@ -89,6 +94,7 @@ struct AudioConvertTests {
 
         options.bitrate = 144
         options.sampleRate = nil
+        #expect(options.sourceIssue(lowFormat) == nil)
         let output = directory.appending(path: "24k.mp3")
         let summary = try await AudioConvert.export(low, to: output, options: options) { _ in }
         let decoded = try AVAudioFile(forReading: output)
