@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import Testing
 @testable import UtilityCore
 
@@ -55,6 +56,24 @@ struct DisplayControlTests {
             try await adapter.apply(50, feature: .brightness, on: display)
         }
         #expect(await mock.setCommands.count == 3)
+    }
+
+    @Test func disconnectDuringReadbackDoesNotConfirmTheWrite() async throws {
+        let mock = Mock()
+        let connected = Mutex(true)
+        let adapter = DisplayControl(command: { args in
+            let output = try await mock.run(args)
+            if args == ["display", "uuid=" + Self.uuid, "max", "luminance"], await !mock.setCommands.isEmpty {
+                connected.withLock { $0 = false }
+            }
+            return output
+        }, connectedExternalIDs: { connected.withLock { $0 ? [48] : [] } })
+        let available = try await adapter.displays()
+        let display = try #require(available.first)
+
+        let result = try await adapter.apply(190, feature: .brightness, on: display)
+        #expect(result == .unconfirmed)
+        #expect(await mock.setCommands.count == 1)
     }
 
     private static func listing(uuid: String, id: Int, model: String) -> String {

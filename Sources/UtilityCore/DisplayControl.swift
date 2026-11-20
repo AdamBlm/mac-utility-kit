@@ -87,16 +87,18 @@ public actor DisplayControl {
         guard (0...before.maximum).contains(requested) else {
             throw ToolError.invalid("Enter a value from 0 to \(before.maximum).")
         }
-        if requested == before.current { return .accepted(before) }
         try Task.checkCancellation()
         guard connectedExternalIDs().contains(display.displayID) else { throw Self.disconnected }
+        if requested == before.current { return .accepted(before) }
         _ = try await command(["display", display.selector, "set", feature.command, String(requested)])
 
         var latest: Setting?
         for attempt in 0..<3 {
             if attempt > 0 { try await Task.sleep(for: .milliseconds(160)) }
             guard connectedExternalIDs().contains(display.displayID) else { return .unconfirmed }
-            if let setting = try await read(feature, on: display) {
+            let setting = try await read(feature, on: display)
+            guard connectedExternalIDs().contains(display.displayID) else { return .unconfirmed }
+            if let setting {
                 latest = setting
                 if setting.current == requested { return .accepted(setting) }
             }
