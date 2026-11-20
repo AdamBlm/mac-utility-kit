@@ -68,9 +68,13 @@ public enum HashGenerator {
 
     public static func verify(_ digest: String, expected: String, algorithm: HashAlgorithm) -> HashVerification {
         let expected = expected.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard expected.utf8.count == algorithm.hexLength,
-              expected.utf8.allSatisfy({ (48...57).contains($0) || (97...102).contains($0) }) else { return .invalid }
+        guard isHexDigest(expected.utf8, algorithm: algorithm) else { return .invalid }
         return digest == expected ? .match : .mismatch
+    }
+
+    static func isHexDigest(_ bytes: some Collection<UInt8>, algorithm: HashAlgorithm) -> Bool {
+        bytes.count == algorithm.hexLength
+            && bytes.allSatisfy { (48...57).contains($0) || (65...70).contains($0) || (97...102).contains($0) }
     }
 
     private static func run(_ operation: @escaping @Sendable () throws -> String) async throws -> String {

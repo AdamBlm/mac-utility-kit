@@ -6,6 +6,8 @@ struct HashGeneratorDraft {
     var text = ""
     var algorithm: HashAlgorithm = .sha256
     var expected = ""
+    var checksumList = ""
+    var usesChecksumList = false
     var files: [URL] = []
     var mode: Mode = .text
 
@@ -48,6 +50,10 @@ struct HashGeneratorView: View {
         )
         let currentResults = resultsInput == input ? results : []
         let isHashing = (resultsInput != input || running) && (input.mode == .text || !input.files.isEmpty)
+        let usesChecksumList = input.mode == .files && draft.usesChecksumList
+        let expectations = usesChecksumList && !draft.checksumList.isEmpty
+            ? Result { try HashChecksumList(draft.checksumList, algorithm: input.algorithm).expectations(for: input.files) }
+            : nil
         InteractiveToolLayout(tool: .hashGenerator) { palette in
             WorkspaceSection("Input", palette: palette) {
                 Picker("Input", selection: $draft.mode) {
@@ -92,8 +98,23 @@ struct HashGeneratorView: View {
                     }
                     .labelsHidden()
                 }
-                TextField("Expected hex digest (optional)", text: $draft.expected)
-                    .font(.body.monospaced())
+                if input.mode == .files {
+                    Toggle("Verify with a checksum list", isOn: $draft.usesChecksumList)
+                }
+                if usesChecksumList {
+                    TextEditor(text: $draft.checksumList)
+                        .font(.body.monospaced())
+                        .frame(minHeight: 78, maxHeight: 140)
+                        .accessibilityLabel("Expected checksums and filenames")
+                    Text("Paste output from shasum or a GNU checksum command. Paths match queued files only.")
+                        .font(.callout).foregroundStyle(.secondary)
+                    if case .failure(let error)? = expectations {
+                        Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
+                    }
+                } else {
+                    TextField("Expected hex digest (optional)", text: $draft.expected)
+                        .font(.body.monospaced())
+                }
             }
             WorkspaceSection("Results", palette: palette) {
                 if isHashing { ProgressView("Hashing…").controlSize(.small) }
@@ -106,8 +127,12 @@ struct HashGeneratorView: View {
                         if let digest = row.digest {
                             Text(digest).font(.body.monospaced()).textSelection(.enabled)
                             HStack {
-                                if !draft.expected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                                    Text(verification(digest)).font(.callout).foregroundStyle(.secondary)
+                                if let expectation = try? expectations?.get()[row.id] {
+                                    Text(verification(digest, expectation: expectation))
+                                        .font(.callout).foregroundStyle(.secondary)
+                                } else if !usesChecksumList, !draft.expected.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                                    Text(verification(digest, expectation: .digest(draft.expected)))
+                                        .font(.callout).foregroundStyle(.secondary)
                                 }
                                 Spacer()
                                 Button("Copy digest", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(digest) }
@@ -172,8 +197,14 @@ struct HashGeneratorView: View {
         }
     }
 
-    private func verification(_ digest: String) -> String {
-        switch HashGenerator.verify(digest, expected: draft.expected, algorithm: draft.algorithm) {
+    private func verification(_ digest: String, expectation: HashChecksumList.Expectation) -> String {
+        let expected: String
+        switch expectation {
+        case .digest(let value): expected = value
+        case .missing: return "No expected digest for this file"
+        case .ambiguous: return "Multiple checksum matches"
+        }
+        return switch HashGenerator.verify(digest, expected: expected, algorithm: draft.algorithm) {
         case .match: "Matches expected digest"
         case .mismatch: "Digest does not match"
         case .invalid: "Enter \(draft.algorithm.hexLength) hex characters"

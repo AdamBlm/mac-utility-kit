@@ -3,6 +3,34 @@ import Testing
 @testable import UtilityCore
 
 struct HashGeneratorTests {
+    @Test func routesChecksumListByExactSelectedFilename() throws {
+        let a = String(repeating: "A", count: 64)
+        let b = String(repeating: "B", count: 64)
+        let files = ["/tmp/one/file.txt", "/tmp/two/file.txt", "/tmp/leading space.txt", "/tmp/missing.txt"]
+            .map { URL(fileURLWithPath: $0) }
+        let list = try HashChecksumList("\(a)  ./one/file.txt\r\n\(b) */tmp/two/file.txt\n\(a)  leading space.txt\n",
+                                        algorithm: .sha256)
+        #expect(list.expectations(for: files) == [
+            .digest(a.lowercased()), .digest(b.lowercased()), .digest(a.lowercased()), .missing
+        ])
+        let duplicate = try HashChecksumList("\(a)  file.txt\n\(b)  file.txt", algorithm: .sha256)
+        #expect(duplicate.expectations(for: files) == [.ambiguous, .ambiguous, .missing, .missing])
+    }
+
+    @Test func readsGNUEscapedNamesAndRejectsMalformedManifestRows() throws {
+        let digest = String(repeating: "a", count: 64)
+        let path = URL(fileURLWithPath: "/tmp/back\\slash\nline\rbreak")
+        let list = try HashChecksumList("\\\(digest)  back\\\\slash\\nline\\rbreak", algorithm: .sha256)
+        #expect(list.expectations(for: [path]) == [.digest(digest)])
+        let junk = #expect(throws: ToolError.self) {
+            try HashChecksumList("\(digest)  file\n\(digest) ?unknown", algorithm: .sha256)
+        }
+        #expect(junk?.localizedDescription.contains("line 2") == true)
+        #expect(throws: ToolError.self) {
+            try HashChecksumList("\\\(digest)  unsupported\\q", algorithm: .sha256)
+        }
+    }
+
     @Test(arguments: [
         (HashAlgorithm.md5, "900150983cd24fb0d6963f7d28e17f72"),
         (.sha1, "a9993e364706816aba3e25717850c26c9cd0d89d"),
