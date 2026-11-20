@@ -385,27 +385,45 @@ public enum PDFPageEditing {
         let labels = try pageNumbers.map { try PDFPageNumbers.labels(pageCount: pages.count, options: $0) } ?? [:]
         let document = PDFDocument()
         var rotations: [Int] = []
-        var numberedBounds: [Int: CGRect] = [:]
-        for (index, edit) in pages.enumerated() {
+        for edit in pages {
             try Task.checkCancellation()
             let page = try editedPage(edit, from: original)
             document.insert(page, at: document.pageCount)
             rotations.append(page.rotation)
-            if let pageNumbers, let label = labels[index] {
-                numberedBounds[index] = try PDFPageNumbers.add(label, to: page, placement: pageNumbers.placement).bounds
-            }
         }
         try copyBookmarks(from: original, to: document, using: pages)
+        let finalDocument: PDFDocument
+        var numberedBounds: [Int: CGRect] = [:]
+        let layout = output.deletingLastPathComponent().appendingPathComponent(UUID().uuidString + ".pdf")
+        defer { if !labels.isEmpty { try? FileManager.default.removeItem(at: layout) } }
+        if let pageNumbers, !labels.isEmpty {
+            // Read back the effective geometry after PDFKit serializes page edits.
+            guard document.write(to: layout), let numbered = PDFDocument(url: layout),
+                  numbered.pageCount == pages.count else {
+                throw ToolError.invalid("Could not reopen the reorganized pages for numbering.")
+            }
+            for (index, label) in labels {
+                try Task.checkCancellation()
+                guard let page = numbered.page(at: index), page.rotation == rotations[index] else {
+                    throw ToolError.invalid("Could not open reorganized page \(index + 1) for numbering.")
+                }
+                numberedBounds[index] = try PDFPageNumbers.add(label, to: page, placement: pageNumbers.placement).bounds
+            }
+            finalDocument = numbered
+        } else {
+            finalDocument = document
+        }
         try Task.checkCancellation()
-        guard document.write(to: output), let exported = PDFDocument(url: output),
+        guard finalDocument.write(to: output), let exported = PDFDocument(url: output),
               exported.pageCount == pages.count,
               rotations.enumerated().allSatisfy({ exported.page(at: $0.offset)?.rotation == $0.element }) else {
             throw ToolError.invalid("Could not verify the page count and rotation of the exported PDF.")
         }
         for (index, label) in labels {
             try Task.checkCancellation()
-            guard exported.page(at: index)?.annotations.contains(where: {
-                guard let bounds = numberedBounds[index] else { return false }
+            guard let page = exported.page(at: index), let bounds = numberedBounds[index],
+                  let geometry = try? PDFRedactionGeometry(page), geometry.normalized(bounds) != nil,
+                  page.annotations.contains(where: {
                 return $0.type == "FreeText" && $0.contents == label && $0.shouldPrint
                     && abs($0.bounds.minX - bounds.minX) < 0.01 && abs($0.bounds.minY - bounds.minY) < 0.01
                     && abs($0.bounds.width - bounds.width) < 0.01 && abs($0.bounds.height - bounds.height) < 0.01

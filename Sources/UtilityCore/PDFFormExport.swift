@@ -121,18 +121,33 @@ enum PDFFormExport {
         root = writer.root_object
         membership, names = field_members(root)
         missing = []
-        for ref, widget in widgets(writer):
+        form = root.get("/AcroForm")
+        top_fields = form.get_object().get("/Fields", []) if form is not None else []
+        page_widgets = list(widgets(writer))
+        page_refs = {object_key(ref) for ref, _ in page_widgets}
+        for ref, widget in page_widgets:
             if object_key(ref) in membership:
                 continue
             key = widget_name(widget)
-            if not key:
-                raise ValueError("A PDF widget outside the field tree has no field name.")
+            if not key or "/Parent" in widget or "/FT" not in widget:
+                raise ValueError("A PDF widget outside the field tree has incomplete field information.")
             if key in names:
-                raise ValueError("A PDF widget outside the field tree duplicates an existing field name.")
-            if "/Parent" in widget:
-                raise ValueError("A PDF widget claims a parent but is missing from the field tree.")
-            if "/FT" not in widget:
-                raise ValueError("A PDF widget outside the field tree has no field type.")
+                # Older PDFKit can serialize the same terminal field twice, with
+                # one object on the page and a detached copy in /AcroForm.
+                duplicates = [(index, other_ref, other_ref.get_object())
+                              for index, other_ref in enumerate(top_fields)
+                              if widget_name(other_ref.get_object()) == key]
+                same_name_count = sum(widget_name(item) == key for _, item in page_widgets)
+                if len(duplicates) != 1 or same_name_count != 1:
+                    raise ValueError("A PDF widget outside the field tree duplicates an existing field name.")
+                index, other_ref, other = duplicates[0]
+                if (object_key(other_ref) in page_refs or "/Kids" in other
+                        or "/Parent" in other or other.get("/FT") != widget["/FT"]
+                        or int(other.get("/Ff", 0)) != int(widget.get("/Ff", 0))
+                        or value(other) != value(widget)):
+                    raise ValueError("The page widget and its detached field do not match.")
+                top_fields[index] = ref
+                continue
             missing.append(ref)
             names.add(key)
         if not missing:

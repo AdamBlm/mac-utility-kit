@@ -132,8 +132,22 @@ public enum PDFCrop {
         try manager.createDirectory(at: directory, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: directory) }
         let candidate = directory.appendingPathComponent("Cropped.pdf")
-        guard document.write(to: candidate), let reopened = PDFDocument(url: candidate),
-              reopened.pageCount == expected.count else {
+        guard document.write(to: candidate), let native = PDFDocument(url: candidate),
+              native.pageCount == expected.count else {
+            throw ToolError.invalid("Could not reopen the cropped PDF.")
+        }
+        let changedScale = expected.indices.contains { index in
+            guard let reference = native.page(at: index)?.pageRef else { return false }
+            return pageUnit(reference) != units[index]
+        }
+        let verifiedURL: URL
+        if changedScale {
+            verifiedURL = directory.appendingPathComponent("Cropped with scale.pdf")
+            try await PDFCropQPDF.write(stamp.resolved, to: verifiedURL, boxes: planned, directory: directory)
+        } else {
+            verifiedURL = candidate
+        }
+        guard let reopened = PDFDocument(url: verifiedURL), reopened.pageCount == expected.count else {
             throw ToolError.invalid("Could not reopen the cropped PDF.")
         }
         for index in expected.indices {
@@ -150,7 +164,7 @@ public enum PDFCrop {
         }
         try Task.checkCancellation()
         try verifySource(input, stamp: stamp)
-        try manager.moveItem(at: candidate, to: output)
+        try manager.moveItem(at: verifiedURL, to: output)
         await progress(1)
         return "\(input.lastPathComponent) · Cropped \(planned.count) of \(expected.count) pages"
     }

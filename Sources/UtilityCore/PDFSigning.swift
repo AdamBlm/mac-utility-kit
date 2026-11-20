@@ -84,7 +84,7 @@ public enum PDFSigning {
             let signatures = PDFSigning.signatures(in: page)
             guard page.rotation == rotation, let reference = page.pageRef else { return "page rotation changed" }
             guard signatures.count == signatureCount else { return "the ink annotation or its path did not survive the write" }
-            guard let annotation = signatures.first(where: { $0.value(forAnnotationKey: .name) as? String == name }) else {
+            guard let annotation = signatures.first(where: { PDFSigning.signatureIdentifier($0) == name }) else {
                 return "the annotation identifier did not survive the write"
             }
             guard annotation.shouldDisplay, annotation.shouldPrint else { return "the annotation is hidden or does not print" }
@@ -141,9 +141,9 @@ public enum PDFSigning {
             }
             let ink = PDFAnnotation(bounds: bounds, forType: .ink, withProperties: nil)
             let name = UUID().uuidString
-            guard ink.setValue(name, forAnnotationKey: .name) else {
-                throw ToolError.invalid("Could not identify the signature annotation.")
-            }
+            _ = ink.setValue(name, forAnnotationKey: .name)
+            // Older PDFKit writers can drop the annotation name during serialization.
+            ink.userName = "Mac Utility Kit: " + name
             ink.contents = annotationLabel
             ink.color = NSColor(srgbRed: 0.11, green: 0.14, blue: 0.25, alpha: 1)
             ink.shouldPrint = true
@@ -231,6 +231,17 @@ public enum PDFSigning {
             }
             _ = try place(mark, on: visibleSize(for: ref), mode: options.mode, placement: placement)
         }
+    }
+
+    package static func signatureIdentifier(_ annotation: PDFAnnotation) -> String? {
+        if let identifier = annotation.value(forAnnotationKey: .name) as? String,
+           UUID(uuidString: identifier) != nil {
+            return identifier
+        }
+        let prefix = "Mac Utility Kit: "
+        guard let author = annotation.userName, author.hasPrefix(prefix) else { return nil }
+        let identifier = String(author.dropFirst(prefix.count))
+        return UUID(uuidString: identifier) == nil ? nil : identifier
     }
 
     private static func signatures(in page: PDFPage) -> [PDFAnnotation] {

@@ -84,7 +84,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 ## PDF conversion and protection
 
 - **Compress PDF** is under **Documents → Convert & Compress**. It estimates savings from a page sample and checks exported page geometry, selectable text, and links. Automatic mode evaluates available compression methods and can apply qpdf after Ghostscript when both are installed. Use Advanced for a specific engine or quality setting.
-- **Crop PDF** applies precise edge offsets to selected pages and previews the visible area before export.
+- **Crop PDF** applies precise edge offsets to selected pages and previews the visible area before export. On macOS versions where the native writer drops a PDF’s custom physical scale, install qpdf 11 or later in the standard Homebrew location to preserve that scale.
 - **Make PDF Searchable** adds invisible, selectable Vision OCR text to chosen PDF pages. Preview recognized text, choose a language, and optionally skip pages that already contain text.
 - **Redact PDF** permanently removes marked content in a rasterized copy of an unencrypted PDF. The copy contains rendered pages, with text selection, links, and forms removed.
 - **Web Page to PDF** previews an HTTP or HTTPS page and exports a continuous or paginated PDF. Paginated export supports paper, margins, and print backgrounds.
