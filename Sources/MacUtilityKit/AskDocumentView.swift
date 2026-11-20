@@ -7,6 +7,7 @@ import UtilityCore
 struct AskDocumentDraft {
     var source: URL?
     var pages = ""
+    var recognizesMixedPDFPages = false
     var index: AskDocument.Index?
     var turns: [AskDocument.Turn] = []
     var question = ""
@@ -103,6 +104,7 @@ struct AskDocumentView: View {
             }
         }
         .onChange(of: draft.pages) { clearIndex() }
+        .onChange(of: draft.recognizesMixedPDFPages) { clearIndex() }
         .onChange(of: phase) { if phase == .active { refreshModel() } }
         .onDisappear {
             job?.cancel()
@@ -144,6 +146,7 @@ struct AskDocumentView: View {
                     case .success(let scope):
                         let count = scope.0.pageCount
                         PDFExportPagePicker(document: scope.0, range: $draft.pages, startsWithAll: true)
+                        Toggle("Recognize text in images on every selected page", isOn: $draft.recognizesMixedPDFPages)
                         if (try? PageSelection.indices(draft.pages, pageCount: count)) != nil,
                            case .failure(let error) = Result(catching: { try AskDocument.validatePDFScope(draft.pages, count: count) }) {
                             Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
@@ -281,8 +284,10 @@ struct AskDocumentView: View {
         clearIndex()
         let pages = draft.pages
         let secret = password
+        let recognizesMixedPDFPages = draft.recognizesMixedPDFPages
         run("Reading document…") { id in
-            let result = try await AskDocument.index(source, pages: pages, password: secret, reviewedPDF: reviewed) { update in
+            let result = try await AskDocument.index(source, pages: pages, password: secret, reviewedPDF: reviewed,
+                                                     recognizesMixedPDFPages: recognizesMixedPDFPages) { update in
                 await MainActor.run {
                     if jobID == id { progress = update }
                 }

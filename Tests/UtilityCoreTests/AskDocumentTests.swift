@@ -218,15 +218,23 @@ struct AskDocumentTests {
         #expect(stale?.localizedDescription.contains("changed after its pages were reviewed") == true)
     }
 
-    @Test func citesActualPageNumberForCroppedRotatedScanAndReportsBlankPage() async throws {
+    @Test(arguments: [false, true])
+    func citesActualPageNumberForCroppedRotatedScanAndReportsBlankPage(nativeHeader: Bool) async throws {
         let (folder, source) = try makeSource("scan.pdf")
         defer { try? FileManager.default.removeItem(at: folder) }
-        try makeScan(source)
+        try makeScan(source, nativeHeader: nativeHeader)
         let scan = try #require(PDFDocument(url: source))
         let page = try #require(scan.page(at: 1))
         #expect(page.rotation == 90)
-        #expect(page.string?.isEmpty != false)
-        let index = try await AskDocument.index(source)
+        if nativeHeader {
+            #expect(page.string?.contains("Project filing") == true)
+            let nativeIndex = try await AskDocument.index(source)
+            #expect(nativeIndex.sections.last?.text.contains("7429") == false)
+        } else {
+            #expect(page.string?.isEmpty != false)
+        }
+        let index = try await AskDocument.index(source, pages: "", password: "", reviewedPDF: nil,
+                                                 recognizesMixedPDFPages: nativeHeader)
         #expect(index.omittedPages == [1])
         let answer = try await AskDocument.answer("What is the permit code for Harbour?", in: index,
                                                   using: ExactProvider("Harbour permit code 7429"))
@@ -284,7 +292,7 @@ struct AskDocumentTests {
         return (folder, folder.appending(path: name))
     }
 
-    private func makeScan(_ url: URL) throws {
+    private func makeScan(_ url: URL, nativeHeader: Bool = false) throws {
         let template = try #require(PDFDocument(data: pdf { _ in }))
         let direction = try #require(template.page(at: 0))
         direction.rotation = 90
@@ -312,6 +320,13 @@ struct AskDocumentTests {
         let imageDocument = try #require(PDFDocument(data: pdf { ctx in
             ctx.concatenate(transform.inverted())
             ctx.draw(image, in: canvas)
+            if nativeHeader {
+                ctx.textPosition = CGPoint(x: 20, y: 255)
+                let header = CTLineCreateWithAttributedString(NSAttributedString(string: "Project filing", attributes: [
+                    NSAttributedString.Key(kCTFontAttributeName as String): font
+                ]))
+                CTLineDraw(header, ctx)
+            }
         }))
         let rotated = try #require(imageDocument.page(at: 0))
         rotated.rotation = 90

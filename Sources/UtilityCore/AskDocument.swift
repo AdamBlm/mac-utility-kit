@@ -124,6 +124,7 @@ public enum AskDocument {
 
     package static func index(
         _ input: URL, pages: String, password: String, reviewedPDF: PDFScopeStamp?,
+        recognizesMixedPDFPages: Bool = false,
         progress: @Sendable (Progress) async -> Void = { _ in }
     ) async throws -> Index {
         try Task.checkCancellation()
@@ -141,6 +142,7 @@ public enum AskDocument {
             var options = TextExtractionOptions()
             options.range = pages
             options.password = password
+            options.includesMixedScanText = recognizesMixedPDFPages
             let extracted = try await TextExtraction.extract(input, options: options) { fraction in
                 await progress(Progress(fraction: fraction * 0.80, message: "Reading PDF pages"))
             }
