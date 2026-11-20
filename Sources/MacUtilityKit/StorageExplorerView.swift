@@ -181,7 +181,7 @@ struct StorageExplorerView: View {
                     Text("MB").foregroundStyle(.secondary)
                 }
             }
-            Text("On-disk sizes are estimates. Hard-linked data counts once; shared APFS clone blocks can overlap.")
+            Text("On-disk sizes are estimates. Folder totals count hard-linked data once. APFS clones can share blocks.")
                 .font(.caption).foregroundStyle(.secondary)
             if !query.isValid {
                 Text("Enter a valid positive whole number of megabytes.")
@@ -254,11 +254,11 @@ struct StorageExplorerView: View {
             }
             if item.isHardLink {
                 Image(systemName: "link").foregroundStyle(.secondary)
-                    .help("A shared hard link. Only one path is counted and this path is excluded from the reclaim estimate.")
+                    .help("Folder totals count this file once. To reclaim its space, all hard links must be selected.")
             }
             ProgressView(value: fraction(measurement.bytes(item), of: parentBytes))
                 .frame(width: 40).accessibilityHidden(true)
-            Text(format(measurement.bytes(item))).monospacedDigit().foregroundStyle(.secondary)
+            Text(format(measurement.browserBytes(item))).monospacedDigit().foregroundStyle(.secondary)
             Button("Reveal \(name) in Finder", systemImage: "arrow.up.right.square") {
                 NSWorkspace.shared.activateFileViewerSelecting([item.url])
             }.labelStyle(.iconOnly)

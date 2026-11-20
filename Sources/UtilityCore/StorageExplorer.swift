@@ -63,6 +63,11 @@ public enum StorageExplorer {
         public func bytes(_ item: StorageScanItem) -> Int64 {
             self == .allocated ? item.allocatedBytes : item.apparentBytes
         }
+
+        package func browserBytes(_ item: StorageScanItem) -> Int64 {
+            guard item.kind == .file, !item.isPartial, let stamp = item.stamp else { return bytes(item) }
+            return self == .allocated ? stamp.allocatedBytes : max(0, stamp.bytes)
+        }
     }
 
     public enum BrowserOrder: String, CaseIterable, Identifiable, Sendable {
@@ -92,7 +97,7 @@ public enum StorageExplorer {
             candidates = try report.descendants(of: directory).filter { id in
                 try Task.checkCancellation()
                 let item = report.items[id]
-                return item.kind == .file && measurement.bytes(item) >= minimumBytes
+                return item.kind == .file && measurement.browserBytes(item) >= minimumBytes
             }
         } else {
             candidates = report.items[directory].children
@@ -103,8 +108,8 @@ public enum StorageExplorer {
             let b = report.items[second]
             switch order {
             case .largest:
-                let aBytes = measurement.bytes(a)
-                let bBytes = measurement.bytes(b)
+                let aBytes = measurement.browserBytes(a)
+                let bBytes = measurement.browserBytes(b)
                 if aBytes != bBytes { return aBytes > bBytes }
             case .newest, .oldest:
                 switch (a.modified, b.modified) {

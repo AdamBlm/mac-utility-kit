@@ -10,7 +10,7 @@ struct StorageExplorerTests {
         let folder = root.appending(path: "Nested")
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         let regular = folder.appending(path: "regular.bin")
-        let alias = root.appending(path: "alias.bin")
+        let alias = root.appending(path: "Alias.bin")
         let sparse = root.appending(path: "sparse.bin")
         let symlink = folder.appending(path: "loop")
         try Data(repeating: 7, count: 16 * 1024).write(to: regular)
@@ -23,7 +23,7 @@ struct StorageExplorerTests {
 
         let result = try await StorageExplorer.scan(root)
         let real = try #require(result.items.first { $0.name == "regular.bin" })
-        let hardlink = try #require(result.items.first { $0.name == "alias.bin" })
+        let hardlink = try #require(result.items.first { $0.name == "Alias.bin" })
         let hole = try #require(result.items.first { $0.name == "sparse.bin" })
         let folderItem = try #require(result.items.first { $0.name == "Nested" })
         let loop = try #require(result.items.first { $0.name == "loop" })
@@ -39,6 +39,13 @@ struct StorageExplorerTests {
 
         let linkedBytes = real.allocatedBytes + hardlink.allocatedBytes
         #expect(linkedBytes > 0)
+        #expect(real.allocatedBytes == 0)
+        #expect(StorageExplorer.Measurement.apparent.browserBytes(real) == 16 * 1024)
+        #expect(StorageExplorer.Measurement.apparent.browserBytes(hardlink) == 16 * 1024)
+        #expect(try StorageExplorer.browserItems(in: result, directory: folderItem.id, minimumBytes: 16 * 1024,
+                                                 measurement: .apparent) == [real.id])
+        #expect(try StorageExplorer.browserItems(in: result, directory: folderItem.id, minimumBytes: linkedBytes,
+                                                 measurement: .allocated) == [real.id])
         #expect(StorageExplorer.trashPreview([folderItem.id], in: result).estimatedBytes == 0)
         #expect(StorageExplorer.trashPreview([hardlink.id], in: result).estimatedBytes == 0)
         #expect(StorageExplorer.trashPreview([real.id, hardlink.id], in: result).estimatedBytes == linkedBytes)
