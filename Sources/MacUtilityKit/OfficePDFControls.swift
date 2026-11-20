@@ -60,6 +60,10 @@ struct OfficePDFControls: View {
                     .font(.callout).foregroundStyle(.secondary)
             case .powerPoint:
                 Toggle("Include hidden slides", isOn: $options.includesHiddenSlides)
+                if !options.includesHiddenSlides {
+                    Text("Slide numbers count visible slides only.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 SettingRow("Layout") {
                     Picker("Slide layout", selection: $options.slideLayout) {
                         ForEach(OfficeSlideLayout.allCases) { Text($0.title).tag($0) }
@@ -74,7 +78,7 @@ struct OfficePDFControls: View {
                         .labelsHidden()
                     }
                 }
-                Text("Slides export as static pages. LibreOffice may substitute missing fonts.")
+                Text("Slides export as static pages. Animations, transitions, and audio or video playback are omitted. LibreOffice may substitute missing fonts.")
                     .font(.callout).foregroundStyle(.secondary)
             case .excel:
                 Toggle("One page per sheet", isOn: $options.singlePageSheets)
@@ -184,7 +188,11 @@ struct OfficePDFControls: View {
             Stepper("\(displayUnit.capitalized) \(page) of \(displayCount)", value: $page, in: 1...max(1, displayCount))
             Spacer(minLength: 10)
             if showsHandout {
-                Text("\(document.selectedPages.count) slides")
+                let slides = options.slideLayout.slideNumbers(in: document.selectedPages, onHandoutPage: page)
+                if let first = slides.first {
+                    Text(slides.count == 1 ? "Slide \(first)"
+                         : "Slides " + PageSelection.expression(for: slides.map { $0 - 1 }))
+                }
             } else if document.selectedPages.contains(page) {
                 Label("Included", systemImage: "checkmark.circle")
             } else {

@@ -134,7 +134,8 @@ public enum OfficePDF {
         await progress(1)
         let unit = kind == .excel && options.singlePageSheets ? "sheets" : kind.rangeLabel
         let handoutSummary = handoutCount.map { " · \($0) handout page\($0 == 1 ? "" : "s")" } ?? ""
-        return "\(input.lastPathComponent) · \(pages.count) \(pages.count == 1 ? String(unit.dropLast()) : unit)\(handoutSummary) · PDF"
+        let limitation = kind == .powerPoint ? " · Static slides. Animations, transitions, and audio or video playback are omitted." : ""
+        return "\(input.lastPathComponent) · \(pages.count) \(pages.count == 1 ? String(unit.dropLast()) : unit)\(handoutSummary) · PDF" + limitation
     }
 
     public struct PreviewPage: Sendable {

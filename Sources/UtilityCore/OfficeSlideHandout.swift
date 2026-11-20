@@ -7,6 +7,11 @@ public enum OfficeSlideLayout: Int, CaseIterable, Identifiable, Sendable {
 
     public var id: Self { self }
     public var title: String { self == .single ? "Individual slides" : "\(rawValue) slides per page" }
+
+    package func slideNumbers(in selected: [Int], onHandoutPage page: Int) -> ArraySlice<Int> {
+        guard page > 0, !selected.isEmpty, page - 1 <= (selected.count - 1) / rawValue else { return [] }
+        return selected.dropFirst((page - 1) * rawValue).prefix(rawValue)
+    }
 }
 
 enum OfficeSlideHandout {

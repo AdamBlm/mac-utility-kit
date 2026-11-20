@@ -5,6 +5,14 @@ import Testing
 @testable import UtilityCore
 
 struct OfficeSlidesPDFTests {
+    @Test func handoutPreviewListsSelectedSlidesOnEachPageInOrder() {
+        let selected = [1, 3, 4, 7, 9]
+        #expect(Array(OfficeSlideLayout.two.slideNumbers(in: selected, onHandoutPage: 1)) == [1, 3])
+        #expect(Array(OfficeSlideLayout.two.slideNumbers(in: selected, onHandoutPage: 2)) == [4, 7])
+        #expect(Array(OfficeSlideLayout.two.slideNumbers(in: selected, onHandoutPage: 3)) == [9])
+        #expect(OfficeSlideLayout.two.slideNumbers(in: selected, onHandoutPage: 4).isEmpty)
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
     func hiddenSlidesRangeAndVectorHandoutMatchRenderedSequence() async throws {
         let staging = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString, directoryHint: .isDirectory)
@@ -39,6 +47,7 @@ struct OfficeSlidesPDFTests {
         options.handoutPaper = .letter
         let layout = try await OfficePDF.preview(source, kind: .powerPoint, options: options)
         #expect(layout.totalPages == 3 && layout.handoutPages == 1)
+        #expect(Array(options.slideLayout.slideNumbers(in: layout.selectedPages, onHandoutPage: 1)) == [1, 2])
         let preview = try OfficePDF.renderedPage(layout, page: 1, handout: true)
         #expect(preview.size == CGSize(width: 612, height: 792))
         var toolOptions = ToolOptions()
@@ -47,6 +56,7 @@ struct OfficeSlidesPDFTests {
             .powerPointToPDF, inputs: [source], destination: staging, imageSize: 0, options: toolOptions
         ) { _ in }
         #expect(report.failures.isEmpty)
+        #expect(report.summaries.first?.contains("Animations, transitions, and audio or video playback are omitted.") == true)
         let output = try #require(report.outputs.first)
         let handout = try #require(PDFDocument(url: output))
         #expect(handout.pageCount == 1)
