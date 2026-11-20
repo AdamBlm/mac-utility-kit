@@ -1,3 +1,4 @@
+import CoreGraphics
 import Foundation
 import PDFKit
 
@@ -46,10 +47,14 @@ public enum PDFProtection {
             ]
         ]
         try await run(input, output: output, executable: options.executable, settings: settings) { candidate in
-            guard let saved = open(candidate), saved.isEncrypted, saved.isLocked,
-                  saved.unlock(withPassword: options.password), saved.pageCount == count,
-                  saved.allowsPrinting == options.allowsPrinting, saved.allowsCopying == options.allowsCopying,
-                  let ownerCopy = open(candidate), ownerCopy.unlock(withPassword: owner) else {
+            guard let saved = CGPDFDocument(candidate as CFURL), saved.isEncrypted, !saved.isUnlocked,
+                  options.password.withCString({ saved.unlockWithPassword($0) }), saved.numberOfPages == count,
+                  saved.accessPermissions.contains(.allowsHighQualityPrinting) == options.allowsPrinting,
+                  saved.accessPermissions.contains(.allowsLowQualityPrinting) == options.allowsPrinting,
+                  saved.accessPermissions.contains(.allowsContentCopying) == options.allowsCopying,
+                  let ownerCopy = CGPDFDocument(candidate as CFURL),
+                  owner.withCString({ ownerCopy.unlockWithPassword($0) }),
+                  ownerCopy.numberOfPages == count else {
                 throw ToolError.invalid("The new password and permissions could not be verified.")
             }
         }
@@ -59,14 +64,7 @@ public enum PDFProtection {
     public static func remove(
         _ input: URL, to output: URL, options: PDFProtectionOptions
     ) async throws -> String {
-        guard let original = open(input), original.isEncrypted else {
-            throw ToolError.invalid("Choose an encrypted PDF.")
-        }
-        try validatePassword(options.password)
-        guard original.unlock(withPassword: options.password), original.pageCount > 0 else {
-            throw ToolError.invalid("The document password is incorrect.")
-        }
-        let count = original.pageCount
+        let count = try unlockedPageCount(input, password: options.password)
         try await run(input, output: output, executable: options.executable,
                       settings: ["password": options.password, "decrypt": ""]) { candidate in
             guard let saved = open(candidate), !saved.isEncrypted, !saved.isLocked, saved.pageCount == count else {
@@ -76,10 +74,33 @@ public enum PDFProtection {
         return "\(input.lastPathComponent) · Password removed"
     }
 
-    private static func validatePassword(_ value: String) throws {
-        guard isValidPassword(value) else {
+    package static func unlockedPreviewData(_ input: URL, options: PDFProtectionOptions) async throws -> Data {
+        let manager = FileManager.default
+        let folder = manager.temporaryDirectory.appendingPathComponent("MacUtilityKit-" + UUID().uuidString)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: false, attributes: [.posixPermissions: 0o700])
+        defer { try? manager.removeItem(at: folder) }
+        let preview = folder.appendingPathComponent("Preview.pdf")
+        _ = try await remove(input, to: preview, options: options)
+        try Task.checkCancellation()
+        return try Data(contentsOf: preview)
+    }
+
+    private static func unlockedPageCount(_ input: URL, password: String) throws -> Int {
+        guard let document = open(input), document.isEncrypted else {
+            throw ToolError.invalid("Choose an encrypted PDF.")
+        }
+        guard isValidPassword(password) else {
             throw ToolError.invalid("Use a password of at most 127 UTF-8 bytes with no null characters.")
         }
+        // PDFKit handles legacy password encodings. Core Graphics also accepts the UTF-8 bytes
+        // used by qpdf for AES-256 documents, and unlocks the backing document in place.
+        let unlocked = document.unlock(withPassword: password) || (
+            document.documentRef.map { reference in password.withCString { reference.unlockWithPassword($0) } } ?? false
+        )
+        guard unlocked, document.pageCount > 0 else {
+            throw ToolError.invalid("The document password is incorrect.")
+        }
+        return document.pageCount
     }
 
     private static func isValidPassword(_ value: String) -> Bool {

@@ -107,11 +107,39 @@ struct PDFProtectionView: View {
     private func unlockPreview() {
         issue = nil
         verifiedPreview = nil
-        guard let input, let document = PDFDocument(url: input), document.isEncrypted,
-              document.unlock(withPassword: options.password), document.pageCount > 0 else {
-            issue = "Could not unlock this PDF. Check the document and its password."
+        guard let input, let document = PDFDocument(url: input), document.isEncrypted else {
+            issue = "Choose an encrypted PDF."
             return
         }
+        if document.unlock(withPassword: options.password), document.pageCount > 0 {
+            showUnlockedPreview(document)
+            return
+        }
+        guard options.executable != nil else {
+            issue = "Could not unlock this PDF in the preview. Check the password or choose qpdf to try again."
+            return
+        }
+        let request = options
+        task = Task {
+            defer { task = nil }
+            do {
+                let data = try await PDFProtection.unlockedPreviewData(input, options: request)
+                try Task.checkCancellation()
+                guard self.input == input, options.password == request.password else { return }
+                guard let preview = PDFDocument(data: data), !preview.isLocked, preview.pageCount > 0 else {
+                    issue = "Could not open the unlocked PDF preview."
+                    return
+                }
+                showUnlockedPreview(preview)
+            } catch is CancellationError {
+                return
+            } catch {
+                issue = error.localizedDescription
+            }
+        }
+    }
+
+    private func showUnlockedPreview(_ document: PDFDocument) {
         let view = PDFView()
         view.displayMode = .singlePageContinuous
         view.document = document

@@ -67,6 +67,28 @@ struct PDFProtectionTests {
         #expect(!saved.allowsPrinting && !saved.allowsCopying)
         #expect(saved.pageCount == 2)
         #expect(saved.page(at: 1)?.bounds(for: .mediaBox) == secondPageBounds)
+        var unicode = choices
+        unicode.password = String(repeating: "é", count: 63) + "a"
+        unicode.confirmation = unicode.password
+        unicode.ownerPassword = "Owner 🔑"
+        let unicodePDF = folder.appendingPathComponent("unicode.pdf")
+        _ = try await PDFProtection.add(source, to: unicodePDF, options: unicode)
+        let unicodePreview = try await PDFProtection.unlockedPreviewData(unicodePDF, options: unicode)
+        let unicodeDocument = try #require(PDFDocument(data: unicodePreview))
+        #expect(!unicodeDocument.isLocked)
+        #expect(unicodeDocument.pageCount == 2)
+        #expect(unicodeDocument.page(at: 1)?.bounds(for: .mediaBox) == secondPageBounds)
+        var wrongUnicode = unicode
+        wrongUnicode.password = "incorrect"
+        await #expect(throws: ToolError.self) {
+            try await PDFProtection.unlockedPreviewData(unicodePDF, options: wrongUnicode)
+        }
+        let unicodeDecrypted = folder.appendingPathComponent("unicode-decrypted.pdf")
+        _ = try await PDFProtection.remove(unicodePDF, to: unicodeDecrypted, options: unicode)
+        #expect(PDFDocument(url: unicodeDecrypted)?.pageCount == 2)
+        try FileManager.default.removeItem(at: unicodeDecrypted)
+        try FileManager.default.removeItem(at: unicodePDF)
+
         let protectedBytes = try Data(contentsOf: protected)
 
         let decrypted = folder.appendingPathComponent("decrypted.pdf")
