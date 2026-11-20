@@ -24,7 +24,7 @@ struct TranscribeView: View {
     @State private var inputSummary: InputSummary?
     @State private var sourceRevision = 0
     @State private var inspectedModel: URL?
-    @State private var modelCapability: Transcription.ModelCapability?
+    @State private var modelLanguages: Transcription.ModelLanguages?
     @State private var modelRevision = 0
     @State private var startText: String?
     @State private var endText: String?
@@ -73,11 +73,12 @@ struct TranscribeView: View {
     }
 
     private var englishOnly: Bool {
-        inspectedModel == draft.options.model && modelCapability == .englishOnly
+        inspectedModel == draft.options.model && modelLanguages == .englishOnly
     }
 
-    private var unsupportedLanguage: Bool {
-        englishOnly && draft.options.language != "auto" && draft.options.language != "en"
+    private var unsupportedLanguage: String? {
+        guard inspectedModel == draft.options.model else { return nil }
+        return modelLanguages?.issue(for: draft.options.language)
     }
 
     var body: some View {
@@ -110,7 +111,7 @@ struct TranscribeView: View {
                     if let model = draft.options.model { Text(model.lastPathComponent).help(model.path) }
                     Button("Choose Model…") {
                         if let url = DeveloperToolFiles.choose() {
-                            modelCapability = nil
+                            modelLanguages = nil
                             draft.options.model = url
                             modelRevision += 1
                         }
@@ -118,15 +119,15 @@ struct TranscribeView: View {
                 }
                 SettingRow("Language") {
                     Picker("Language", selection: $draft.options.language) {
+                        Text("Auto-detect").tag("auto")
                         ForEach(Self.languages, id: \.code) { language in
                             Text(language.name).tag(language.code)
                         }
                     }
                     .labelsHidden()
                 }
-                if unsupportedLanguage {
-                    Text("This model supports only English. Choose English or a multilingual model.")
-                        .font(.callout).foregroundStyle(.red)
+                if let unsupportedLanguage {
+                    Text(unsupportedLanguage).font(.callout).foregroundStyle(.red)
                 } else if englishOnly && draft.options.language == "auto" {
                     Text("This model supports only English. Auto-detect will use English.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -136,7 +137,7 @@ struct TranscribeView: View {
             HStack {
                 Button("Transcribe", systemImage: "waveform", action: run)
                     .disabled(draft.task != nil || draft.input == nil || draft.options.executable == nil ||
-                              draft.options.model == nil || invalidTimecode || invalidRange || unsupportedLanguage)
+                              draft.options.model == nil || invalidTimecode || invalidRange || unsupportedLanguage != nil)
                     .buttonStyle(.borderedProminent)
                 if draft.task != nil {
                     ProgressView(value: draft.progress).controlSize(.small)
@@ -172,7 +173,7 @@ struct TranscribeView: View {
         .task(id: FileRequest(url: draft.options.model, revision: modelRevision)) {
             guard !Task.isCancelled else { return }
             let model = draft.options.model
-            modelCapability = model.flatMap { try? Transcription.modelCapability(at: $0) }
+            modelLanguages = model.flatMap { try? Transcription.modelLanguages(at: $0) }
             inspectedModel = model
         }
         .dropDestination(for: URL.self) { urls, _ in
@@ -182,12 +183,10 @@ struct TranscribeView: View {
         }
     }
 
-    private static let languages: [(code: String, name: String)] = [
-        ("auto", "Auto-detect"), ("ar", "Arabic"), ("zh", "Chinese"), ("en", "English"),
-        ("fr", "French"), ("de", "German"), ("hi", "Hindi"), ("it", "Italian"), ("ja", "Japanese"),
-        ("ko", "Korean"), ("nl", "Dutch"), ("pl", "Polish"), ("pt", "Portuguese"), ("ru", "Russian"),
-        ("es", "Spanish"), ("sv", "Swedish"), ("tr", "Turkish"), ("uk", "Ukrainian")
-    ]
+    private static let languages: [(code: String, name: String)] = Transcription.languageCodes.map { code in
+        let localeCode = code == "jw" ? "jv" : code
+        return (code: code, name: Locale.current.localizedString(forLanguageCode: localeCode) ?? code)
+    }.sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
 
     @ViewBuilder
     private var timecodeControls: some View {

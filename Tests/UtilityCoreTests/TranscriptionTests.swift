@@ -87,6 +87,10 @@ import Testing
         #expect(try Transcription.modelCapability(at: engine.1) == .unknown)
         try writeVocabulary(51_865)
         #expect(try Transcription.modelCapability(at: engine.1) == .multilingual)
+        #expect(try Transcription.modelLanguages(at: engine.1).issue(for: "yue") != nil)
+        try writeVocabulary(51_866)
+        #expect(try Transcription.modelCapability(at: engine.1) == .multilingual)
+        #expect(try Transcription.modelLanguages(at: engine.1).issue(for: "yue") == nil)
         try writeVocabulary(51_864)
         #expect(try Transcription.modelCapability(at: engine.1) == .englishOnly)
 
@@ -112,6 +116,26 @@ import Testing
         #expect(result.language == "en")
         #expect(result.forcedEnglish)
         #expect(try String(contentsOf: folder.appendingPathComponent("observed-language"), encoding: .utf8) == "en")
+
+        try writeVocabulary(51_865)
+        options.language = "vi"
+        let vietnamese = try await Transcription.runWithLanguage(source, options: options) { _ in }
+        #expect(vietnamese.language == "vi")
+        options.language = "yue"
+        await #expect(throws: ToolError.self) {
+            try await Transcription.runWithLanguage(source, options: options) { _ in }
+        }
+        try writeVocabulary(51_866)
+        let cantonese = try await Transcription.runWithLanguage(source, options: options) { _ in }
+        #expect(cantonese.language == "yue")
+    }
+
+    @Test func exposesWhisperLanguageIdentifiersForThePicker() {
+        let languages = Transcription.languageCodes
+        #expect(Set(languages).count == 100)
+        #expect(languages.count == 100)
+        #expect(Set(["vi", "el", "he", "jw", "haw", "yue"]).isSubset(of: Set(languages)))
+        #expect(!languages.contains("auto"))
     }
 
     @Test func auditionsTheSourceRelativeCueRangeWithoutWhisper() async throws {
@@ -247,15 +271,16 @@ import Testing
         while [ "$#" -gt 0 ]; do
             case "$1" in
                 -f) wave="$2"; shift ;;
-            -l) language="$2"; shift ;;
+                -l) language="$2"; shift ;;
                 -of) out="$2"; shift ;;
             esac
             shift
         done
         /bin/cp "$wave" "$(dirname "$0")/observed.wav"
         printf '%s' "$language" > "$(dirname "$0")/observed-language"
-        cat > "$out.json" <<'JSON'
-        {"result":{"language":"en"},"transcription":[{"offsets":{"from":100,"to":300},"text":" Fixture speech "}]}
+        if [ "$language" = auto ]; then language=en; fi
+        cat > "$out.json" <<JSON
+        {"result":{"language":"$language"},"transcription":[{"offsets":{"from":100,"to":300},"text":" Fixture speech "}]}
         JSON
         """
         try script.write(to: executable, atomically: true, encoding: .utf8)

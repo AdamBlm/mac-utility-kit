@@ -27,6 +27,27 @@ public enum Transcription {
         case englishOnly, multilingual, unknown
     }
 
+    // Language identifiers from whisper.cpp's g_lang, in vocabulary order.
+    package static let languageCodes = """
+        en zh de es ru ko fr ja pt tr pl ca nl ar sv it id hi fi vi he uk el ms cs ro da hu ta no
+        th ur hr bg lt la mi ml cy sk te fa lv bn sr az sl kn et mk br eu is hy ne mn bs kk sq sw
+        gl mr pa si km sn yo so af oc ka be tg sd gu am yi lo uz fo ht ps tk nn mt sa lb my bo tl
+        mg as tt haw ln ha ba jw su yue
+        """.split(whereSeparator: \.isWhitespace).map(String.init)
+
+    package enum ModelLanguages {
+        case englishOnly, multilingual, multilingualWithCantonese, unknown
+
+        package func issue(for language: String) -> String? {
+            switch (self, language) {
+            case (.englishOnly, "auto"), (.englishOnly, "en"): nil
+            case (.englishOnly, _): "This Whisper model supports only English. Choose English or use a multilingual model."
+            case (.multilingual, "yue"): "This Whisper model does not support Cantonese. Choose a model with Cantonese support, such as large-v3."
+            default: nil
+            }
+        }
+    }
+
     public struct Result: Sendable {
         public let cues: [SubtitleCue]
         public let language: String?
@@ -35,6 +56,14 @@ public enum Transcription {
     }
 
     public static func modelCapability(at model: URL) throws -> ModelCapability {
+        switch try modelLanguages(at: model) {
+        case .englishOnly: .englishOnly
+        case .multilingual, .multilingualWithCantonese: .multilingual
+        case .unknown: .unknown
+        }
+    }
+
+    package static func modelLanguages(at model: URL) throws -> ModelLanguages {
         guard model.isFileURL,
               try model.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
             throw ToolError.invalid("Choose a local Whisper model file.")
@@ -48,7 +77,8 @@ public enum Transcription {
             let vocabularySize = Int32(littleEndian: bytes.loadUnaligned(fromByteOffset: 4, as: Int32.self))
             switch vocabularySize {
             case 51_864: return .englishOnly
-            case 51_865, 51_866: return .multilingual
+            case 51_865: return .multilingual
+            case 51_866: return .multilingualWithCantonese
             default: return .unknown
             }
         }
@@ -74,11 +104,9 @@ public enum Transcription {
         guard language == "auto" || ((2...3).contains(language.utf8.count) && language.utf8.allSatisfy({ (97...122).contains($0) })) else {
             throw ToolError.invalid("Enter a Whisper language code or choose auto-detect.")
         }
-        let capability = try modelCapability(at: model)
-        guard capability != .englishOnly || language == "auto" || language == "en" else {
-            throw ToolError.invalid("This Whisper model supports only English. Choose English or use a multilingual model.")
-        }
-        let forcedEnglish = capability == .englishOnly && language == "auto"
+        let modelLanguages = try modelLanguages(at: model)
+        if let issue = modelLanguages.issue(for: language) { throw ToolError.invalid(issue) }
+        let forcedEnglish = modelLanguages == .englishOnly && language == "auto"
         let effectiveLanguage = forcedEnglish ? "en" : language
         let sourceStamp = try PDFSourceStamp.read(input)
         let selection = try await TranscriptionAudio.selection(sourceStamp.resolved, options: options)
