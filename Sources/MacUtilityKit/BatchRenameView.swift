@@ -284,7 +284,10 @@ struct BatchRenameView: View {
                 updateQueue(plan.changes.map { ($0.source, $0.destination) })
                 message = "Files renamed."
             } catch let error as BatchRenameError {
-                if case .changedCaptureSource = error { previewRevision += 1 }
+                switch error {
+                case .changedCaptureSource, .changedFileDate: previewRevision += 1
+                default: break
+                }
                 message = error.localizedDescription
             } catch { message = error.localizedDescription }
         }

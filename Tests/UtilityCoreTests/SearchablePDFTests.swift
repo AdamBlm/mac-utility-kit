@@ -113,6 +113,58 @@ struct SearchablePDFTests {
     }
 
     @Test
+    func alreadySearchableSymlinkExportsAnIndependentByteIdenticalPDF() async throws {
+        let folder = try Self.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "source.pdf")
+        let alias = folder.appending(path: "alias.pdf")
+        let output = folder.appending(path: "output.pdf")
+        let original = try Self.pdf { context in
+            Self.draw("Existing native text", in: context, at: CGPoint(x: 100, y: 200), size: 20)
+        }
+        try original.write(to: source)
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: source)
+        let report = try await SearchablePDF.export(alias, to: output, options: .init()) { _ in }
+
+        #expect(report.pages.map(\.status) == [.alreadySearchable])
+        try FileManager.default.removeItem(at: source)
+        #expect(try Data(contentsOf: output) == original)
+        #expect(PDFDocument(url: output)?.page(at: 0)?.string == "Existing native text")
+    }
+
+    @Test(arguments: [false, true])
+    func rejectsSourceReplacementDuringRecognition(addsOCR: Bool) async throws {
+        let folder = try Self.makeFolder()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let source = folder.appending(path: "source.pdf")
+        let output = folder.appending(path: "output.pdf")
+        let native = try Self.pdf { context in
+            Self.draw("Existing native text", in: context, at: CGPoint(x: 100, y: 200), size: 20)
+        }
+        if addsOCR {
+            try Self.makeScan(to: source, rotation: 0)
+        } else {
+            try native.write(to: source)
+        }
+        let replacement = try Self.pdf { context in
+            Self.draw("Replacement", in: context, at: CGPoint(x: 100, y: 200), size: 20)
+        }
+        do {
+            _ = try await SearchablePDF.export(source, to: output, options: .init()) { fraction in
+                if fraction == 0.9 {
+                    do { try replacement.write(to: source, options: .atomic) }
+                    catch { Issue.record("Could not replace the source fixture: \(error)") }
+                }
+            }
+            Issue.record("Searchable PDF published output after its source changed.")
+        } catch {
+            #expect(error.localizedDescription.contains("source PDF changed"))
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+        #expect(try Data(contentsOf: source) == replacement)
+    }
+
+    @Test
     func rescansMixedPagesWithoutDuplicatingEmbeddedTextAndPreservesLinks() async throws {
         let folder = try Self.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }

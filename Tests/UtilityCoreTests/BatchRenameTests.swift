@@ -88,6 +88,36 @@ import UtilityCore
         }
     }
 
+    @Test func refusesStaleModificationDateButAcceptsRefreshedPreview() throws {
+        try fixture { directory in
+            let source = try file("report.txt", in: directory)
+            let manager = FileManager.default
+            let original = Date(timeIntervalSince1970: 1_700_000_000)
+            try manager.setAttributes([.modificationDate: original], ofItemAtPath: source.path)
+            var date = BatchRenameRule(kind: .date)
+            date.dateSource = .modified
+            var options = BatchRenameOptions()
+            options.rules = [date]
+            let preview = try BatchRename.plan(files: [source], options: options)
+            try manager.setAttributes([.modificationDate: original.addingTimeInterval(86_400)], ofItemAtPath: source.path)
+
+            do {
+                _ = try preview.apply()
+                Issue.record("The old preview must not be applied after a modification date change.")
+            } catch BatchRenameError.changedFileDate(let name) {
+                #expect(name == source.lastPathComponent)
+            }
+            #expect(manager.fileExists(atPath: source.path))
+            #expect(!manager.fileExists(atPath: preview.changes[0].destination.path))
+
+            let refreshed = try BatchRename.plan(files: [source], options: options)
+            #expect(refreshed.changes[0].destination != preview.changes[0].destination)
+            let receipt = try refreshed.apply()
+            try receipt.undo()
+            #expect(manager.fileExists(atPath: source.path))
+        }
+    }
+
     @Test func assignsNumbersInQueueOrNaturalNameOrderAndAppliesThePreview() throws {
         try fixture { directory in
             let ten = try file("File 10.txt", in: directory)

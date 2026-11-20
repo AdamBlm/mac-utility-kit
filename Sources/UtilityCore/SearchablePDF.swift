@@ -83,7 +83,9 @@ public enum SearchablePDF {
               !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local output file.")
         }
-        let document = try open(input)
+        let source = try PDFSourceStamp.read(input)
+        let document = try open(source.resolved)
+        try verifySource(input, against: source)
         try validateLanguage(options.language)
         let indices = try PageSelection.indices(options.range, pageCount: document.pageCount)
         guard !indices.isEmpty else { throw ToolError.invalid("Select at least one page.") }
@@ -116,8 +118,10 @@ public enum SearchablePDF {
             await progress(0.9 * Double(offset + 1) / Double(indices.count))
         }
 
+        try Task.checkCancellation()
+        try verifySource(input, against: source)
         if replacements.isEmpty {
-            try manager.copyItem(at: input, to: candidate)
+            try source.copyVerified(to: candidate)
         } else {
             guard !(0..<document.pageCount).contains(where: { index in
                 document.page(at: index)?.annotations.contains { $0.type == "Widget" } == true
@@ -130,9 +134,16 @@ public enum SearchablePDF {
         }
 
         try Task.checkCancellation()
+        try verifySource(input, against: source)
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return SearchablePDFReport(pages: results)
+    }
+
+    private static func verifySource(_ input: URL, against stamp: PDFSourceStamp) throws {
+        guard (try? PDFSourceStamp.read(input)) == stamp else {
+            throw ToolError.invalid("The source PDF changed while making it searchable. Try again.")
+        }
     }
 
     package static func open(_ input: URL) throws -> PDFDocument {

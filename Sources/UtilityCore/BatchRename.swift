@@ -85,6 +85,7 @@ public enum BatchRenameError: LocalizedError {
     case missingFile(String)
     case changedFile(String)
     case changedCaptureSource(String)
+    case changedFileDate(String)
     case interrupted(String, [String])
 
     public var errorDescription: String? {
@@ -98,6 +99,7 @@ public enum BatchRenameError: LocalizedError {
         case .missingFile(let name): "“\(name)” is missing or is a folder."
         case .changedFile(let name): "“\(name)” was replaced after the rename was planned."
         case .changedCaptureSource(let name): "“\(name)” changed after its capture date was read. Review a new rename preview."
+        case .changedFileDate(let name): "The selected file date for “\(name)” changed. Review a new rename preview."
         case .interrupted(let cause, let recovery):
             recovery.isEmpty
                 ? "Rename stopped. Original filenames were restored. \(cause)"
@@ -110,10 +112,17 @@ public struct BatchRenamePlan: Sendable {
     public let changes: [BatchRenameChange]
     fileprivate let moves: [BatchRename.Move]
     fileprivate let captureSources: [(file: URL, stamp: DuplicateFileStamp)]
+    fileprivate let fileDates: [(file: URL, key: FileAttributeKey, date: Date)]
 
     public func apply() throws -> BatchRenameReceipt {
         for (file, stamp) in captureSources where (try? DuplicateFileIO.inspect(file)) != stamp {
             throw BatchRenameError.changedCaptureSource(file.lastPathComponent)
+        }
+        for (file, key, date) in fileDates {
+            let attributes = try? FileManager.default.attributesOfItem(atPath: file.path)
+            guard attributes?[key] as? Date == date else {
+                throw BatchRenameError.changedFileDate(file.lastPathComponent)
+            }
         }
         try BatchRename.execute(moves)
         return BatchRenameReceipt(moves: moves)
@@ -155,6 +164,7 @@ public enum BatchRename {
         var changes: [BatchRenameChange] = []
         var moves: [Move] = []
         var captureSources: [(file: URL, stamp: DuplicateFileStamp)] = []
+        var fileDates: [(file: URL, key: FileAttributeKey, date: Date)] = []
         let orderedFiles = options.rules.contains { $0.kind == .number } ? options.numberingOrder.order(files) : files
         for (index, input) in orderedFiles.enumerated() {
             guard input.isFileURL else { throw BatchRenameError.missingFile(input.lastPathComponent) }
@@ -163,6 +173,8 @@ public enum BatchRename {
             let identity = try FileIdentity(source)
             let original = source.lastPathComponent
             var captured: (date: Date, timeZone: TimeZone?)?
+            var attributes: [FileAttributeKey: Any]?
+            var collectedDates: [FileAttributeKey: Date] = [:]
             let ext = options.includesExtension ? "" : source.pathExtension
             var name = ext.isEmpty ? original : source.deletingPathExtension().lastPathComponent
             for (rule, regex) in rules {
@@ -192,8 +204,10 @@ public enum BatchRename {
                     case .current:
                         date = now
                     case .created, .modified:
-                        let values = try source.resourceValues(forKeys: [.creationDateKey, .contentModificationDateKey])
-                        date = rule.dateSource == .created ? values.creationDate : values.contentModificationDate
+                        if attributes == nil { attributes = try FileManager.default.attributesOfItem(atPath: source.path) }
+                        let key: FileAttributeKey = rule.dateSource == .created ? .creationDate : .modificationDate
+                        date = attributes?[key] as? Date
+                        collectedDates[key] = date
                     case .captured:
                         if captured == nil {
                             guard let stamp = try? DuplicateFileIO.inspect(source), let capture = captureDate(source) else {
@@ -223,13 +237,14 @@ public enum BatchRename {
                 throw BatchRenameError.invalidName(name)
             }
             let destination = parent.appendingPathComponent(name)
+            fileDates.append(contentsOf: collectedDates.map { (source, $0.key, $0.value) })
             changes.append(BatchRenameChange(source: source, destination: destination))
             if Array(original.utf8) != Array(name.utf8) {
                 moves.append(Move(source: source, destination: destination, identity: identity))
             }
         }
         try validate(moves)
-        return BatchRenamePlan(changes: changes, moves: moves, captureSources: captureSources)
+        return BatchRenamePlan(changes: changes, moves: moves, captureSources: captureSources, fileDates: fileDates)
     }
 
     private static func captureDate(_ file: URL) -> (date: Date, timeZone: TimeZone?)? {
