@@ -60,6 +60,32 @@ struct OfficePDFTests {
     }
 
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
+    func rejectsAWordSourceReplacedAfterLibreOfficeRendersIt() async throws {
+        let folder = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let input = folder.appending(path: "Source.rtf")
+        let output = folder.appending(path: "Output.pdf")
+        let original = Data(#"{\rtf1\ansi Original text\par\page Second page\par}"#.utf8)
+        let replacement = Data(#"{\rtf1\ansi Replacement text\par}"#.utf8)
+        try original.write(to: input)
+        var options = OfficePDFOptions()
+        options.libreOfficeExecutable = try Self.executable()
+        do {
+            _ = try await OfficePDF.export(input, to: output, kind: .word, options: options) { fraction in
+                if fraction == 0.75 {
+                    do { try replacement.write(to: input, options: .atomic) }
+                    catch { Issue.record("Could not replace the Word source: \(error)") }
+                }
+            }
+            Issue.record("Conversion published a PDF after the Word source was replaced.")
+        } catch {
+            #expect(error.localizedDescription.contains("Word source changed"))
+        }
+        #expect(!FileManager.default.fileExists(atPath: output.path))
+        #expect(try Data(contentsOf: input) == replacement)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_LIBREOFFICE_TEST"] != nil))
     func wordReadsUTF16TextAndRejectsOutOfRangePagesWithoutPublishing() async throws {
         let folder = try Self.directory()
         defer { try? FileManager.default.removeItem(at: folder) }

@@ -83,7 +83,9 @@ public enum OfficePDF {
                                                        layout: options.slideLayout, paper: options.handoutPaper)
             handout = try Data(contentsOf: output)
         }
-        return Preview(pdf: try Data(contentsOf: pdf), selectedPages: selected.map { $0 + 1 },
+        let data = try Data(contentsOf: pdf)
+        try prepared.verifySource(input)
+        return Preview(pdf: data, selectedPages: selected.map { $0 + 1 },
                        totalPages: document.pageCount, handoutPDF: handout, handoutPages: handoutPages)
     }
 
@@ -101,6 +103,8 @@ public enum OfficePDF {
         let prepared = try await prepare(input, kind: kind, options: options, in: stage)
         let rendered = try await compose(prepared, kind: kind, options: options, in: stage)
         await progress(0.75)
+        try Task.checkCancellation()
+        try prepared.verifySource(input)
         let complete = try open(rendered)
         let pages = try selected(options, pageCount: complete.pageCount)
         let candidate: URL
@@ -125,6 +129,7 @@ public enum OfficePDF {
             try verify(try open(candidate), against: complete, selected: pages)
         }
         try Task.checkCancellation()
+        try prepared.verifySource(input)
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let unit = kind == .excel && options.singlePageSheets ? "sheets" : kind.rangeLabel
@@ -171,10 +176,30 @@ public enum OfficePDF {
         return document
     }
 
+    private struct WordSource: Equatable {
+        let resolved: URL
+        let metadata: DuplicateFileStamp
+
+        static func read(_ input: URL) throws -> Self {
+            let resolved = input.resolvingSymlinksInPath().standardizedFileURL
+            guard let metadata = try? DuplicateFileIO.inspect(resolved) else {
+                throw ToolError.invalid("Could not read the Word source.")
+            }
+            return Self(resolved: resolved, metadata: metadata)
+        }
+    }
+
     private struct PreparedInput {
         let file: URL
         let executable: URL
         let inputFilter: String?
+        let wordSource: WordSource?
+
+        func verifySource(_ input: URL) throws {
+            if let wordSource, (try? WordSource.read(input)) != wordSource {
+                throw ToolError.invalid("The Word source changed during PDF conversion. Preview it again and retry.")
+            }
+        }
     }
 
     private static func prepare(
@@ -184,6 +209,7 @@ public enum OfficePDF {
         guard let executable = options.libreOfficeExecutable else {
             throw ToolError.invalid("Choose LibreOffice or its soffice executable.")
         }
+        let wordSource = kind == .word ? try WordSource.read(input) : nil
         var prepared = input
         var inputFilter: String?
         if kind == .word, ["txt", "text"].contains(input.pathExtension.lowercased()) {
@@ -203,7 +229,7 @@ public enum OfficePDF {
                                                                executable: executable, in: staging)
             inputFilter = OfficeCalcPreparation.flatFilter
         }
-        return PreparedInput(file: prepared, executable: executable, inputFilter: inputFilter)
+        return PreparedInput(file: prepared, executable: executable, inputFilter: inputFilter, wordSource: wordSource)
     }
 
     private static func compose(
