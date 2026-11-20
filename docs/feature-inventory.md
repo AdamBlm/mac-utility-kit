@@ -1,6 +1,6 @@
 # Mac Utility Kit feature inventory
 
-Tool catalog organized by category.
+Tool catalog organized by category. See the [tool specifications](plan/README.md) for controls, outputs, and acceptance checks.
 
 ## Video (16)
 

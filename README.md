@@ -2,7 +2,7 @@
 
 Working name for an open-source macOS utility suite with its own interface. The current build has 105 tools across images, PDFs, media, files, macOS, and development.
 
-- [Feature inventory](docs/feature-inventory.md) — 105 tools and shared app behavior.
+- [Feature inventory](docs/feature-inventory.md) — 105 tools organized by category.
 - [Open-source alternatives](docs/open-source-alternatives.md) — what existing projects cover and where a single-app replacement falls short.
 - [Open-source reuse map](docs/reuse/README.md) — upstream candidates, licenses, and implementation gaps for each of the 105 tools.
 - [Development plan and tool specifications](docs/plan/README.md) — release milestones, controls, outputs, and acceptance checks for all 105 tools.

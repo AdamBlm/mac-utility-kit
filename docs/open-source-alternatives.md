@@ -1,6 +1,6 @@
 # Open-source alternatives
 
-The projects below cover different parts of the Mac Utility Kit tool catalog.
+The projects below cover different parts of the [Mac Utility Kit tool catalog](feature-inventory.md). The comparison uses their published documentation and declared licenses.
 
 | Project | License | Documented overlap | Coverage gaps |
 | --- | --- | --- | --- |
