@@ -12,41 +12,72 @@ enum PDFCompressionEngines {
         lossless.imageQuality = nil
         let hasQPDF = options.qpdfExecutable.map(ExternalTool.isExecutable) == true
         let hasGhostscript = options.ghostscriptExecutable.map(ExternalTool.isExecutable) == true
-        if hasQPDF && (!hasGhostscript || options.preset == .higherQuality) { return [lossless] }
-        let canDownsample = try canRewriteImages(in: document)
-        if hasGhostscript && canDownsample && options.preset != .higherQuality {
+        if options.preset == .higherQuality, hasQPDF { return [lossless] }
+        let traits = try imageTraits(in: document)
+        var result: [PDFCompressionOptions] = []
+        if hasQPDF {
+            result.append(lossless)
+            if traits.hasImages && traits.allowsImageChanges {
+                var jpeg = options
+                jpeg.engine = .qpdf
+                result.append(jpeg)
+            }
+        }
+        if hasGhostscript && options.preset != .higherQuality && traits.canDownsample {
             var images = options
             images.engine = .ghostscript
-            if hasQPDF { return [lossless, images] }
-            return [images]
+            result.append(images)
         }
-        if hasQPDF { return [lossless] }
-        if canDownsample {
-            throw ToolError.invalid("Set up qpdf for lossless Higher Quality compression, or choose Balanced to reduce image resolution.")
+        guard !result.isEmpty else {
+            if traits.canDownsample {
+                throw ToolError.invalid("Set up qpdf for lossless Higher Quality compression, or choose Balanced to try image compression.")
+            }
+            throw ToolError.invalid("Set up qpdf to safely compress this PDF without rewriting its pages.")
         }
-        throw ToolError.invalid("Set up qpdf to safely compress this PDF without rewriting its pages.")
+        return result
     }
 
     static func canRewriteImages(in document: PDFDocument) throws -> Bool {
-        guard (document.outlineRoot?.numberOfChildren ?? 0) == 0 else { return false }
-        if let catalog = document.documentRef?.catalog {
-            for key in ["AcroForm", "StructTreeRoot", "Names", "Collection", "OCProperties", "AF"] {
-                var object: CGPDFObjectRef?
-                if CGPDFDictionaryGetObject(catalog, key, &object) { return false }
-            }
-        }
-        var hasLargeImage = false
-        for index in 0..<document.pageCount {
-            try Task.checkCancellation()
-            guard let page = document.page(at: index), page.annotations.isEmpty else { return false }
-            if !hasLargeImage, let dictionary = page.pageRef?.dictionary {
-                hasLargeImage = containsLargeImage(in: dictionary)
-            }
-        }
-        return hasLargeImage
+        try imageTraits(in: document).canDownsample
     }
 
-    private static func containsLargeImage(in dictionary: CGPDFDictionaryRef, depth: Int = 0) -> Bool {
+    private struct ImageTraits {
+        var hasImages = false
+        var allowsImageChanges = true
+        var preservesDocumentFeatures = true
+        var canDownsample: Bool { hasImages && allowsImageChanges && preservesDocumentFeatures }
+    }
+
+    private static func imageTraits(in document: PDFDocument) throws -> ImageTraits {
+        var traits = ImageTraits()
+        traits.preservesDocumentFeatures = (document.outlineRoot?.numberOfChildren ?? 0) == 0
+        if let catalog = document.documentRef?.catalog {
+            var object: CGPDFObjectRef?
+            traits.allowsImageChanges = !CGPDFDictionaryGetObject(catalog, "AcroForm", &object)
+            for key in ["StructTreeRoot", "Names", "Collection", "OCProperties", "AF", "PageLabels"] {
+                if CGPDFDictionaryGetObject(catalog, key, &object) {
+                    traits.preservesDocumentFeatures = false
+                    break
+                }
+            }
+        } else {
+            traits.preservesDocumentFeatures = false
+        }
+        for index in 0..<document.pageCount {
+            try Task.checkCancellation()
+            guard let page = document.page(at: index),
+                  page.annotations.allSatisfy({ $0.type == "Link" }) else {
+                traits.allowsImageChanges = false
+                return traits
+            }
+            if !traits.hasImages, let dictionary = page.pageRef?.dictionary {
+                traits.hasImages = containsImages(in: dictionary)
+            }
+        }
+        return traits
+    }
+
+    private static func containsImages(in dictionary: CGPDFDictionaryRef, depth: Int = 0) -> Bool {
         guard depth < 5 else { return false }
         var resources: CGPDFDictionaryRef?
         var objects: CGPDFDictionaryRef?
@@ -63,11 +94,11 @@ enum PDFCompressionEngines {
             guard CGPDFDictionaryGetName(attributes, "Subtype", &subtype), let subtype else { return true }
             switch String(cString: subtype) {
             case "Form":
-                found = containsLargeImage(in: attributes, depth: depth + 1)
+                found = containsImages(in: attributes, depth: depth + 1)
             case "Image":
                 if CGPDFDictionaryGetInteger(attributes, "Width", &width),
                    CGPDFDictionaryGetInteger(attributes, "Height", &height) {
-                    found = max(width, height) >= 1_000 && min(width, height) >= 500
+                    found = width >= 128 && height >= 128
                 }
             default:
                 break

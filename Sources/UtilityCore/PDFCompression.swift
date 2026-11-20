@@ -67,6 +67,7 @@ public struct PDFCompressionOptions: Equatable, Sendable {
 public enum PDFCompression {
     public struct Sample: Sendable {
         public let engine: PDFCompressionOptions.Engine
+        public let method: String
         public let suggestsImageDownsampling: Bool
         public let originalBytes: Int64
         public let candidateBytes: Int64
@@ -113,17 +114,16 @@ public enum PDFCompression {
         let candidate = staging.appending(path: "Compressed sample.pdf")
         try verifySource(input, stamp: sourceStamp)
         let measured = excerpt == sourceStamp.resolved ? originalBytes : try bytes(excerpt)
-        let engine = try await compressVerified(excerpt, to: candidate, reference: open(excerpt),
-                                                originalBytes: measured, candidates: candidates)
+        let chosen = try await compressVerified(excerpt, to: candidate, reference: open(excerpt), candidates: candidates)
         let compressed = try bytes(candidate)
         let verified = try open(candidate)
         try verifySource(input, stamp: sourceStamp)
         let estimate = pages.count == document.pageCount
             ? compressed : Int64(min(Double(Int64.max - 1024), (Double(originalBytes) * Double(compressed) / Double(measured)).rounded()))
         let canSuggest = options.engine == .automatic && options.preset != .higherQuality
-            && options.ghostscriptExecutable == nil && engine == .qpdf && compressed >= measured
+            && options.ghostscriptExecutable == nil && chosen.engine == .qpdf && compressed >= measured
         let suggestsImageDownsampling = canSuggest ? try PDFCompressionEngines.canRewriteImages(in: document) : false
-        return Sample(engine: engine, suggestsImageDownsampling: suggestsImageDownsampling,
+        return Sample(engine: chosen.engine, method: method(for: chosen), suggestsImageDownsampling: suggestsImageDownsampling,
                       originalBytes: measured, candidateBytes: compressed, samplePages: pages.count,
                       totalPages: document.pageCount, estimatedBytes: estimate,
                       preview: verified.page(at: 0).flatMap(render))
@@ -149,8 +149,7 @@ public enum PDFCompression {
         try Task.checkCancellation()
         await progress(0.1)
         try verifySource(input, stamp: sourceStamp)
-        let engine = try await compressVerified(sourceStamp.resolved, to: candidate, reference: original,
-                                                originalBytes: originalBytes, candidates: candidates)
+        let chosen = try await compressVerified(sourceStamp.resolved, to: candidate, reference: original, candidates: candidates)
         try Task.checkCancellation()
         await progress(0.8)
         try verifySource(input, stamp: sourceStamp)
@@ -167,15 +166,15 @@ public enum PDFCompression {
         try verifySource(input, stamp: sourceStamp)
         try manager.moveItem(at: result, to: output)
         await progress(1)
-        let name = options.engine == .automatic ? "\(input.lastPathComponent) · \(engine.rawValue)" : input.lastPathComponent
+        let name = options.engine == .automatic
+            ? "\(input.lastPathComponent) · \(method(for: chosen))" : input.lastPathComponent
         return summary(name, original: originalBytes, candidate: candidateBytes, keptOriginal: keptOriginal)
     }
 
     private static func compressVerified(
-        _ input: URL, to output: URL, reference: PDFDocument, originalBytes: Int64,
-        candidates: [PDFCompressionOptions]
-    ) async throws -> PDFCompressionOptions.Engine {
-        var best: (url: URL, bytes: Int64, engine: PDFCompressionOptions.Engine)?
+        _ input: URL, to output: URL, reference: PDFDocument, candidates: [PDFCompressionOptions]
+    ) async throws -> PDFCompressionOptions {
+        var best: (url: URL, bytes: Int64, options: PDFCompressionOptions)?
         var failure: Error?
         let compare = candidates.count > 1
         for (index, options) in candidates.enumerated() {
@@ -187,12 +186,9 @@ public enum PDFCompression {
                 try await PDFCompressionEngines.run(input, to: candidate, options: options)
                 try verify(open(candidate), against: reference, engine: options.engine)
                 let size = try bytes(candidate)
-                if let current = best {
-                    // Keep the lossless candidate unless downsampling brings a meaningful size reduction.
-                    let baseline = min(originalBytes, current.bytes)
-                    guard size <= baseline - max(1, baseline / 20) else { continue }
-                }
-                best = (candidate, size, options.engine)
+                // Candidates are ordered from least to most destructive. Keep the earlier one on a tie.
+                if let current = best, size >= current.bytes { continue }
+                best = (candidate, size, options)
             } catch {
                 try Task.checkCancellation()
                 failure = error
@@ -202,7 +198,18 @@ public enum PDFCompression {
             throw failure ?? ToolError.invalid("No compression engine produced a verified PDF.")
         }
         if compare { try FileManager.default.moveItem(at: best.url, to: output) }
-        return best.engine
+        return best.options
+    }
+
+    private static func method(for options: PDFCompressionOptions) -> String {
+        switch options.engine {
+        case .qpdf:
+            options.isLossless ? "qpdf lossless" : "qpdf JPEG quality \(options.imageQuality ?? options.defaultQuality)"
+        case .ghostscript:
+            "Ghostscript · \(options.imageDPI ?? options.defaultDPI) DPI"
+        case .automatic:
+            options.engine.rawValue
+        }
     }
 
     private static func verifySource(_ input: URL, stamp: PDFSourceStamp) throws {

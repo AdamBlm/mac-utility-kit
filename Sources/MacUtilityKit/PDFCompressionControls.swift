@@ -36,7 +36,7 @@ struct PDFCompressionControls: View {
                 .labelsHidden()
             }
             if options.engine == .automatic {
-                Text("Automatic keeps text and forms lossless and may reduce image resolution in image-heavy PDFs.")
+                Text("Automatic compares available methods and keeps the smallest verified result for this preset.")
                     .font(.callout).foregroundStyle(.secondary)
                 if options.qpdfExecutable == nil {
                     ExternalEngineSetupButton(engine: .qpdf) { options.qpdfExecutable = $0 }
@@ -168,7 +168,7 @@ struct PDFCompressionControls: View {
                          : "Estimated compressed size: \(bytes(sample.estimatedBytes))")
                         .font(.callout.weight(.medium))
                     if options.engine == .automatic {
-                        Text(isWholeFile ? "Engine used: \(sample.engine.rawValue)" : "Sample engine: \(sample.engine.rawValue)")
+                        Text(isWholeFile ? "Engine used: \(sample.method)" : "Sample engine: \(sample.method)")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                     Text("\(sample.samplePages) of \(sample.totalPages) pages sampled · \(sample.originalBytes.formatted()) → \(sample.candidateBytes.formatted()) bytes")

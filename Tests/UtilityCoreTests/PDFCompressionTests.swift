@@ -125,8 +125,8 @@ struct PDFCompressionTests {
         options.ghostscriptExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"]))
         let scanDocument = try #require(PDFDocument(url: scan))
         let linkedDocument = try #require(PDFDocument(url: linked))
-        #expect(try PDFCompressionEngines.candidates(for: scanDocument, options: options).map(\.engine) == [.qpdf, .ghostscript])
-        #expect(try PDFCompressionEngines.candidates(for: linkedDocument, options: options).map(\.engine) == [.qpdf])
+        #expect(try PDFCompressionEngines.candidates(for: scanDocument, options: options).map(\.engine) == [.qpdf, .qpdf, .ghostscript])
+        #expect(try PDFCompressionEngines.candidates(for: linkedDocument, options: options).map(\.engine) == [.qpdf, .qpdf, .ghostscript])
         #expect(try await PDFCompression.sample(text, options: options).engine == .qpdf)
 
         options.qpdfExecutable = nil
@@ -139,6 +139,35 @@ struct PDFCompressionTests {
         let summary = try await PDFCompression.export(scan, to: output, options: options) { _ in }
         #expect(summary.contains("qpdf"))
         #expect(PDFDocument(url: output)?.pageCount == 1)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"] != nil
+        && ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"] != nil))
+    func automaticMatchesTheSmallestVerifiedManualResultForTheSamePreset() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let source = try Self.linkedPDF(in: directory, count: 1, raster: true)
+        var automatic = PDFCompressionOptions.recommended
+        automatic.qpdfExecutable = try Self.qpdf()
+        automatic.ghostscriptExecutable = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"]))
+        let result = directory.appending(path: "Automatic.pdf")
+        _ = try await PDFCompression.export(source, to: result, options: automatic) { _ in }
+
+        var lossless = automatic
+        lossless.engine = .qpdf
+        lossless.preset = .higherQuality
+        var jpeg = automatic
+        jpeg.engine = .qpdf
+        var downsample = automatic
+        downsample.engine = .ghostscript
+        var sizes = [try Data(contentsOf: source).count]
+        for (index, options) in [lossless, jpeg, downsample].enumerated() {
+            let manual = directory.appending(path: "Manual-\(index).pdf")
+            _ = try await PDFCompression.export(source, to: manual, options: options) { _ in }
+            sizes.append(try Data(contentsOf: manual).count)
+        }
+        #expect(try Data(contentsOf: result).count == sizes.min())
+        #expect(PDFDocument(url: result)?.page(at: 0)?.annotations.first?.url?.absoluteString == "https://example.test/page/1")
     }
 
     @Test(arguments: [0.1, 0.8])
