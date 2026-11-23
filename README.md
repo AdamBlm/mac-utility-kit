@@ -17,6 +17,22 @@ Open **Browse Tools** and pick a category, or press **⌘K** to jump to a tool b
 
 See the [full tool catalog](docs/feature-inventory.md) or the [tool guide](docs/tool-guide.md) for controls and format support.
 
+## Open files from Finder
+
+Right-click a PDF or image in Finder to open it directly in a Mac Utility Kit tool. Finder may group these actions under **Services**.
+
+| Finder selection | Direct action |
+| --- | --- |
+| One or more PDFs | **Compress PDF with Mac Utility Kit** |
+| Two or more PDFs | **Combine PDFs with Mac Utility Kit** |
+| One or more images | **Compress Images with Mac Utility Kit** |
+
+For your own shortcuts, star tools in the app, then choose **Favorite Actions in Mac Utility Kit** from Finder. The picker shows starred tools that can open every selected file. For example, star **Resize Images** to make it available when you select images.
+
+The chosen tool opens with the files loaded. You can review the settings before starting an export.
+
+If the actions are missing, install a build that includes Finder actions in **Applications**, then check **System Settings → Keyboard → Keyboard Shortcuts → Services**.
+
 ## Run a local preview
 
 You’ll need an Apple silicon Mac with macOS 15 or later and Xcode 26 or later. From the source checkout, run:

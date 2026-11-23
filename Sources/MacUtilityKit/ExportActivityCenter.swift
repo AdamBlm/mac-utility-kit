@@ -150,13 +150,31 @@ final class ExportTerminationDelegate: NSObject, NSApplicationDelegate {
     private weak var launcher: LauncherController?
     private var pendingPDFs: [URL] = []
 
-    func attachPDFRouting(to launcher: LauncherController) {
+    private var pendingFinderActions: [FinderFileAction] = []
+
+    func applicationDidFinishLaunching(_ notification: Notification) {
+        NSApp.servicesProvider = self
+    }
+
+    @objc func openFinderAction(_ pasteboard: NSPasteboard, userData: String?,
+                                error: AutoreleasingUnsafeMutablePointer<NSString?>?) {
+        guard let userData, let action = FinderFileAction(serviceID: userData, pasteboard: pasteboard) else {
+            error?.pointee = "Select compatible PDFs or images. Combine PDFs needs at least two PDFs."
+            return
+        }
+        if let launcher { launcher.openFinderAction(action) }
+        else { pendingFinderActions.append(action) }
+    }
+
+    func attachFileRouting(to launcher: LauncherController) {
         self.launcher = launcher
         if !pendingPDFs.isEmpty {
             // The launch workspace is already being constructed. Its window bridge will drain the batch.
             launcher.openPDFs(pendingPDFs, opensWorkspaceIfNeeded: false)
             pendingPDFs.removeAll()
         }
+        for action in pendingFinderActions { launcher.openFinderAction(action, opensWorkspaceIfNeeded: false) }
+        pendingFinderActions.removeAll()
     }
 
     func application(_ application: NSApplication, open urls: [URL]) {

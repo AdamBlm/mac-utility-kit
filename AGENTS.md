@@ -22,3 +22,7 @@
 
 - For each new tool, verify required subfeatures and upstream choices before implementation. When working in parallel, delegate research, implementation, and independent adversarial review to separate agents for that tool. Rotate roles across tools and keep shared integration under one owner.
 - Review the actual app entry point and output, including invalid input, unsupported engine combinations, and batch or cancellation behavior where relevant. Fix review findings before merging. Record any remaining limitations alongside the tool.
+
+## Pull requests
+
+- Start changes on a feature branch and open a pull request into the default branch. Keep direct commits and pushes off the default branch.

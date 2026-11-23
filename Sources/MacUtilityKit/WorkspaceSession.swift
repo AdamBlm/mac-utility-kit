@@ -173,6 +173,16 @@ final class WorkspaceSession {
 
     var isRunning: Bool { runningTool != nil }
 
+    func loadFinderAction(_ action: FinderFileAction, with tool: Tool) -> Bool {
+        guard action.supports(tool) else { return false }
+        var draft = ToolDraft()
+        guard draft.addInputs(action.files, for: tool) else { return false }
+        drafts[tool] = draft
+        reports[tool] = nil
+        errors[tool] = nil
+        return true
+    }
+
     func setDraft(_ updated: ToolDraft, for tool: Tool) {
         let previous = drafts.updateValue(updated, forKey: tool)
         let changedText: String?
