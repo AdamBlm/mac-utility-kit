@@ -159,7 +159,7 @@ final class ExportTerminationDelegate: NSObject, NSApplicationDelegate {
     @objc func openFinderAction(_ pasteboard: NSPasteboard, userData: String?,
                                 error: AutoreleasingUnsafeMutablePointer<NSString?>?) {
         guard let userData, let action = FinderFileAction(serviceID: userData, pasteboard: pasteboard) else {
-            error?.pointee = "Select compatible files for this action. Organize PDF Pages needs one PDF, and Combine PDFs needs at least two."
+            error?.pointee = "Select compatible PDFs or images. Combine PDFs needs at least two PDFs."
             return
         }
         if let launcher { launcher.openFinderAction(action) }

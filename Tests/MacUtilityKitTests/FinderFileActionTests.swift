@@ -18,9 +18,11 @@ struct FinderFileActionTests {
         let action = try #require(FinderFileAction(serviceID: Tool.mergePDFs.rawValue, pasteboard: board))
         #expect(action.tool == .mergePDFs)
         let session = WorkspaceSession()
-        #expect(session.loadFinderAction(action))
+        #expect(session.loadFinderAction(action, with: .mergePDFs))
         #expect(session.drafts[.mergePDFs]?.inputs == [second, first])
-        #expect(FinderFileAction(serviceID: Tool.organizePDF.rawValue, pasteboard: board) == nil)
+        let favorites = try #require(FinderFileAction(serviceID: "favorites", pasteboard: board))
+        #expect(favorites.compatibleFavorites([.organizePDF, .resizeImages, .compressPDF, .mergePDFs])
+                == [.compressPDF, .mergePDFs])
     }
 
     @Test func serviceRejectsMismatchedTypesAndUnsupportedActions() throws {
@@ -31,7 +33,13 @@ struct FinderFileActionTests {
         for file in [pdf, image] { try Data().write(to: file) }
 
         #expect(FinderFileAction(serviceID: "compressPDF", files: [pdf])?.tool == .compressPDF)
-        #expect(FinderFileAction(serviceID: "resizeImages", files: [image])?.tool == .resizeImages)
+        let favorites = try #require(FinderFileAction(serviceID: "favorites", files: [image]))
+        #expect(favorites.tool == nil)
+        #expect(favorites.compatibleFavorites([.resizeImages, .compressPDF, .convertImages, .annotateScreenshot])
+                == [.resizeImages, .convertImages])
+        let session = WorkspaceSession()
+        #expect(session.loadFinderAction(favorites, with: .resizeImages))
+        #expect(session.drafts[.resizeImages]?.inputs == [image])
         #expect(FinderFileAction(serviceID: "compressImages", files: [image, pdf]) == nil)
         #expect(FinderFileAction(serviceID: "compressPDF", files: [image]) == nil)
         #expect(FinderFileAction(serviceID: "mergePDFs", files: [pdf]) == nil)

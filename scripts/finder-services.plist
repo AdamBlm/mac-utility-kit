@@ -28,28 +28,6 @@
 		<key>NSMenuItem</key>
 		<dict>
 			<key>default</key>
-			<string>Organize PDF Pages with Mac Utility Kit</string>
-		</dict>
-		<key>NSMessage</key>
-		<string>openFinderAction</string>
-		<key>NSSendFileTypes</key>
-		<array>
-			<string>com.adobe.pdf</string>
-		</array>
-		<key>NSUserData</key>
-		<string>organizePDF</string>
-		<key>NSRequiredContext</key>
-		<dict>
-			<key>NSApplicationIdentifier</key>
-			<string>com.apple.finder</string>
-		</dict>
-		<key>NSPortName</key>
-		<string>Mac Utility Kit</string>
-	</dict>
-	<dict>
-		<key>NSMenuItem</key>
-		<dict>
-			<key>default</key>
 			<string>Combine PDFs with Mac Utility Kit</string>
 		</dict>
 		<key>NSMessage</key>
@@ -94,38 +72,17 @@
 		<key>NSMenuItem</key>
 		<dict>
 			<key>default</key>
-			<string>Resize Images with Mac Utility Kit</string>
+			<string>Favorite Actions in Mac Utility Kit</string>
 		</dict>
 		<key>NSMessage</key>
 		<string>openFinderAction</string>
 		<key>NSSendFileTypes</key>
 		<array>
+			<string>com.adobe.pdf</string>
 			<string>public.image</string>
 		</array>
 		<key>NSUserData</key>
-		<string>resizeImages</string>
-		<key>NSRequiredContext</key>
-		<dict>
-			<key>NSApplicationIdentifier</key>
-			<string>com.apple.finder</string>
-		</dict>
-		<key>NSPortName</key>
-		<string>Mac Utility Kit</string>
-	</dict>
-	<dict>
-		<key>NSMenuItem</key>
-		<dict>
-			<key>default</key>
-			<string>Convert Images with Mac Utility Kit</string>
-		</dict>
-		<key>NSMessage</key>
-		<string>openFinderAction</string>
-		<key>NSSendFileTypes</key>
-		<array>
-			<string>public.image</string>
-		</array>
-		<key>NSUserData</key>
-		<string>convertImages</string>
+		<string>favorites</string>
 		<key>NSRequiredContext</key>
 		<dict>
 			<key>NSApplicationIdentifier</key>
