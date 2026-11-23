@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<array>
+	<dict>
+		<key>NSMenuItem</key>
+		<dict>
+			<key>default</key>
+			<string>Compress PDF with Mac Utility Kit</string>
+		</dict>
+		<key>NSMessage</key>
+		<string>openFinderAction</string>
+		<key>NSSendFileTypes</key>
+		<array>
+			<string>com.adobe.pdf</string>
+		</array>
+		<key>NSUserData</key>
+		<string>compressPDF</string>
+		<key>NSRequiredContext</key>
+		<dict>
+			<key>NSApplicationIdentifier</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>NSPortName</key>
+		<string>Mac Utility Kit</string>
+	</dict>
+	<dict>
+		<key>NSMenuItem</key>
+		<dict>
+			<key>default</key>
+			<string>Organize PDF Pages with Mac Utility Kit</string>
+		</dict>
+		<key>NSMessage</key>
+		<string>openFinderAction</string>
+		<key>NSSendFileTypes</key>
+		<array>
+			<string>com.adobe.pdf</string>
+		</array>
+		<key>NSUserData</key>
+		<string>organizePDF</string>
+		<key>NSRequiredContext</key>
+		<dict>
+			<key>NSApplicationIdentifier</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>NSPortName</key>
+		<string>Mac Utility Kit</string>
+	</dict>
+	<dict>
+		<key>NSMenuItem</key>
+		<dict>
+			<key>default</key>
+			<string>Combine PDFs with Mac Utility Kit</string>
+		</dict>
+		<key>NSMessage</key>
+		<string>openFinderAction</string>
+		<key>NSSendFileTypes</key>
+		<array>
+			<string>com.adobe.pdf</string>
+		</array>
+		<key>NSUserData</key>
+		<string>mergePDFs</string>
+		<key>NSRequiredContext</key>
+		<dict>
+			<key>NSApplicationIdentifier</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>NSPortName</key>
+		<string>Mac Utility Kit</string>
+	</dict>
+	<dict>
+		<key>NSMenuItem</key>
+		<dict>
+			<key>default</key>
+			<string>Compress Images with Mac Utility Kit</string>
+		</dict>
+		<key>NSMessage</key>
+		<string>openFinderAction</string>
+		<key>NSSendFileTypes</key>
+		<array>
+			<string>public.image</string>
+		</array>
+		<key>NSUserData</key>
+		<string>compressImages</string>
+		<key>NSRequiredContext</key>
+		<dict>
+			<key>NSApplicationIdentifier</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>NSPortName</key>
+		<string>Mac Utility Kit</string>
+	</dict>
+	<dict>
+		<key>NSMenuItem</key>
+		<dict>
+			<key>default</key>
+			<string>Resize Images with Mac Utility Kit</string>
+		</dict>
+		<key>NSMessage</key>
+		<string>openFinderAction</string>
+		<key>NSSendFileTypes</key>
+		<array>
+			<string>public.image</string>
+		</array>
+		<key>NSUserData</key>
+		<string>resizeImages</string>
+		<key>NSRequiredContext</key>
+		<dict>
+			<key>NSApplicationIdentifier</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>NSPortName</key>
+		<string>Mac Utility Kit</string>
+	</dict>
+	<dict>
+		<key>NSMenuItem</key>
+		<dict>
+			<key>default</key>
+			<string>Convert Images with Mac Utility Kit</string>
+		</dict>
+		<key>NSMessage</key>
+		<string>openFinderAction</string>
+		<key>NSSendFileTypes</key>
+		<array>
+			<string>public.image</string>
+		</array>
+		<key>NSUserData</key>
+		<string>convertImages</string>
+		<key>NSRequiredContext</key>
+		<dict>
+			<key>NSApplicationIdentifier</key>
+			<string>com.apple.finder</string>
+		</dict>
+		<key>NSPortName</key>
+		<string>Mac Utility Kit</string>
+	</dict>
+</array>
+</plist>

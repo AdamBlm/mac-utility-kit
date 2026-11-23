@@ -148,6 +148,11 @@ struct Workspace: View {
         }, openPDFs: { urls in
             for url in urls { pdfReader.openDeliveredFile(url) }
             selection = .pdfReader
+        }, openFinderAction: { action in
+            guard session.loadFinderAction(action) else { return }
+            selection = .tool(action.tool)
+            search = ""
+            searching = false
         }))
         .onChange(of: selection) { _, destination in
             guard case .tool(let tool) = destination else { return }

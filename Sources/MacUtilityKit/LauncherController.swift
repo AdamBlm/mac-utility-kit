@@ -40,10 +40,13 @@ final class LauncherController {
     @ObservationIgnored private var pendingTool: Tool?
     @ObservationIgnored private var pendingPDFs: [URL] = []
 
+    @ObservationIgnored private var pendingFinderActions: [FinderFileAction] = []
+
     private struct WorkspaceRoute {
         weak var window: NSWindow?
         let openTool: @MainActor (Tool) -> Void
         let openPDFs: @MainActor ([URL]) -> Void
+        let openFinderAction: @MainActor (FinderFileAction) -> Void
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -81,8 +84,20 @@ final class LauncherController {
         if let route = revealWorkspace() {
             route.openPDFs(urls)
         } else {
-            let alreadyWaiting = !pendingPDFs.isEmpty
+            let alreadyWaiting = !pendingPDFs.isEmpty || !pendingFinderActions.isEmpty
             pendingPDFs.append(contentsOf: urls)
+            if opensWorkspaceIfNeeded && !alreadyWaiting {
+                openWindow?(id: Self.workspaceID)
+            }
+        }
+    }
+
+    func openFinderAction(_ action: FinderFileAction, opensWorkspaceIfNeeded: Bool = true) {
+        if let route = revealWorkspace() {
+            route.openFinderAction(action)
+        } else {
+            let alreadyWaiting = !pendingFinderActions.isEmpty || !pendingPDFs.isEmpty
+            pendingFinderActions.append(action)
             if opensWorkspaceIfNeeded && !alreadyWaiting {
                 openWindow?(id: Self.workspaceID)
             }
@@ -103,16 +118,22 @@ final class LauncherController {
     }
 
     func register(_ window: NSWindow, openTool: @escaping @MainActor (Tool) -> Void,
-                  openPDFs: @escaping @MainActor ([URL]) -> Void) {
-        routes[ObjectIdentifier(window)] = WorkspaceRoute(window: window, openTool: openTool, openPDFs: openPDFs)
+                  openPDFs: @escaping @MainActor ([URL]) -> Void,
+                  openFinderAction: @escaping @MainActor (FinderFileAction) -> Void) {
+        routes[ObjectIdentifier(window)] = WorkspaceRoute(
+            window: window, openTool: openTool, openPDFs: openPDFs, openFinderAction: openFinderAction
+        )
         let tool = pendingTool
         let pdfs = pendingPDFs
         pendingTool = nil
         pendingPDFs.removeAll()
-        guard tool != nil || !pdfs.isEmpty else { return }
+        let actions = pendingFinderActions
+        pendingFinderActions.removeAll()
+        guard tool != nil || !pdfs.isEmpty || !actions.isEmpty else { return }
         Task { @MainActor in
             if let tool { openTool(tool) }
             if !pdfs.isEmpty { openPDFs(pdfs) }
+            for action in actions { openFinderAction(action) }
         }
     }
 
@@ -148,6 +169,7 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
     let controller: LauncherController
     let openTool: @MainActor (Tool) -> Void
     let openPDFs: @MainActor ([URL]) -> Void
+    let openFinderAction: @MainActor (FinderFileAction) -> Void
     @Environment(\.openWindow) private var openWindow
 
     func makeNSView(context: Context) -> WorkspaceWindowObserver {
@@ -158,6 +180,7 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
         view.controller = controller
         view.openTool = openTool
         view.openPDFs = openPDFs
+        view.openFinderAction = openFinderAction
         view.connect()
         let action = openWindow
         Task { @MainActor in controller.attach(openWindow: action) }
@@ -168,6 +191,7 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
         weak var registeredWindow: NSWindow?
         var openTool: (@MainActor (Tool) -> Void)?
         var openPDFs: (@MainActor ([URL]) -> Void)?
+        var openFinderAction: (@MainActor (FinderFileAction) -> Void)?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -177,8 +201,9 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
         func connect() {
             if let oldWindow = registeredWindow, oldWindow !== window { controller?.unregister(oldWindow) }
             registeredWindow = window
-            if let window, let openTool, let openPDFs {
-                controller?.register(window, openTool: openTool, openPDFs: openPDFs)
+            if let window, let openTool, let openPDFs, let openFinderAction {
+                controller?.register(window, openTool: openTool, openPDFs: openPDFs,
+                                     openFinderAction: openFinderAction)
             }
         }
     }

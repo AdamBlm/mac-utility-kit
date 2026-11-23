@@ -17,6 +17,15 @@ Open **Browse Tools** and pick a category, or press **⌘K** to jump to a tool b
 
 See the [full tool catalog](docs/feature-inventory.md) or the [tool guide](docs/tool-guide.md) for controls and format support.
 
+## Open files from Finder
+
+In builds that include Finder Services, right-click a PDF or image in Finder and look under **Services** for an action ending in **with Mac Utility Kit**. If you don't see the actions, enable them in **System Settings → Keyboard → Keyboard Shortcuts → Services**.
+
+- **PDFs:** Compress PDF, Organize PDF Pages (one file), and Combine PDFs (two or more).
+- **Images:** Compress Images, Resize Images, and Convert Images.
+
+The selected files open in the matching tool, ready for you to review the settings and export.
+
 ## Run a local preview
 
 You’ll need an Apple silicon Mac with macOS 15 or later and Xcode 26 or later. From the source checkout, run:
