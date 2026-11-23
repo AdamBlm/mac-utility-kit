@@ -57,9 +57,8 @@ package struct EmbeddedSubtitleTrack: Decodable, Identifiable, Equatable, Sendab
 package struct SubtitleInventory: Sendable {
     package let tracks: [EmbeddedSubtitleTrack]
 
-    let selection: URL
-    let source: URL
-    let version: DuplicateFileStamp
+    package let selection: URL
+    let version: LocalInputFile.Version
 }
 
 package enum SubtitleExtraction {
@@ -71,11 +70,7 @@ package enum SubtitleExtraction {
     }
 
     package static func inspect(_ source: URL, executable: URL) async throws -> SubtitleInventory {
-        guard source.isFileURL else { throw ToolError.invalid("Choose a local video file.") }
-        let file = source.resolvingSymlinksInPath().standardizedFileURL
-        guard let stamp = try DuplicateFileIO.inspect(file) else {
-            throw ToolError.invalid("Choose a regular video file.")
-        }
+        let version = try LocalInputFile.Version.read(source)
         let directory = try temporaryDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }
         let report = directory.appendingPathComponent("streams.json")
@@ -86,10 +81,10 @@ package enum SubtitleExtraction {
             "-v", "error", "-protocol_whitelist", "file", "-format_whitelist", inputFormats,
             "-select_streams", "s",
             "-show_entries", "stream=index,codec_name:stream_tags=language,title:stream_disposition=forced,hearing_impaired",
-            "-of", "json", "-i", file.path
+            "-of", "json", "-i", version.resolved.path
         ], directory: directory, standardOutput: output)
         try Task.checkCancellation()
-        guard try identifiesSameFile(selection: source, resolved: file, version: stamp) else {
+        guard (try? LocalInputFile.Version.read(source)) == version else {
             throw ToolError.invalid("The video changed while its subtitle tracks were being inspected.")
         }
         let data = try read(report, maximumBytes: 2 * 1024 * 1024)
@@ -97,7 +92,7 @@ package enum SubtitleExtraction {
         guard tracks.allSatisfy({ $0.id >= 0 }), Set(tracks.map(\.id)).count == tracks.count else {
             throw ToolError.invalid("ffprobe reported invalid subtitle track numbers.")
         }
-        return SubtitleInventory(tracks: tracks, selection: source, source: file, version: stamp)
+        return SubtitleInventory(tracks: tracks, selection: source, version: version)
     }
 
     package static func extract(
@@ -107,9 +102,7 @@ package enum SubtitleExtraction {
         guard inventory.tracks.contains(track), track.supportsTextExport else {
             throw ToolError.invalid("Choose a text subtitle track to export as SRT or WebVTT.")
         }
-        guard try identifiesSameFile(
-            selection: inventory.selection, resolved: inventory.source, version: inventory.version
-        ) else {
+        guard (try? LocalInputFile.Version.read(inventory.selection)) == inventory.version else {
             throw ToolError.invalid("The video changed. Inspect its subtitle tracks again.")
         }
         let directory = try temporaryDirectory()
@@ -118,15 +111,13 @@ package enum SubtitleExtraction {
         // FFmpeg can exit successfully at its size cutoff. Place it above the
         // accepted size so the read rejects a cutoff instead of saving it.
         try await ExternalTool.run(executable, name: "FFmpeg", arguments: [
-            "-nostdin", "-hide_banner", "-loglevel", "error", "-n", "-protocol_whitelist", "file",
-            "-format_whitelist", inputFormats, "-i", inventory.source.path,
+            "-nostdin", "-hide_banner", "-loglevel", "error", "-xerror", "-n", "-protocol_whitelist", "file",
+            "-format_whitelist", inputFormats, "-i", inventory.version.resolved.path,
             "-map", "0:\(track.id)", "-map_metadata", "-1", "-map_chapters", "-1",
             "-c:s", format.encoder, "-f", format.encoder, "-fs", String(maximumSubtitleBytes + 1), output.path
         ], directory: directory)
         try Task.checkCancellation()
-        guard try identifiesSameFile(
-            selection: inventory.selection, resolved: inventory.source, version: inventory.version
-        ) else {
+        guard (try? LocalInputFile.Version.read(inventory.selection)) == inventory.version else {
             throw ToolError.invalid("The video changed during extraction. Inspect it again.")
         }
         let data = try read(output, maximumBytes: maximumSubtitleBytes)
@@ -135,13 +126,6 @@ package enum SubtitleExtraction {
             throw ToolError.invalid("The selected subtitle track did not produce any readable cues.")
         }
         return data
-    }
-
-    private static func identifiesSameFile(
-        selection: URL, resolved: URL, version: DuplicateFileStamp
-    ) throws -> Bool {
-        guard selection.resolvingSymlinksInPath().standardizedFileURL == resolved else { return false }
-        return try DuplicateFileIO.inspect(resolved) == version
     }
 
     private static func read(_ file: URL, maximumBytes: Int) throws -> Data {

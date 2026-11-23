@@ -9,6 +9,29 @@ public enum CleanLinks {
         public let keptSignedQuery: Bool
     }
 
+    package struct BatchRow: Identifiable {
+        package let id: Int
+        package let input: String
+        package let result: Swift.Result<Result, Error>
+    }
+
+    package static func cleanBatch(_ input: String, unwrapRedirects: Bool) throws -> [BatchRow] {
+        guard input.utf8.count <= 1_048_576 else {
+            throw ToolError.invalid("Enter up to 1 MB of links at a time.")
+        }
+        let lines = input.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        guard lines.count <= 500 else {
+            throw ToolError.invalid("Enter up to 500 links at a time.")
+        }
+        return lines.enumerated().map { index, line in
+            BatchRow(id: index, input: line, result: Swift.Result {
+                try clean(line, unwrapRedirects: unwrapRedirects)
+            })
+        }
+    }
+
     private static let trackingKeys: Set<String> = [
         "fbclid", "gclid", "dclid", "gbraid", "wbraid", "msclkid", "ttclid",
         "twclid", "li_fat_id", "mc_cid", "mc_eid", "_hsenc", "_hsmi", "igshid",

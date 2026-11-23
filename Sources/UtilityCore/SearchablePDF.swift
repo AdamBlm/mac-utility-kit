@@ -65,13 +65,13 @@ public enum SearchablePDF {
             throw ToolError.invalid("Choose an available page.")
         }
         let raster = try SearchablePDFTextLayer.rasterize(page, limit: 4_096)
-        let recognized = try recognize(page, raster: raster, index: pageNumber - 1, options: options)
+        let recognized = try await recognize(page, raster: raster, index: pageNumber - 1, options: options)
         return SearchablePDFPreview(image: SearchablePDFTextLayer.thumbnail(raster.image), result: recognized.result)
     }
 
-    static func recognitionResult(for page: PDFPage, index: Int, options: SearchablePDFOptions) throws -> SearchablePDFPageResult {
+    static func recognitionResult(for page: PDFPage, index: Int, options: SearchablePDFOptions) async throws -> SearchablePDFPageResult {
         let raster = try SearchablePDFTextLayer.rasterize(page, limit: 4_096)
-        return try recognize(page, raster: raster, index: index, options: options).result
+        return try await recognize(page, raster: raster, index: index, options: options).result
     }
 
     public static func export(
@@ -104,7 +104,7 @@ public enum SearchablePDF {
                     results.append(makeResult(index, text: embedded, status: .alreadySearchable))
                 } else {
                     let raster = try SearchablePDFTextLayer.rasterize(page, limit: 4_096)
-                    let recognized = try recognize(page, raster: raster, index: index, options: options)
+                    let recognized = try await recognize(page, raster: raster, index: index, options: options)
                     if !recognized.lines.isEmpty {
                         let replacement = try SearchablePDFTextLayer.pageWithText(page, raster: raster, lines: recognized.lines)
                         replacements[index] = replacement
@@ -170,20 +170,15 @@ public enum SearchablePDF {
 
     private static func recognize(
         _ page: PDFPage, raster: SearchablePDFTextLayer.Raster, index: Int, options: SearchablePDFOptions
-    ) throws -> (lines: [SearchablePDFTextLayer.Line], result: SearchablePDFPageResult) {
+    ) async throws -> (lines: [SearchablePDFTextLayer.Line], result: SearchablePDFPageResult) {
         let existing = embeddedText(page)
         if options.skipsSearchablePages, let existing {
             return ([], makeResult(index, text: existing, status: .alreadySearchable))
         }
         try validateLanguage(options.language)
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        if let language = options.language { request.recognitionLanguages = [language] }
-        else { request.automaticallyDetectsLanguage = true }
         // OCR the unmasked image. PDFKit text geometry alone cannot distinguish
         // visible text from a stale invisible layer over unrelated scan text.
-        let recognized = try observations(in: raster.image, using: request)
+        let recognized = try await observations(in: raster.image, language: options.language)
         let nativeLines = existing == nil ? [] : SearchablePDFTextLayer.embeddedLines(on: page, raster: raster)
         let native = existing == nil ? nil : EmbeddedWords(page: page, raster: raster, lines: nativeLines)
         let lines = try SearchablePDFTextLayer.readingOrder(recognized.flatMap { observation in
@@ -335,11 +330,8 @@ public enum SearchablePDF {
         }
     }
 
-    private static func observations(in image: CGImage, using request: VNRecognizeTextRequest) throws -> [OCRObservation] {
-        try Task.checkCancellation()
-        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-        try Task.checkCancellation()
-        return (request.results ?? []).compactMap { observation in
+    private static func observations(in image: CGImage, language: String?) async throws -> [OCRObservation] {
+        try await VisionTextRecognition.perform(on: image, language: language).compactMap { observation in
             guard let candidate = observation.topCandidates(1).first, !candidate.string.isEmpty else { return nil }
             return OCRObservation(candidate: candidate, line: .init(text: candidate.string, bounds: observation.boundingBox))
         }

@@ -13,6 +13,16 @@ enum OutputFilename {
         return shortenedStem(stem, suffix: suffix) + suffix
     }
 
+    static func numberedOriginal(_ input: URL, position: Int) -> String {
+        let prefix = "\(position) - "
+        let fileExtension = input.pathExtension
+        let suffix = fileExtension.isEmpty ? "" : "." + fileExtension
+        if fits(prefix + suffix) {
+            return numberedSource(input, position: position, suffix: suffix)
+        }
+        return shortenedStem(prefix + input.lastPathComponent, suffix: "")
+    }
+
     static func shortenedStem(_ stem: String, suffix: String) -> String {
         guard !fits(stem + suffix) else { return stem }
 

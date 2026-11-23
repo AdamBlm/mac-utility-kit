@@ -37,6 +37,32 @@ struct ArchiveZIPWriterTests {
         #expect(try Data(contentsOf: outside.appending(path: "Child.txt")) == unrelated)
     }
 
+    @Test func replacingAnEarlierRootBeforePublicationAbandonsZIP() throws {
+        let files = FileManager.default
+        let root = files.temporaryDirectory.appending(path: UUID().uuidString)
+        let second = root.appending(path: "Second", directoryHint: .isDirectory)
+        let destination = root.appending(path: "Output", directoryHint: .isDirectory)
+        for folder in [second, destination] {
+            try files.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        defer { try? files.removeItem(at: root) }
+        let first = root.appending(path: "First.txt")
+        let child = second.appending(path: "Child.txt")
+        let contents = Data("same bytes".utf8)
+        for file in [first, child] { try contents.write(to: file) }
+
+        #expect {
+            try ArchiveTools.createZIP([first, second], to: destination.appending(path: "Export.zip")) { path in
+                if path == "Second" { try contents.write(to: first, options: .atomic) }
+            }
+        } throws: { error in
+            error.localizedDescription == "Source changed while creating the ZIP: First.txt"
+        }
+        #expect(try files.contentsOfDirectory(atPath: destination.path).isEmpty)
+        #expect(try Data(contentsOf: first) == contents)
+        #expect(try Data(contentsOf: child) == contents)
+    }
+
     @Test func destinationMovedUnderSourceAbandonsZIP() throws {
         let files = FileManager.default
         let root = files.temporaryDirectory.appending(path: UUID().uuidString)

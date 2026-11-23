@@ -13,12 +13,14 @@ import UniformTypeIdentifiers
     let transparent = folder.appendingPathComponent("Transparent.png")
     try conversionImage(portrait, kind: .jpeg, width: 72, height: 40, orientation: 6, transparent: false)
     try conversionImage(transparent, kind: .png, width: 32, height: 24, orientation: 1, transparent: true)
+    let linked = folder.appending(path: "Linked image.png")
+    try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: portrait)
     let original = try Data(contentsOf: portrait)
     let output = folder.appendingPathComponent("Combined.pdf")
     var options = ImagesToPDFOptions()
     options.margin = 4
     options.backgroundRGB = 0x00FF00
-    try await ImagesToPDF.export([portrait, transparent], to: output, options: options) { _ in }
+    try await ImagesToPDF.export([linked, transparent], to: output, options: options) { _ in }
 
     let pdf = try #require(PDFDocument(url: output))
     #expect(pdf.pageCount == 2)
@@ -180,6 +182,57 @@ import UniformTypeIdentifiers
     #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["Broken.png", "Valid.png"])
 }
 
+@Test(arguments: [true, false])
+func imagesToPDFRejectsASourceReplacedDuringTheBatch(replaceFirst: Bool) async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appending(path: "First.png")
+    let second = folder.appending(path: "Second.png")
+    for input in [first, second] {
+        try conversionImage(input, kind: .png, width: 40, height: 30, orientation: 1, transparent: false)
+    }
+    let replaced = replaceFirst ? first : second
+    let untouched = replaceFirst ? second : first
+    let replacement = folder.appending(path: "Replacement.png")
+    try conversionImage(replacement, kind: .png, width: 30, height: 40, orientation: 1, transparent: false)
+    let untouchedData = try Data(contentsOf: untouched)
+    let output = folder.appending(path: "Combined.pdf")
+    await #expect(throws: ToolError.self) {
+        try await ImagesToPDF.export([first, second], to: output, options: .init()) { fraction in
+            if fraction == 1.0 / 3.0 {
+                do { _ = try FileManager.default.replaceItemAt(replaced, withItemAt: replacement) }
+                catch { Issue.record("Could not replace the fixture: \(error)") }
+            }
+        }
+    }
+    #expect(try Data(contentsOf: untouched) == untouchedData)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["First.png", "Second.png"])
+}
+
+@Test func imagesToPDFCancellationAfterTheFirstPageLeavesTheBatchUnpublished() async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appending(path: "Landscape.png")
+    let second = folder.appending(path: "Portrait.png")
+    try conversionImage(first, kind: .png, width: 40, height: 30, orientation: 1, transparent: false)
+    try conversionImage(second, kind: .png, width: 30, height: 40, orientation: 1, transparent: false)
+    let original = try [first, second].map { try Data(contentsOf: $0) }
+    let output = folder.appending(path: "Combined.pdf")
+
+    await #expect(throws: CancellationError.self) {
+        try await Task {
+            try await ImagesToPDF.export([first, second], to: output, options: .init()) { fraction in
+                if fraction == 1.0 / 3.0 {
+                    withUnsafeCurrentTask { $0?.cancel() }
+                }
+            }
+        }.value
+    }
+
+    #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["Landscape.png", "Portrait.png"])
+    #expect(try [first, second].map { try Data(contentsOf: $0) } == original)
+}
+
 private func conversionFolder() throws -> URL {
     try FileManager.default.temporaryDirectory.subdirectory(UUID().uuidString)
 }
@@ -327,6 +380,34 @@ private func conversionPDF(in folder: URL) throws -> URL {
         #expect(error.localizedDescription.contains("Refresh the page preview"))
     }
     #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path).isEmpty)
+}
+
+@Test func PDFToImagesRollsBackEarlierPagesOnALateFilenameCollision() async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try conversionPDF(in: folder)
+    let alias = folder.appending(path: "Linked source.pdf")
+    try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: source)
+    let exports = try folder.subdirectory("exports")
+    var options = PDFToImagesOptions()
+    options.range = "2, 1"
+    options.reviewedSource = try PDFSourceStamp.read(alias)
+    let plans = try PDFToImages.plans(alias, options: options)
+    #expect(plans.map(\.pageNumber) == [2, 1])
+    let occupied = exports.appending(path: try #require(plans.last).filename)
+    let existing = Data("keep the existing file".utf8)
+
+    await #expect(throws: (any Error).self) {
+        try await PDFToImages.export(alias, into: exports, options: options) { fraction in
+            if fraction == 2.0 / 3.0 {
+                do { try existing.write(to: occupied) }
+                catch { Issue.record("Could not create the collision fixture: \(error)") }
+            }
+        }
+    }
+
+    #expect(try FileManager.default.contentsOfDirectory(atPath: exports.path) == [occupied.lastPathComponent])
+    #expect(try Data(contentsOf: occupied) == existing)
 }
 
 @Test(arguments: ["reader", ""])

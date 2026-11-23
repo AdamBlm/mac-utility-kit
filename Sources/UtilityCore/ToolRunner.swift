@@ -14,20 +14,25 @@ public struct JobReport: Sendable {
 public struct ExtractedTextFile: Sendable {
     public let source: URL
     public let result: TextExtractionResult
+    package let inputLabel: String
 
     package static func captured(source: URL, text: String) -> Self {
         let image = TextExtractionPage(pageNumber: nil, text: text, error: nil)
-        return Self(source: source, result: TextExtractionResult(pages: [image], text: text))
+        return Self(source: source, result: TextExtractionResult(pages: [image], text: text),
+                    inputLabel: source.lastPathComponent)
     }
 }
 
 public struct MediaInspectionResult: Sendable {
     public let filename: String
+    package let inputLabel: String
     public let report: MediaInspectionReport
 }
 
 public struct ImageComparisonResult: Sendable {
     public let source: URL
+    package let sourceVersion: LocalInputFile.Version
+    package let inputLabel: String
     public let output: URL
     public let sourceBytes: Int?
     public let outputBytes: Int?
@@ -35,6 +40,7 @@ public struct ImageComparisonResult: Sendable {
 
 public struct ImageMetadataResult: Sendable {
     public let filename: String
+    package let inputLabel: String
     public let removal: ImageMetadataRemoval
 }
 
@@ -54,6 +60,12 @@ public struct VideoSample: Sendable {
 }
 
 public enum ToolRunner {
+    package static func inputLabels(_ inputs: [URL]) -> [String] {
+        let names = inputs.map(\.lastPathComponent)
+        guard Set(names).count < names.count else { return names }
+        return names.enumerated().map { index, name in "\(index + 1) - \(name)" }
+    }
+
     public static func run(
         _ tool: Tool, inputs: [URL], destination: URL, imageSize: Int, options: ToolOptions = ToolOptions(),
         progress: @escaping @Sendable (Double) async -> Void
@@ -73,7 +85,8 @@ public enum ToolRunner {
         let id = UUID().uuidString
         let staging = destination.appendingPathComponent(".MacUtilityKit-" + id, isDirectory: true)
         let result = destination.appendingPathComponent(tool.title + " - " + id, isDirectory: true)
-        try manager.createDirectory(at: staging, withIntermediateDirectories: false)
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false,
+                                    attributes: [.posixPermissions: 0o700])
         defer { try? manager.removeItem(at: staging) }
         var outputs: [URL] = []
         var failures: [String] = []
@@ -83,6 +96,7 @@ public enum ToolRunner {
         var comparisons: [ImageComparisonResult] = []
         var metadataResults: [ImageMetadataResult] = []
         var videoReviews: [VideoCompressionReview] = []
+        var convertedDocumentNames: Set<String> = []
 
         if tool == .mergePDFs {
             let filename = try PDFMergePlan.outputFilename(options.pdfOutputName)
@@ -110,7 +124,13 @@ public enum ToolRunner {
         } else if tool == .pdfToImages {
             outputs = try await PDFToImages.export(inputs[0], into: staging, options: options.pdfToImages, progress: progress)
         } else {
+            let soundtrack = tool == .replaceAudio
+                ? Result { try ReplaceAudio.Soundtrack(options.replaceAudio) }
+                : nil
+            let artwork = tool == .watermark ? Result { try WatermarkArtwork(options: options.watermark) } : nil
+            let labels = inputLabels(inputs)
             for (index, input) in inputs.enumerated() {
+                let label = labels[index]
                 try Task.checkCancellation()
                 var stagedOutput: URL?
                 do {
@@ -124,7 +144,7 @@ public enum ToolRunner {
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         outputs.append(contentsOf: frames.outputs)
-                        failures.append(contentsOf: frames.failures.map { "\(input.lastPathComponent) — \($0)" })
+                        failures.append(contentsOf: frames.failures.map { "\(label) — \($0)" })
                         if frames.outputs.isEmpty { try manager.removeItem(at: folder) }
                         await progress(Double(index + 1) / Double(inputs.count))
                         continue
@@ -169,17 +189,28 @@ public enum ToolRunner {
                         filename = OutputFilename.numberedSource(input, position: index + 1, suffix: ".\(ext)")
                     }
                     let output = staging.appendingPathComponent(filename)
-                    guard !manager.fileExists(atPath: output.path) else {
+                    let documentNameKey = tool == .convertDocuments ? DocumentConvert.outputFilenameKey(filename) : nil
+                    guard documentNameKey.map({ !convertedDocumentNames.contains($0) }) ?? true,
+                          !manager.fileExists(atPath: output.path) else {
                         throw ToolError.invalid("The output name is already in use. Add {index} to the filename template to give each file a unique name.")
                     }
                     stagedOutput = output
                     switch tool {
-                    case .resizeImages: try await ImageResizing.resize(input, output: output, imageSize: imageSize, options: options)
+                    case .resizeImages:
+                        let version = try LocalInputFile.Version.read(input)
+                        try await ImageResizing.resize(version.resolved, output: output, imageSize: imageSize, options: options)
+                        guard (try? LocalInputFile.Version.read(input)) == version else {
+                            throw ToolError.invalid("The source image changed during resizing. Try again.")
+                        }
                     case .compressVideo:
-                        try await VideoOperations.compress(input, output: output, options: options) { fraction in
+                        let version = try LocalInputFile.Version.read(input)
+                        try await VideoOperations.compress(version.resolved, output: output, options: options) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
-                        let sizes = try VideoCompressionSizes(input: input, output: output)
+                        guard (try? LocalInputFile.Version.read(input)) == version else {
+                            throw ToolError.invalid("The source video changed during compression. Try again.")
+                        }
+                        let sizes = try VideoCompressionSizes(inputLabel: label, sourceBytes: version.stamp.bytes, output: output)
                         if sizes.needsReview, !options.keepLargerVideos {
                             guard options.reviewLargerVideos else {
                                 throw ToolError.invalid("The export is not smaller. Enable keeping larger exports to retain it.")
@@ -209,7 +240,12 @@ public enum ToolRunner {
                         }
                         summaries.append(summary)
                     case .trimVideo:
-                        let summary = try await TrimVideo.export(input, to: output, options: options.trim) { fraction in
+                        let reviewedSource = options.trimSourceVersions?[index]
+                        if options.trimSourceVersions != nil, reviewedSource == nil {
+                            throw ToolError.invalid("The video was not available for review. Remove it and add it again.")
+                        }
+                        let summary = try await TrimVideo.export(input, to: output, options: options.trim,
+                                                                 reviewedSource: reviewedSource) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
@@ -234,7 +270,9 @@ public enum ToolRunner {
                         }
                         summaries.append(summary)
                     case .replaceAudio:
-                        let summary = try await ReplaceAudio.export(input, to: output, options: options.replaceAudio) { fraction in
+                        guard let soundtrack else { throw ToolError.invalid("Choose an audio file.") }
+                        let summary = try await ReplaceAudio.export(input, to: output, options: options.replaceAudio,
+                                                                    soundtrack: try soundtrack.get()) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
@@ -246,8 +284,8 @@ public enum ToolRunner {
                     case .mediaInfo:
                         let report = try await MediaInspection.inspect(input, options: options.inspection)
                         try report.json.write(to: output)
-                        summaries.append("\(input.lastPathComponent)\n\n\(report.summary)")
-                        inspections.append(MediaInspectionResult(filename: input.lastPathComponent, report: report))
+                        summaries.append("\(label)\n\n\(report.summary)")
+                        inspections.append(MediaInspectionResult(filename: input.lastPathComponent, inputLabel: label, report: report))
                     case .extractAudio:
                         let summary = try await AudioExtraction.extract(input, to: output, options: options.extraction) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
@@ -282,22 +320,30 @@ public enum ToolRunner {
                     case .removeBackground:
                         summaries.append(try await RemoveBackground.export(input, to: output, options: options.removeBackground))
                     case .watermark:
-                        let summary = try await Watermark.export(input, to: output, options: options.watermark) { fraction in
+                        guard let artwork else { throw ToolError.invalid("Choose a watermark.") }
+                        let summary = try await Watermark.export(input, to: output, mark: try artwork.get(),
+                                                                 options: options.watermark) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
                         summaries.append(summary)
                     case .convertImages:
                         summaries.append(try await ImageConversion.convert(input, to: output, options: options.imageConversion))
                     case .compressImages:
-                        summaries.append(try await ImageCompression.compress(input, to: output, options: options.imageCompression))
+                        let version = try LocalInputFile.Version.read(input)
+                        let summary = try await ImageCompression.compress(input, to: output, options: options.imageCompression)
+                        guard (try? LocalInputFile.Version.read(input)) == version else {
+                            throw ToolError.invalid("The source image changed during compression. Try again.")
+                        }
+                        summaries.append(summary)
                         comparisons.append(ImageComparisonResult(
-                            source: input, output: result.appendingPathComponent(output.lastPathComponent),
-                            sourceBytes: try? input.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+                            source: input, sourceVersion: version, inputLabel: label,
+                            output: result.appendingPathComponent(output.lastPathComponent),
+                            sourceBytes: Int(exactly: version.stamp.bytes),
                             outputBytes: try? output.resourceValues(forKeys: [.fileSizeKey]).fileSize
                         ))
                     case .removeMetadata:
                         let removal = try await ImageMetadata.remove(input, to: output, options: options.imageMetadata)
-                        metadataResults.append(ImageMetadataResult(filename: input.lastPathComponent, removal: removal))
+                        metadataResults.append(ImageMetadataResult(filename: input.lastPathComponent, inputLabel: label, removal: removal))
                     case .organizePDF:
                         try await PDFPageEditing.organize(input, to: output, options: options.pdfOrganize, progress: progress)
                     case .deletePDFPages:
@@ -336,8 +382,8 @@ public enum ToolRunner {
                         let report = try await SearchablePDF.export(input, to: output, options: options.searchablePDF) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
                         }
-                        summaries.append("\(input.lastPathComponent) · \(report.summary)")
-                        failures.append(contentsOf: report.warnings.map { "\(input.lastPathComponent) — \($0)" })
+                        summaries.append("\(label) · \(report.summary)")
+                        failures.append(contentsOf: report.warnings.map { "\(label) — \($0)" })
                     case .extractText:
                         let extracted = try await TextExtraction.extract(input, options: options.textExtraction) { fraction in
                             await progress((Double(index) + fraction) / Double(inputs.count))
@@ -351,33 +397,56 @@ public enum ToolRunner {
                             throw ToolError.invalid(pageFailures.joined(separator: " · "))
                         }
                         try Data(extracted.text.utf8).write(to: output)
-                        textExtractions.append(ExtractedTextFile(source: input, result: extracted))
-                        failures.append(contentsOf: pageFailures.map { "\(input.lastPathComponent) — \($0)" })
+                        textExtractions.append(ExtractedTextFile(source: input, result: extracted, inputLabel: label))
+                        failures.append(contentsOf: pageFailures.map { "\(label) — \($0)" })
                     case .mergePDFs, .splitPDF, .imagesToPDF, .pdfToImages, .extractFrames, .mergeVideos, .mergeAudio,
                          .batchFindReplace, .extractSubtitles, .wordCounter, .qrCode, .batchRename, .keepAwake, .jsonFormatter, .base64, .hashGenerator, .uuidGenerator, .cleanLinks, .timestampConverter, .loremIpsum, .unicodeInspector, .diffChecker, .regexTester, .csvJSON, .coordinatePicker, .jwtDecoder, .passwordGenerator, .batteryHealth, .diskSpeedTest, .deadPixelTest, .ejectAllDisks, .presentationMode, .networkSpeedTest, .storageExplorer, .clipboardHistory, .resetPermissions, .appDamageDiagnosis, .loginBackgroundItems, .hiddenSettings, .cleanKeyboard, .wifiPasswordQR, .uninstallApp, .displayControl, .mouseFixes, .organizeDownloads, .fillFlattenForms, .scanDocument, .findDuplicates, .zipUnzip, .summarize, .caseConverter, .translate, .askDocument, .transcribe, .captureText, .textToSpeech, .recordAudio, .screenshot, .annotateScreenshot, .recordScreen, .downloadVideo, .colorPicker, .markdownToPDF, .webPageToPDF, .addPassword, .removePassword, .redactPDF:
                         break
                     }
                     outputs.append(output)
+                    if let documentNameKey { convertedDocumentNames.insert(documentNameKey) }
                 } catch {
                     try Task.checkCancellation()
                     if let stagedOutput { try? manager.removeItem(at: stagedOutput) }
-                    failures.append("\(input.lastPathComponent) — \(error.localizedDescription)")
+                    failures.append("\(label) — \(error.localizedDescription)")
                 }
                 await progress(Double(index + 1) / Double(inputs.count))
             }
         }
 
-        try Task.checkCancellation()
-        if !outputs.isEmpty { try manager.moveItem(at: staging, to: result) }
         return JobReport(
-            outputs: outputs.map {
-                $0.pathComponents.dropFirst(staging.pathComponents.count).reduce(result) { directory, component in
-                    directory.appendingPathComponent(component)
-                }
-            },
+            outputs: try publish(outputs, from: staging, to: result),
             failures: failures, summaries: summaries, textExtractions: textExtractions, inspections: inspections,
             imageComparisons: comparisons, metadataResults: metadataResults, videoReviews: videoReviews
         )
+    }
+
+    private static func publish(_ outputs: [URL], from staging: URL, to destination: URL) throws -> [URL] {
+        try Task.checkCancellation()
+        guard !outputs.isEmpty else { return [] }
+        let manager = FileManager.default
+        let publication = staging.appending(path: UUID().uuidString, directoryHint: .isDirectory)
+        try manager.createDirectory(at: publication, withIntermediateDirectories: false)
+
+        var published: [URL] = []
+        for output in outputs {
+            try Task.checkCancellation()
+            let components = output.pathComponents
+            let relative = components.dropFirst(staging.pathComponents.count)
+            guard components.starts(with: staging.pathComponents), !relative.isEmpty,
+                  !relative.contains(".."),
+                  try output.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+                throw ToolError.invalid("Could not publish the expected output file.")
+            }
+            let path = relative.joined(separator: "/")
+            let target = publication.appending(path: path, directoryHint: .notDirectory)
+            try manager.createDirectory(at: target.deletingLastPathComponent(), withIntermediateDirectories: true)
+            try manager.moveItem(at: output, to: target)
+            published.append(destination.appending(path: path, directoryHint: .notDirectory))
+        }
+        try Task.checkCancellation()
+        try manager.moveItem(at: publication, to: destination)
+        return published
     }
 
     package static func imageResizeEngineIssue(_ options: ToolOptions) -> String? {

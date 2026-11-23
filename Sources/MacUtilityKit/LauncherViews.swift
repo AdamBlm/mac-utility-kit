@@ -89,15 +89,7 @@ struct ToolLauncherView: View {
     @State private var query = ""
     @State private var selection: Tool?
 
-    private var results: [Tool] {
-        let search = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        let titles = Tool.allCases.filter { search.isEmpty || $0.title.localizedStandardContains(search) }
-        guard !search.isEmpty else { return titles }
-        return titles + Tool.allCases.filter {
-            !$0.title.localizedStandardContains(search)
-                && ($0.category.localizedStandardContains(search) || $0.matchesCapability(search))
-        }
-    }
+    private var results: [Tool] { Tool.workspaceSearchResults(query) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {

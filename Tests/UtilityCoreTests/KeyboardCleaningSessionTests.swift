@@ -10,16 +10,20 @@ struct KeyboardCleaningSessionTests {
         var installing = 0
         var removing = 0
         var interrupted: (@MainActor () -> Void)?
+        var deadline: ContinuousClock.Instant?
+        var onRemove: (() -> Void)?
 
         func install(until deadline: ContinuousClock.Instant, interrupted: @escaping @MainActor () -> Void) throws {
             if denied { throw ToolError.invalid("Denied") }
             installing += 1
+            self.deadline = deadline
             self.interrupted = interrupted
         }
 
         func remove() {
             removing += 1
             interrupted = nil
+            onRemove?()
         }
     }
 
@@ -84,15 +88,20 @@ struct KeyboardCleaningSessionTests {
         #expect(input.interrupted == nil)
     }
 
-    @Test func countdownRestoresInputAutomatically() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func countdownRestoresInputAutomatically() async throws {
         let input = Input()
+        let (removals, continuation) = AsyncStream<ContinuousClock.Instant>.makeStream()
+        defer { continuation.finish() }
+        input.onRemove = { continuation.yield(ContinuousClock.now) }
+
         let session = KeyboardCleaningSession(input: input)
         session.start(seconds: 1)
         #expect(session.active)
-        let waitUntil = ContinuousClock.now + .seconds(2)
-        while session.active && ContinuousClock.now < waitUntil {
-            try await Task.sleep(for: .milliseconds(20))
-        }
+        let deadline = try #require(input.deadline)
+        var events = removals.makeAsyncIterator()
+        let removedAt = try #require(await events.next())
+        #expect(removedAt >= deadline)
         #expect(!session.active)
         #expect(input.removing == 1)
     }

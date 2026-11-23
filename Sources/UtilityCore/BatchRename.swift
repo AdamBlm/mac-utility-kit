@@ -83,6 +83,7 @@ public enum BatchRenameError: LocalizedError {
     case missingCaptureOffset(String)
     case invalidCounter
     case missingFile(String)
+    case duplicateSource(String)
     case changedFile(String)
     case changedCaptureSource(String)
     case changedFileDate(String)
@@ -97,6 +98,7 @@ public enum BatchRenameError: LocalizedError {
         case .missingCaptureOffset(let name): "“\(name)” has no original EXIF time-zone offset. Remove the time-zone field from the date format."
         case .invalidCounter: "The numbering range is too large."
         case .missingFile(let name): "“\(name)” is missing or is a folder."
+        case .duplicateSource(let name): "“\(name)” refers to a file already in this batch."
         case .changedFile(let name): "“\(name)” was replaced after the rename was planned."
         case .changedCaptureSource(let name): "“\(name)” changed after its capture date was read. Review a new rename preview."
         case .changedFileDate(let name): "The selected file date for “\(name)” changed. Review a new rename preview."
@@ -243,6 +245,18 @@ public enum BatchRename {
                 moves.append(Move(source: source, destination: destination, identity: identity))
             }
         }
+        let sourcesByParent = Dictionary(grouping: changes.map(\.source)) { $0.deletingLastPathComponent() }
+        for (parent, sources) in sourcesByParent {
+            let caseSensitive = try parent.resourceValues(forKeys: [.volumeSupportsCaseSensitiveNamesKey])
+                .volumeSupportsCaseSensitiveNames == true
+            var names = Set<String>()
+            for source in sources {
+                let name = source.lastPathComponent
+                guard names.insert(DirectoryNames.key(name, caseSensitive: caseSensitive)).inserted else {
+                    throw BatchRenameError.duplicateSource(name)
+                }
+            }
+        }
         try validate(moves)
         return BatchRenamePlan(changes: changes, moves: moves, captureSources: captureSources, fileDates: fileDates)
     }
@@ -311,7 +325,7 @@ public enum BatchRename {
             Self.key(url.lastPathComponent, caseSensitive: caseSensitive)
         }
 
-        private static func key(_ name: String, caseSensitive: Bool) -> String {
+        static func key(_ name: String, caseSensitive: Bool) -> String {
             if caseSensitive { return name }
             return name.folding(options: .caseInsensitive, locale: Locale(identifier: "en_US_POSIX"))
         }

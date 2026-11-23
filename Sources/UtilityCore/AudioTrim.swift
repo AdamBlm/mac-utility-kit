@@ -44,7 +44,8 @@ public enum AudioTrim {
               !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local output file.")
         }
-        let read = try open(input)
+        let version = try LocalInputFile.Version.read(input)
+        let read = try open(version.resolved)
         let info = try describe(read, input: input)
         let selection = try AudioTrimSelection.plan(info, options: options)
         try Task.checkCancellation()
@@ -61,7 +62,7 @@ public enum AudioTrim {
             } else {
                 common = .pcmFormatInt32
             }
-            let exact = try open(input, commonFormat: common)
+            let exact = try open(version.resolved, commonFormat: common)
             try await write(exact, to: candidate, settings: pcm.settings, selection: selection,
                             usesFades: false, progress: progress)
             let outputFormat = try open(candidate).fileFormat
@@ -83,6 +84,9 @@ public enum AudioTrim {
             throw ToolError.invalid("The output audio did not match the expected duration or sample format.")
         }
         try Task.checkCancellation()
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The audio source changed during trimming. Try again.")
+        }
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let duration = (Double(selection.frameCount) / info.sampleRate).formatted(.number.precision(.fractionLength(0...3)))
@@ -90,10 +94,10 @@ public enum AudioTrim {
     }
 
     private static func open(_ url: URL, commonFormat: AVAudioCommonFormat = .pcmFormatFloat32) throws -> AVAudioFile {
-        guard url.isFileURL, try url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        guard let resolved = LocalInputFile.regularFile(url) else {
             throw ToolError.invalid("Choose a readable local audio file.")
         }
-        return try AVAudioFile(forReading: url, commonFormat: commonFormat, interleaved: false)
+        return try AVAudioFile(forReading: resolved, commonFormat: commonFormat, interleaved: false)
     }
 
     private static func describe(_ file: AVAudioFile, input: URL) throws -> AudioTrimSource {
@@ -105,7 +109,7 @@ public enum AudioTrim {
         let fileFormat = file.fileFormat
         let format = withExtendedLifetime(fileFormat) { fileFormat.streamDescription.pointee }
         let lossless = format.mFormatID == kAudioFormatLinearPCM && format.mBitsPerChannel <= 64
-            ? AudioTrimFormat.pcmContainer(for: input) : nil
+            ? AudioTrimFormat.pcmContainer(for: input.resolvingSymlinksInPath()) : nil
         return AudioTrimSource(sampleRate: rate, frameCount: frames, losslessFormat: lossless)
     }
 

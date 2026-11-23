@@ -88,12 +88,19 @@ public enum Watermark {
         _ input: URL, to output: URL, options: WatermarkOptions,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
+        try await export(input, to: output, mark: WatermarkArtwork(options: options),
+                         options: options, progress: progress)
+    }
+
+    static func export(
+        _ input: URL, to output: URL, mark: WatermarkArtwork, options: WatermarkOptions,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> String {
         guard input.isFileURL, output.isFileURL, input.standardizedFileURL != output.standardizedFileURL,
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new output file.")
         }
         try Task.checkCancellation()
-        let mark = try WatermarkArtwork(options: options)
         switch try inputKind(input) {
         case .image:
             let source = try ImageRedaction.load(input)

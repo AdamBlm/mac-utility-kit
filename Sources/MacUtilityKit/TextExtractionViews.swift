@@ -176,7 +176,7 @@ struct TextExtractionResultView: View {
             }
         } label: {
             HStack {
-                Text(file.source.lastPathComponent).lineLimit(1)
+                Text(file.inputLabel).lineLimit(1)
                 Spacer(minLength: 8)
                 Button("Copy text", systemImage: "doc.on.doc") {
                     NSPasteboard.general.clearContents()
@@ -357,5 +357,5 @@ private func isPDF(_ url: URL) -> Bool {
 }
 
 private func isContentType(_ url: URL, _ type: UTType) -> Bool {
-    (try? url.resourceValues(forKeys: [.contentTypeKey]).contentType?.conforms(to: type)) == true
+    LocalInputFile.matches(url, allowedTypes: [type])
 }

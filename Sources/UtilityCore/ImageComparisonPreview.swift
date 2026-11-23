@@ -7,8 +7,10 @@ package struct ImageComparisonPreview: Sendable {
     package let isFullResolution: Bool
     package let pixelsPerSample: CGFloat
 
-    package static func load(_ url: URL, detail: Bool) -> Self? {
-        guard let source = CGImageSourceCreateWithURL(url as CFURL, nil) else { return nil }
+    package static func load(_ url: URL, detail: Bool, expected: LocalInputFile.Version? = nil) -> Self? {
+        if let expected, (try? LocalInputFile.Version.read(url)) != expected { return nil }
+        let file = expected?.resolved ?? url
+        guard let source = CGImageSourceCreateWithURL(file as CFURL, nil) else { return nil }
         let index = CGImageSourceGetPrimaryImageIndex(source)
         let properties = CGImageSourceCopyPropertiesAtIndex(source, index, nil) as? [CFString: Any]
         let width = properties?[kCGImagePropertyPixelWidth] as? Int ?? 0
@@ -20,6 +22,7 @@ package struct ImageComparisonPreview: Sendable {
             kCGImageSourceShouldCacheImmediately: true,
             kCGImageSourceThumbnailMaxPixelSize: full ? max(width, height) : 2_400
         ] as CFDictionary) else { return nil }
+        if let expected, (try? LocalInputFile.Version.read(url)) != expected { return nil }
         let originalEdge = max(width, height)
         let sampleEdge = max(image.width, image.height)
         return Self(image: image, isFullResolution: full && sampleEdge == originalEdge &&

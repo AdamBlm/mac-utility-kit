@@ -28,6 +28,24 @@ import UtilityCore
     #expect(sanitizedPixels.dataProvider?.data as Data? == originalPixels.dataProvider?.data as Data?)
 }
 
+@Test func metadataBatchLabelsSameNamedResultsByInputPosition() async throws {
+    let folder = try metadataFixtureFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = try metadataFixture(in: folder)
+    let other = folder.appending(path: "Other", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
+    let second = other.appending(path: first.lastPathComponent)
+    try FileManager.default.copyItem(at: first, to: second)
+    let name = first.lastPathComponent
+    let report = try await ToolRunner.run(.removeMetadata, inputs: [first, second], destination: folder,
+                                          imageSize: 0) { _ in }
+    #expect(report.failures.isEmpty)
+    #expect(report.outputs.count == 2)
+    #expect(report.metadataResults.map(\.filename) == [name, name])
+    #expect(report.metadataResults.map(\.inputLabel) == ["1 - " + name, "2 - " + name])
+    #expect(report.metadataResults.allSatisfy { $0.removal.after.groups[.location]?.isEmpty ?? true })
+}
+
 @Test func metadataUnsupportedScopeAndExistingDestinationLeaveNoChanges() async throws {
     let folder = try metadataFixtureFolder()
     defer { try? FileManager.default.removeItem(at: folder) }

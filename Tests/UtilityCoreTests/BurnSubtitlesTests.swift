@@ -2,7 +2,7 @@ import AVFoundation
 import CoreGraphics
 import Foundation
 import Testing
-import UtilityCore
+@testable import UtilityCore
 
 @Suite struct BurnSubtitlesTests {
     @Test func importsUnicodeAndLegacySubRipWithoutChangingCueText() throws {
@@ -119,6 +119,56 @@ import UtilityCore
         #expect(try redPixels(in: after) == 0)
         let asset = AVURLAsset(url: result)
         #expect(try await asset.loadTracks(withMediaType: .audio).count == 1)
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil), arguments: [false, true])
+    func batchBurnClipsCuesAndKeepsOtherOutputs(replaceFirst: Bool) async throws {
+        let ffmpeg = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let manager = FileManager.default
+        let folder = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        try manager.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: folder) }
+
+        var inputs: [URL] = []
+        for (label, duration) in [("Long", "2"), ("Brief", "0.25"), ("Short", "1")] {
+            let sourceFolder = folder.appending(path: label, directoryHint: .isDirectory)
+            try manager.createDirectory(at: sourceFolder, withIntermediateDirectories: false)
+            let source = sourceFolder.appending(path: "Clip.mp4")
+            try await ExternalTool.run(ffmpeg, name: "FFmpeg", arguments: [
+                "-v", "error", "-f", "lavfi", "-i", "color=c=black:size=320x180:rate=24:duration=" + duration,
+                "-c:v", "libx264", "-pix_fmt", "yuv420p", source.path
+            ], directory: folder)
+            inputs.append(source)
+        }
+        let originals = try inputs.map { try Data(contentsOf: $0) }
+        var options = ToolOptions()
+        options.burnSubtitles.ffmpegExecutable = ffmpeg
+        options.burnSubtitles.textRGB = 0xFF2020
+        options.burnSubtitles.fontSize = 36
+        options.burnSubtitles.srt = "1\n00:00:00,500 --> 00:00:01,500\nVisible cue"
+        let firstSource = try #require(inputs.first)
+        let originalFirst = try #require(originals.first)
+        let report = try await ToolRunner.run(.burnSubtitles, inputs: inputs, destination: folder,
+                                              imageSize: 0, options: options) { fraction in
+            if replaceFirst, fraction == 0.9 / 3 {
+                do { try originalFirst.write(to: firstSource, options: .atomic) }
+                catch { Issue.record("Could not replace the video fixture: \(error)") }
+            }
+        }
+
+        #expect(report.failures.count == (replaceFirst ? 2 : 1))
+        #expect(report.failures.last?.contains("No subtitle cues") == true)
+        if replaceFirst {
+            #expect(report.failures.first?.contains("1 - Clip.mp4 — The video changed") == true)
+        }
+        let expected = replaceFirst ? [("3 - Clip.mp4", 1.0)] : [("1 - Clip.mp4", 2.0), ("3 - Clip.mp4", 1.0)]
+        #expect(report.outputs.map(\.lastPathComponent) == expected.map { $0.0 })
+        for (output, (_, duration)) in zip(report.outputs, expected) {
+            #expect(abs(try await TrimVideo.duration(of: output) - duration) < 0.05)
+            let active = try await FrameExtraction.preview(output, at: 0.75)
+            #expect(try redPixels(in: active) > 30)
+        }
+        #expect(try inputs.map { try Data(contentsOf: $0) } == originals)
     }
 
     private func redPixels(in image: CGImage) throws -> Int {

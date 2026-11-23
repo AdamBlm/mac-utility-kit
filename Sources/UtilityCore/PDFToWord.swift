@@ -243,7 +243,7 @@ public enum PDFToWord {
             var failure: String?
             if recognizesScans {
                 do {
-                    ocr = try SearchablePDF.recognitionResult(for: page, index: index, options: recognition)
+                    ocr = try await SearchablePDF.recognitionResult(for: page, index: index, options: recognition)
                 } catch {
                     try Task.checkCancellation()
                     failure = error.localizedDescription

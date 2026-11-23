@@ -7,6 +7,22 @@ struct DocumentScannerDraft {
     var pages: [ScannedPage] = []
     var selection: UUID?
     var paper = PDFImagePaper.a4
+
+    mutating func insert(_ pages: [ScannedPage], replacing id: UUID?) throws {
+        if let id {
+            guard pages.count == 1, let index = self.pages.firstIndex(where: { $0.id == id }), let first = pages.first else {
+                throw ToolError.invalid("Choose exactly one replacement page.")
+            }
+            self.pages[index] = first
+            selection = first.id
+            return
+        }
+        guard self.pages.count + pages.count <= DocumentScanner.pageLimit else {
+            throw ToolError.invalid("A scan can contain up to \(DocumentScanner.pageLimit) pages.")
+        }
+        self.pages.append(contentsOf: pages)
+        if selection == nil { selection = pages.first?.id }
+    }
 }
 
 struct DocumentScannerView: View {
@@ -22,6 +38,7 @@ struct DocumentScannerView: View {
     @State private var pendingRetake: (target: UUID, page: ScannedPage)?
     @State private var cameraImport: Task<Void, Never>?
     @State private var cameraRequest: UUID?
+    @State private var pastedImages: [CaptureTextAttachment] = []
 
     private struct PreviewKey: Equatable {
         let id: UUID
@@ -38,15 +55,20 @@ struct DocumentScannerView: View {
                 HStack {
                     Button("Import Photos or Scans…", systemImage: "photo.on.rectangle", action: { chooseImages() })
                         .disabled(importing || exporting || pendingRetake != nil)
-                    ClipboardFileButton(allowedTypes: [.image, .pdf], onPasteImage: { image in
-                        let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Scan.png")
-                        importFiles([attachment.url], attachment: attachment)
-                    }, onPastePDF: { data in
+                    ClipboardFileButton(allowedTypes: [.image, .pdf], stagePDF: { data in
                         guard data.count <= DocumentScanner.inputLimit else {
                             throw ToolError.invalid("The copied PDF exceeds 48 MB.")
                         }
-                        importFiles([try stageClipboardPDF(data)])
-                    }) { files in importFiles(files) }
+                        return try stageClipboardPDF(data)
+                    }, stageImage: { image in
+                        let attachment = try CaptureTextAttachment(image: image, filename: "Pasted Scan.png")
+                        pastedImages.append(attachment)
+                        return attachment.url
+                    }) { files in
+                        let attachments = pastedImages
+                        pastedImages.removeAll()
+                        importFiles(files, attachments: attachments)
+                    }
                         .disabled(importing || exporting || pendingRetake != nil)
                     if importing { ProgressView().controlSize(.small) }
                     if cameraRequest != nil {
@@ -201,25 +223,25 @@ struct DocumentScannerView: View {
         importFiles(panel.urls, replacing: pageID)
     }
 
-    private func importFiles(_ urls: [URL], replacing pageID: UUID? = nil, attachment: CaptureTextAttachment? = nil) {
+    private func importFiles(_ urls: [URL], replacing pageID: UUID? = nil, attachments: [CaptureTextAttachment] = []) {
         retakePage = nil
         pendingRetake = nil
         importing = true
         issue = nil
         Task {
-            defer { importing = false; withExtendedLifetime(attachment) {} }
+            defer { importing = false; withExtendedLifetime(attachments) {} }
+            var failures: [String] = []
             for url in urls {
                 do {
                     let pages = try await Task.detached(priority: .userInitiated) {
-                        let bytes = try url.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0
-                        guard bytes <= DocumentScanner.inputLimit else { throw ToolError.invalid("The file exceeds 48 MB.") }
-                        return try DocumentScanner.load(Data(contentsOf: url), name: url.lastPathComponent)
+                        try DocumentScanner.load(url)
                     }.value
-                    try insert(pages, replacing: pageID)
+                    try draft.insert(pages, replacing: pageID)
                 } catch {
-                    issue = "\(url.lastPathComponent) · \(error.localizedDescription)"
+                    failures.append("\(url.lastPathComponent) · \(error.localizedDescription)")
                 }
             }
+            if !failures.isEmpty { issue = failures.joined(separator: "\n") }
         }
     }
 
@@ -255,7 +277,7 @@ struct DocumentScannerView: View {
                     }
                     pendingRetake = (pageID, page)
                 } else {
-                    try insert(pages, replacing: nil)
+                    try draft.insert(pages, replacing: nil)
                 }
             } catch {
                 guard !Task.isCancelled, cameraRequest == request else { return }
@@ -274,24 +296,8 @@ struct DocumentScannerView: View {
 
     private func confirmRetake(_ pending: (target: UUID, page: ScannedPage)) {
         pendingRetake = nil
-        do { try insert([pending.page], replacing: pending.target) }
+        do { try draft.insert([pending.page], replacing: pending.target) }
         catch { issue = error.localizedDescription }
-    }
-
-    private func insert(_ pages: [ScannedPage], replacing id: UUID?) throws {
-        if let id {
-            guard pages.count == 1, let index = draft.pages.firstIndex(where: { $0.id == id }), let first = pages.first else {
-                throw ToolError.invalid("Choose exactly one replacement page.")
-            }
-            draft.pages[index] = first
-            draft.selection = first.id
-            return
-        }
-        guard draft.pages.count + pages.count <= DocumentScanner.pageLimit else {
-            throw ToolError.invalid("A scan can contain up to \(DocumentScanner.pageLimit) pages.")
-        }
-        draft.pages.append(contentsOf: pages)
-        if draft.selection == nil { draft.selection = pages.first?.id }
     }
 
     private func move(_ page: ScannedPage, by offset: Int) {

@@ -344,14 +344,20 @@ func conversionFixture(in folder: URL) async throws -> URL {
     }
     CVPixelBufferUnlockBaseAddress(frame, [])
     for index in 0..<12 {
-        for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        try #require(input.isReadyForMoreMediaData)
+        try await waitForFixtureVideoInput(input, writer: writer)
         try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 24)))
     }
     input.markAsFinished()
     await writer.finishMediaWriting()
     try #require(writer.status == .completed)
     return url
+}
+
+func waitForFixtureVideoInput(_ input: AVAssetWriterInput, writer: AVAssetWriter) async throws {
+    let deadline = ContinuousClock.now + .seconds(5)
+    while !input.isReadyForMoreMediaData, writer.status == .writing, ContinuousClock.now < deadline {
+        try await Task.sleep(for: .milliseconds(5))
+    }
+    if let error = writer.error { throw error }
+    try #require(input.isReadyForMoreMediaData, "The fixture video encoder did not accept data before the deadline.")
 }

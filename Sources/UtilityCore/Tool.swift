@@ -205,7 +205,8 @@ public enum Tool: String, CaseIterable, Identifiable, Sendable {
         case .keepAwake, .captureText, .recordAudio, .screenshot, .recordScreen, .downloadVideo, .colorPicker: []
         case .splitPDF, .organizePDF, .deletePDFPages, .extractPDFPages, .pdfToImages, .signPDF, .makePDFSearchable, .addPassword, .removePassword, .compressPDF, .cropPDF, .redactPDF: [.pdf]
         case .extractSubtitles, .compressVideo, .convertVideo, .extractAudio, .changeSpeed, .extractFrames, .trimVideo, .muteVideo, .resizeVideo, .videoToGIF, .cropRotateVideo, .mergeVideos, .replaceAudio, .burnSubtitles: [.movie]
-        case .mediaInfo, .transcribe, .cleanUpAudio: [.movie, .audio]
+        case .mediaInfo: [.movie, .audio] + ["mkv", "webm"].compactMap { UTType(filenameExtension: $0) }
+        case .transcribe, .cleanUpAudio: [.movie, .audio]
         case .mergeAudio, .trimAudio, .convertAudio: [.audio]
         }
     }

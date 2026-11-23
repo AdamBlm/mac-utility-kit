@@ -19,8 +19,17 @@ struct PDFMergePlanTests {
         #expect(try PDFOperations.open(b, password: "secret").requiredPassword)
         try image(png)
 
-        let inputs = [a, b, png]
+        let linkedPDF = stage.appending(path: "Linked document.png")
+        let linkedImage = stage.appending(path: "Linked image.pdf")
+        try FileManager.default.createSymbolicLink(at: linkedPDF, withDestinationURL: b)
+        try FileManager.default.createSymbolicLink(at: linkedImage, withDestinationURL: png)
+        #expect(try PDFOperations.open(linkedPDF, password: "secret").document.pageCount == 2)
+        #expect(try PDFOperations.open(linkedImage, password: "").document.pageCount == 1)
+        let inputs = [a, linkedPDF, linkedImage]
         var options = ToolOptions()
+        options.pdfMergeSourceStamps = try Dictionary(uniqueKeysWithValues: inputs.enumerated().map {
+            ($0.offset, try PDFMergeSourceStamp.read($0.element))
+        })
         options.pageRanges = ["1, 4–6", "2", ""]
         options.pdfPasswords = ["", "incorrect"]
         options.pdfOutputName = "Picked"
@@ -32,7 +41,7 @@ struct PDFMergePlanTests {
             _ = try await ToolRunner.run(.mergePDFs, inputs: inputs, destination: stage, imageSize: 0, options: options) { _ in }
         }
         #expect(options.pageRanges == originalSelection)
-        #expect(try FileManager.default.contentsOfDirectory(atPath: stage.path).sorted() == ["A.pdf", "B.pdf", "Image.png"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: stage.path).sorted() == ["A.pdf", "B.pdf", "Image.png", "Linked document.png", "Linked image.pdf"])
 
         options.pdfPasswords[1] = "secret"
         let result = try await ToolRunner.run(.mergePDFs, inputs: inputs, destination: stage, imageSize: 0, options: options) { _ in }
@@ -96,20 +105,25 @@ struct PDFMergePlanTests {
         #expect(PDFDocument(url: output)?.page(at: 0)?.bounds(for: .mediaBox).width == 210)
     }
 
-    @Test func replacingReviewedSourceDuringMergeDiscardsOutput() async throws {
+    @Test(arguments: [true, false], [0.125, 1.0])
+    func replacingSourceDuringMergeDiscardsOutput(reviewed: Bool, progressMarker: Double) async throws {
         let stage = try directory()
         defer { try? FileManager.default.removeItem(at: stage) }
         let source = stage.appending(path: "Source.pdf")
+        let first = stage.appending(path: "First.pdf")
+        try pdf([140], to: first)
         let replacement = stage.appending(path: "Replacement.pdf")
         try pdf([110], to: source)
         try pdf([210], to: replacement)
         var options = ToolOptions()
-        options.pdfMergeOrder = [page(0, 0)]
-        options.pdfMergeSourceStamps = try [0: PDFMergeSourceStamp.read(source)]
+        options.pdfMergeOrder = [page(0, 0), page(1, 0)]
+        if reviewed {
+            options.pdfMergeSourceStamps = try [0: PDFMergeSourceStamp.read(first), 1: PDFMergeSourceStamp.read(source)]
+        }
 
         do {
-            _ = try await ToolRunner.run(.mergePDFs, inputs: [source], destination: stage, imageSize: 0, options: options) {
-                if $0 == 0.25 {
+            _ = try await ToolRunner.run(.mergePDFs, inputs: [first, source], destination: stage, imageSize: 0, options: options) {
+                if $0 == progressMarker {
                     do {
                         _ = try FileManager.default.replaceItemAt(source, withItemAt: replacement)
                     } catch {
@@ -117,11 +131,11 @@ struct PDFMergePlanTests {
                     }
                 }
             }
-            Issue.record("Published a merge after its reviewed source was replaced.")
+            Issue.record("Published a merge after its source was replaced.")
         } catch {
-            #expect(error.localizedDescription.contains("changed after preview"))
+            #expect(error.localizedDescription.contains(reviewed ? "changed after preview" : "changed during merging"))
         }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: stage.path) == ["Source.pdf"])
+        #expect(try FileManager.default.contentsOfDirectory(atPath: stage.path).sorted() == ["First.pdf", "Source.pdf"])
         #expect(PDFDocument(url: source)?.page(at: 0)?.bounds(for: .mediaBox).width == 210)
     }
 

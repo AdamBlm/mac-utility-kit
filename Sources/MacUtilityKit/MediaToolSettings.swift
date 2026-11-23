@@ -117,7 +117,7 @@ extension ToolWorkspace {
 
     @ViewBuilder
     func inspectionControls() -> some View {
-        Text("Shows a summary and saves a JSON report for each source file.")
+        Text("Saves a JSON report for each file. Uses installed ffprobe if macOS cannot read the format.")
             .font(.callout).foregroundStyle(.secondary)
         DisclosureGroup("Advanced", isExpanded: $draft.showsAdvanced) {
             executablePicker("ffprobe", selection: $draft.options.inspection.ffprobeExecutable)

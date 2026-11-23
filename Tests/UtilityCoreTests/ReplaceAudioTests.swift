@@ -39,6 +39,34 @@ struct ReplaceAudioTests {
         #expect(mix.magnitude(at: 440) < 0.05 && mix.magnitude(at: 660) < 0.05)
     }
 
+    @Test func batchDoesNotUseAReplacementSoundtrackSwappedBetweenClips() async throws {
+        let directory = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = try await VideoResizeTests.makePortraitVideo(in: directory)
+        let second = directory.appending(path: "second.mov")
+        try FileManager.default.copyItem(at: first, to: second)
+        let soundtrack = try Self.writeTone("soundtrack.wav", in: directory, length: 1, frequency: 440)
+        let replacement = try Self.writeTone("replacement.wav", in: directory, length: 1, frequency: 770)
+        var options = ToolOptions()
+        options.replaceAudio.source = soundtrack
+
+        let report = try await ToolRunner.run(.replaceAudio, inputs: [first, second], destination: directory,
+                                              imageSize: 0, options: options) { fraction in
+            if fraction == 0.5, FileManager.default.fileExists(atPath: replacement.path) {
+                do { _ = try FileManager.default.replaceItemAt(soundtrack, withItemAt: replacement) }
+                catch { Issue.record("Could not replace the soundtrack fixture: \(error)") }
+            }
+        }
+        #expect(report.outputs.count == 1)
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.hasPrefix("second.mov — The replacement soundtrack changed") == true)
+        let output = try #require(report.outputs.first)
+        let audioOutput = directory.appending(path: "verified.m4a")
+        _ = try await AudioExtraction.extract(output, to: audioOutput, options: .init()) { _ in }
+        let samples = try Self.readSamples(audioOutput)
+        #expect(samples.magnitude(at: 440) > 0.2 && samples.magnitude(at: 770) < 0.05)
+    }
+
     @Test func preservesVideoDurationAndPlacesReplacementAtOffset() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

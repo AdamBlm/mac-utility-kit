@@ -1,8 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
+launch=true
+if [[ "${1:-}" == "--no-launch" ]]; then
+    launch=false
+    shift
+fi
 if [[ $# -ne 1 ]]; then
-    printf 'Pass the path to a Mac Utility Kit disk image.\n' >&2
+    printf 'Usage: %s [--no-launch] disk-image.dmg\n' "$0" >&2
     exit 2
 fi
 
@@ -18,7 +23,7 @@ cleanup() {
 }
 trap cleanup EXIT
 mkdir "$mountpoint" "$staging/Applications"
-hdiutil attach "$1" -quiet -readonly -nobrowse -mountpoint "$mountpoint"
+hdiutil attach "$1" -quiet -readonly -nobrowse -noautoopen -mountpoint "$mountpoint"
 attached=true
 
 test "$(readlink "$mountpoint/Applications")" = /Applications
@@ -45,8 +50,12 @@ for executable in MacUtilityKit muk; do
         exit 1
     fi
 done
-swift "$script_directory/check-app-launch.swift" "$mounted"
+if [[ "$launch" == true ]]; then
+    swift "$script_directory/check-app-launch.swift" "$mounted"
+fi
 hdiutil detach "$mountpoint" -quiet
 attached=false
 codesign --verify --deep --strict "$installed"
-swift "$script_directory/check-app-launch.swift" "$installed"
+if [[ "$launch" == true ]]; then
+    swift "$script_directory/check-app-launch.swift" "$installed"
+fi

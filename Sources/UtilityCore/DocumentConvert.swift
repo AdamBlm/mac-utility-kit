@@ -77,7 +77,7 @@ public enum DocumentConvert {
 
         init(_ url: URL) throws {
             guard url.isFileURL else { throw ToolError.invalid("Choose a local document.") }
-            switch url.pathExtension.lowercased() {
+            switch (LocalInputFile.regularFile(url) ?? url).pathExtension.lowercased() {
             case "doc": self = .legacyWord
             case "docx": self = .format(.docx)
             case "odt": self = .format(.odt)
@@ -189,7 +189,7 @@ public enum DocumentConvert {
         for (index, input) in inputs.enumerated() {
             guard let stem = try? outputStem(input, position: index + 1, options: options) else { continue }
             let filename = stem + "." + options.target.fileExtension
-            let key = filename.precomposedStringWithCanonicalMapping.lowercased()
+            let key = outputFilenameKey(filename)
             if let earlier = seen[key] {
                 if reported.insert(key).inserted { conflicts.append(earlier) }
             } else {
@@ -197,6 +197,10 @@ public enum DocumentConvert {
             }
         }
         return conflicts
+    }
+
+    static func outputFilenameKey(_ filename: String) -> String {
+        filename.precomposedStringWithCanonicalMapping.lowercased()
     }
 
     public static func export(
@@ -261,35 +265,35 @@ public enum DocumentConvert {
         _ input: URL, to output: URL, options: DocumentConvertOptions, in stage: URL,
         progress: @Sendable (Double) async -> Void
     ) async throws -> Engine {
-        let source = try Source(input)
-        try validateInputFile(input)
+        let sourceURL = try validateInputFile(input)
+        let source = try Source(sourceURL)
         if let issue = optionIssue(for: input, options: options) { throw ToolError.invalid(issue) }
         let engine = try engine(for: source, options: options)
         try Task.checkCancellation()
         await progress(0.15)
         switch engine {
         case .native:
-            let plain = try readText(input)
+            let plain = try readText(sourceURL)
             let value = options.target == .html ? html(wrapping: plain) : markdown(wrapping: plain)
             try Data(value.utf8).write(to: output)
         case .pandoc:
             guard let executable = options.pandocExecutable else { throw ToolError.invalid("Choose a Pandoc executable.") }
             if source == .format(.plain) {
                 let prepared = stage.appending(path: "Plain.html")
-                try Data(html(wrapping: readText(input)).utf8).write(to: prepared)
+                try Data(html(wrapping: readText(sourceURL)).utf8).write(to: prepared)
                 try await DocumentConversionEngines.pandoc(prepared, from: .format(.html), to: output,
                                                            target: options.target, executable: executable)
             } else {
-                try await DocumentConversionEngines.pandoc(input, from: source, to: output, target: options.target, executable: executable)
+                try await DocumentConversionEngines.pandoc(sourceURL, from: source, to: output, target: options.target, executable: executable)
             }
         case .libreOffice:
             guard let executable = options.libreOfficeExecutable else { throw ToolError.invalid("Choose LibreOffice.") }
             let prepared: URL
             if source == .format(.plain) {
                 prepared = stage.appending(path: "Plain.txt")
-                try Data(readText(input).utf8).write(to: prepared)
+                try Data(readText(sourceURL).utf8).write(to: prepared)
             } else {
-                prepared = input
+                prepared = sourceURL
             }
             try await DocumentConversionEngines.libreOffice(prepared, to: output, target: options.target, executable: executable, stage: stage)
         case .both:
@@ -297,7 +301,7 @@ public enum DocumentConvert {
                 throw ToolError.invalid("Choose LibreOffice and Pandoc.")
             }
             let intermediate = stage.appending(path: "Intermediate.docx")
-            try await DocumentConversionEngines.libreOffice(input, to: intermediate, target: .docx, executable: office, stage: stage)
+            try await DocumentConversionEngines.libreOffice(sourceURL, to: intermediate, target: .docx, executable: office, stage: stage)
             await progress(0.55)
             try await DocumentConversionEngines.pandoc(intermediate, from: .format(.docx), to: output,
                                                        target: options.target, executable: pandoc)
@@ -308,11 +312,14 @@ public enum DocumentConvert {
         return engine
     }
 
-    private static func validateInputFile(_ input: URL) throws {
-        guard input.isFileURL, let resources = try? input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-              resources.isRegularFile == true, let size = resources.fileSize, size <= 128 * 1024 * 1024 else {
+    @discardableResult
+    private static func validateInputFile(_ input: URL) throws -> URL {
+        guard let resolved = LocalInputFile.regularFile(input),
+              let size = try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              size <= 128 * 1024 * 1024 else {
             throw ToolError.invalid("Choose a local document up to 128 MB.")
         }
+        return resolved
     }
 
     private static func staging(in parent: URL) throws -> URL {

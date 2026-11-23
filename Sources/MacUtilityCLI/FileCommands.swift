@@ -100,8 +100,20 @@ struct MediaInfo: AsyncParsableCommand, FileJobCatalogCommand {
     static let configuration = CommandConfiguration(commandName: "media-info", abstract: "Write local media inspection reports.")
     static let catalogTool = Tool.mediaInfo
     @OptionGroup var job: FileJobArguments
+    @Option(help: "Path to ffprobe for detailed reports and additional formats such as WebM.")
+    var ffprobe: String?
 
     func run() async throws {
-        try await job.execute(Self.catalogTool)
+        var options = ToolOptions()
+        if let ffprobe {
+            let executable = URL(filePath: ffprobe).standardizedFileURL
+            let resolved = executable.resolvingSymlinksInPath()
+            guard (try? resolved.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
+                  FileManager.default.isExecutableFile(atPath: resolved.path) else {
+                throw ValidationError("Choose an executable ffprobe file.")
+            }
+            options.inspection.ffprobeExecutable = executable
+        }
+        try await job.execute(Self.catalogTool, options: options)
     }
 }

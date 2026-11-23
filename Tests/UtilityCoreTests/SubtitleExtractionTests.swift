@@ -56,6 +56,31 @@ struct SubtitleExtractionTests {
         #expect(text.contains("00:00.300 --> 00:01.200"))
         #expect(text.contains("Deuxième piste"))
 
+        let otherFolder = directory.appending(path: "Other", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: otherFolder, withIntermediateDirectories: false)
+        let otherVideo = otherFolder.appending(path: source.lastPathComponent)
+        try await ExternalTool.run(ffmpeg, name: "FFmpeg", arguments: [
+            "-nostdin", "-v", "error", "-i", source.path, "-map", "0:v", "-map", "0:s:0",
+            "-c", "copy", otherVideo.path
+        ], directory: directory)
+        let otherInventory = try await SubtitleExtraction.inspect(otherVideo, executable: ffprobe)
+        #expect(inventory.selection == source && otherInventory.selection == otherVideo)
+        let otherTrack = try #require(otherInventory.tracks.first)
+        let otherData = try await SubtitleExtraction.extract(otherTrack, from: otherInventory, as: .srt, executable: ffmpeg)
+        #expect(String(decoding: otherData, as: UTF8.self).contains("First track"))
+        await #expect(throws: ToolError.self) {
+            try await SubtitleExtraction.extract(track, from: otherInventory, as: .srt, executable: ffmpeg)
+        }
+
+        try FileManager.default.removeItem(at: otherVideo)
+        await #expect {
+            try await SubtitleExtraction.extract(otherTrack, from: otherInventory, as: .srt, executable: ffmpeg)
+        } throws: { error in
+            error.localizedDescription == "The video changed. Inspect its subtitle tracks again."
+        }
+        let unaffected = try await SubtitleExtraction.extract(track, from: inventory, as: .srt, executable: ffmpeg)
+        #expect(unaffected == data)
+
         let selection = directory.appendingPathComponent("picked-video.mkv")
         let manager = FileManager.default
         try manager.createSymbolicLink(at: selection, withDestinationURL: source)

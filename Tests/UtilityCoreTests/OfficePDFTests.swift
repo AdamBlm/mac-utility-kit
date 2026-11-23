@@ -44,9 +44,25 @@ struct OfficePDFTests {
         let paper = try OfficePDF.renderedPage(reflowed, page: 2).size
         #expect(abs(paper.width - 595.28) < 1 && abs(paper.height - 841.89) < 1)
 
-        let destination = folder.appending(path: "Selected.pdf")
-        _ = try await OfficePDF.export(docx, to: destination, kind: .word, options: options) { _ in }
-        let output = try #require(PDFDocument(url: destination))
+        let corrupt = folder.appending(path: "Corrupt.docx")
+        try Data("Not a Word package".utf8).write(to: corrupt)
+        let copyFolder = folder.appending(path: "Other", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: copyFolder, withIntermediateDirectories: false)
+        let copy = copyFolder.appending(path: docx.lastPathComponent)
+        try FileManager.default.copyItem(at: docx, to: copy)
+
+        var batchOptions = ToolOptions()
+        batchOptions.officePDF = options
+        let batch = try await ToolRunner.run(.wordToPDF, inputs: [docx, corrupt, copy],
+                                             destination: folder, imageSize: 0, options: batchOptions) { _ in }
+        #expect(batch.outputs.map(\.lastPathComponent) == ["1 - Source.pdf", "3 - Source.pdf"])
+        #expect(batch.failures.count == 1)
+        #expect(batch.failures.first?.hasPrefix("2 - Corrupt.docx — ") == true)
+        #expect(try Data(contentsOf: copy) == original)
+        let lastOutput = try #require(batch.outputs.last)
+        #expect(PDFDocument(url: lastOutput)?.pageCount == 1)
+        let firstOutput = try #require(batch.outputs.first)
+        let output = try #require(PDFDocument(url: firstOutput))
         #expect(output.pageCount == 1)
         let page = try #require(output.page(at: 0))
         #expect(page.bounds(for: .cropBox).size == paper)
@@ -92,10 +108,14 @@ struct OfficePDFTests {
         let input = folder.appending(path: "Unicode.txt")
         let output = folder.appending(path: "Unicode.pdf")
         try #require("Bonjour café, Ελληνικά".data(using: .utf16)).write(to: input)
+        let linked = folder.appending(path: "Linked.rtf")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: input)
         var options = OfficePDFOptions()
         options.libreOfficeExecutable = try Self.executable()
         options.pageRange = "1"
-        _ = try await OfficePDF.export(input, to: output, kind: .word, options: options) { _ in }
+        let preview = try await OfficePDF.preview(linked, kind: .word, options: options)
+        #expect(preview.selectedPages == [1])
+        _ = try await OfficePDF.export(linked, to: output, kind: .word, options: options) { _ in }
         let document = try #require(PDFDocument(url: output))
         #expect(document.page(at: 0)?.string?.contains("Bonjour café, Ελληνικά") == true)
         options.pageRange = "99"

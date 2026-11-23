@@ -77,10 +77,10 @@ public enum WordCounter {
     }
 
     public static func loadText(_ file: URL) async throws -> String {
-        guard file.isFileURL, try file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        guard LocalInputFile.regularFile(file) != nil else {
             throw ToolError.invalid("Choose a local plain-text file.")
         }
-        let data = try Data(contentsOf: file, options: [.mappedIfSafe])
+        let data = try await PlainTextDecoding.loadVerifiedBytes(file, maximumBytes: Int.max)
         try Task.checkCancellation()
         guard let text = PlainTextDecoding.decode(data) else {
             throw ToolError.invalid("Could not read this file as UTF-8 or BOM-marked Unicode plain text.")

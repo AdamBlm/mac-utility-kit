@@ -209,10 +209,7 @@ struct ChangeSpeedTests {
         }
         CVPixelBufferUnlockBaseAddress(frame, [])
         for index in 0..<(24 * videoSeconds) {
-            for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
-                try await Task.sleep(for: .milliseconds(2))
-            }
-            try #require(input.isReadyForMoreMediaData)
+            try await waitForFixtureVideoInput(input, writer: writer)
             try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 24)))
         }
         input.markAsFinished()

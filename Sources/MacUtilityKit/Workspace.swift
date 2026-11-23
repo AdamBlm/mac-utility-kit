@@ -10,7 +10,7 @@ struct Workspace: View {
     let audioRecordingController: AudioRecordingController
     let screenRecordingController: ScreenRecordingController
     @State private var selection = Destination.browse(.overview)
-    @State private var readerSource: URL?
+    @State private var pdfReader = PDFReaderSession()
     @State private var captureHandoffError: String?
     @State private var search = ""
     @AppStorage("workspace.favoriteTools") private var storedFavorites = ""
@@ -24,12 +24,10 @@ struct Workspace: View {
     private var favorites: [Tool] { storedFavorites.split(separator: ",").compactMap { Tool(rawValue: String($0)) } }
     private var recents: [Tool] { storedRecents.split(separator: ",").compactMap { Tool(rawValue: String($0)) } }
 
+    private var searchMatches: [Tool] { Tool.workspaceSearchResults(searchTerm) }
+
     private var visibleGroups: [ToolGroup] {
-        let matches = Tool.allCases.filter {
-            $0.title.localizedCaseInsensitiveContains(searchTerm)
-                || $0.category.localizedCaseInsensitiveContains(searchTerm) || $0.matchesCapability(searchTerm)
-        }
-        let grouped = Dictionary(grouping: matches, by: \.group)
+        let grouped = Dictionary(grouping: searchMatches, by: \.group)
         return ToolCategory.allCases.compactMap { category in
             grouped[category].map { ToolGroup(category: category, tools: $0) }
         }
@@ -64,7 +62,7 @@ struct Workspace: View {
                         .focused($searching)
                         .onSubmit {
                             guard !searchTerm.isEmpty else { return }
-                            if let first = visibleGroups.first?.tools.first {
+                            if let first = searchMatches.first {
                                 selection = .tool(first)
                                 searching = false
                             } else if matchesReader {
@@ -109,7 +107,7 @@ struct Workspace: View {
                                 toggleFavorite: toggleFavorite)
                         .id(page.title)
                 case .pdfReader:
-                    PDFReaderView(source: $readerSource,
+                    PDFReaderView(reader: pdfReader,
                                   canHandoffForms: session.drafts[.fillFlattenForms]?.pdfForms.exportTask == nil,
                                   onHandoff: handoffPDF,
                                   stageClipboardPDF: session.stageClipboardPDF)
@@ -143,19 +141,18 @@ struct Workspace: View {
                 }
             }
         }
-        .background(LauncherWorkspaceBridge(controller: launcherController) { tool in
+        .background(LauncherWorkspaceBridge(controller: launcherController, openTool: { tool in
             selection = .tool(tool)
             search = ""
             searching = false
-        })
+        }, openPDFs: { urls in
+            for url in urls { pdfReader.openDeliveredFile(url) }
+            selection = .pdfReader
+        }))
         .onChange(of: selection) { _, destination in
             guard case .tool(let tool) = destination else { return }
             let updated = [tool] + recents.filter { $0 != tool }
             storedRecents = updated.prefix(12).map(\.rawValue).joined(separator: ",")
-        }
-        .onOpenURL { url in
-            guard url.isFileURL, url.pathExtension.lowercased() == "pdf" else { return }
-            openOutput(url)
         }
         .onChange(of: session.previewURL) { _, url in
             if let url { openOutput(url) }
@@ -196,7 +193,7 @@ struct Workspace: View {
 
     private func openOutput(_ url: URL) {
         if url.pathExtension.lowercased() == "pdf" {
-            readerSource = url
+            pdfReader.open(url)
             selection = .pdfReader
         } else {
             NSWorkspace.shared.open(url)

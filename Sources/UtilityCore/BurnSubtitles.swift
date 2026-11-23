@@ -122,6 +122,7 @@ public enum BurnSubtitles {
             throw ToolError.invalid("Choose a new local MP4 file.")
         }
         if let issue = options.engineIssue { throw ToolError.invalid(issue) }
+        let inputVersion = try LocalInputFile.Version.read(input)
         let duration = try await TrimVideo.duration(of: input)
         let plan = try plan(duration: duration, options: options)
         let source = AVURLAsset(url: input, options: [
@@ -142,6 +143,9 @@ public enum BurnSubtitles {
                 throw ToolError.invalid("The captioned MP4 could not be verified with its expected video and audio.")
             }
             try Task.checkCancellation()
+            guard (try? LocalInputFile.Version.read(input)) == inputVersion else {
+                throw ToolError.invalid("The video changed while burning in subtitles. Try again.")
+            }
             try FileManager.default.moveItem(at: candidate, to: output)
             await progress(1)
             return "\(input.lastPathComponent) · \(plan.cues.count) cues burned in · \(plan.clipped) clipped · \(plan.removed) outside video"

@@ -3,7 +3,6 @@ import Foundation
 import ImageIO
 import PDFKit
 import UniformTypeIdentifiers
-import Vision
 
 public struct TextExtractionOptions: Sendable {
     public var language: String?
@@ -32,7 +31,7 @@ public struct TextExtractionResult: Sendable {
 
 public enum TextExtraction {
     public static func languages() throws -> [String] {
-        try makeRequest().supportedRecognitionLanguages()
+        try VisionTextRecognition.languages()
     }
 
     public static func extract(
@@ -40,8 +39,7 @@ public enum TextExtraction {
         progress: @Sendable (Double) async -> Void = { _ in }
     ) async throws -> TextExtractionResult {
         try Task.checkCancellation()
-        guard input.isFileURL,
-              try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
+        guard let resolved = LocalInputFile.regularFile(input) else {
             throw ToolError.invalid("Choose a local image or PDF.")
         }
 
@@ -57,7 +55,7 @@ public enum TextExtraction {
             throw ToolError.invalid("The selected recognition language is unavailable on this Mac.")
         }
 
-        let type = try input.resourceValues(forKeys: [.contentTypeKey]).contentType
+        let type = try resolved.resourceValues(forKeys: [.contentTypeKey]).contentType
         if type?.conforms(to: .pdf) == true {
             return try await extractPDF(input, options: options, progress: progress)
         }
@@ -72,10 +70,10 @@ public enum TextExtraction {
                     }
                 }
             ) { index in
-                try recognize(readImage(source, index: index), options: options)
+                try await recognize(readImage(source, index: index), options: options)
             }
         }
-        let text = try recognize(readImage(source, index: CGImageSourceGetPrimaryImageIndex(source)), options: options)
+        let text = try await recognize(readImage(source, index: CGImageSourceGetPrimaryImageIndex(source)), options: options)
         try Task.checkCancellation()
         await progress(1)
         return TextExtractionResult(pages: [TextExtractionPage(pageNumber: nil, text: text, error: nil)], text: text)
@@ -101,26 +99,29 @@ public enum TextExtraction {
                 var recognition = SearchablePDFOptions()
                 recognition.language = options.language
                 recognition.skipsSearchablePages = false
-                return try SearchablePDF.recognitionResult(for: page, index: index, options: recognition).text
+                return try await SearchablePDF.recognitionResult(for: page, index: index, options: recognition).text
             }
             if options.region == nil, options.preferEmbeddedText, let embedded = page.string?
                 .trimmingCharacters(in: .whitespacesAndNewlines), !embedded.isEmpty {
                 return embedded
             }
             let image = try PDFToImages.rasterizeForRecognition(page, pageNumber: index + 1)
-            return try recognize(image, options: options)
+            return try await recognize(image, options: options)
         }
     }
 
     @concurrent
     package static func regionPreviewPages(_ input: URL, range: String, password: String) async throws -> [Int] {
         try Task.checkCancellation()
-        let type = try input.resourceValues(forKeys: [.contentTypeKey]).contentType
+        guard let resolved = LocalInputFile.regularFile(input) else {
+            throw ToolError.invalid("Choose a local image or PDF.")
+        }
+        let type = try resolved.resourceValues(forKeys: [.contentTypeKey]).contentType
         let count: Int
         if type?.conforms(to: .pdf) == true {
-            count = try openPDF(input, password: password).pageCount
+            count = try openPDF(resolved, password: password).pageCount
         } else {
-            let source = try imageSource(input)
+            let source = try imageSource(resolved)
             guard isTIFF(source) else { return [] }
             count = CGImageSourceGetCount(source)
         }
@@ -131,7 +132,7 @@ public enum TextExtraction {
     }
 
     package static func openPDF(_ input: URL, password: String) throws -> PDFDocument {
-        guard let document = PDFDocument(url: input) else {
+        guard let resolved = LocalInputFile.regularFile(input), let document = PDFDocument(url: resolved) else {
             throw ToolError.invalid("Could not open this PDF.")
         }
         if document.isLocked || (document.isEncrypted && !password.isEmpty),
@@ -146,7 +147,7 @@ public enum TextExtraction {
 
     private static func extractPages(
         count: Int, options: TextExtractionOptions, progress: @Sendable (Double) async -> Void,
-        verifySource: () throws -> Void, readText: (Int) throws -> String
+        verifySource: () throws -> Void, readText: (Int) async throws -> String
     ) async throws -> TextExtractionResult {
         let indices = try PageSelection.indices(options.range, pageCount: count)
         guard !indices.isEmpty else { throw ToolError.invalid("Select at least one page.") }
@@ -154,7 +155,7 @@ public enum TextExtraction {
         for (offset, index) in indices.enumerated() {
             try Task.checkCancellation()
             do {
-                let text = try readText(index)
+                let text = try await readText(index)
                 pages.append(TextExtractionPage(pageNumber: index + 1, text: text, error: nil))
             } catch {
                 try Task.checkCancellation()
@@ -196,7 +197,8 @@ public enum TextExtraction {
     }
 
     private static func imageSource(_ input: URL) throws -> CGImageSource {
-        guard input.isFileURL, let source = CGImageSourceCreateWithURL(input as CFURL, nil),
+        guard let resolved = LocalInputFile.regularFile(input),
+              let source = CGImageSourceCreateWithURL(resolved as CFURL, nil),
               let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true else {
             throw ToolError.invalid("Could not open this image for text recognition.")
         }
@@ -226,31 +228,12 @@ public enum TextExtraction {
         }
         var options = TextExtractionOptions()
         options.language = language
-        return try recognize(image, options: options)
+        return try await recognize(image, options: options)
     }
 
-    private static func makeRequest() -> VNRecognizeTextRequest {
-        let request = VNRecognizeTextRequest()
-        request.recognitionLevel = .accurate
-        request.usesLanguageCorrection = true
-        return request
-    }
-
-    private static func recognize(_ image: CGImage, options: TextExtractionOptions) throws -> String {
-        try Task.checkCancellation()
-        let request = makeRequest()
-        if let language = options.language {
-            request.recognitionLanguages = [language]
-        } else {
-            request.automaticallyDetectsLanguage = true
-        }
-        if let region = options.region {
-            request.regionOfInterest = CGRect(x: region.minX, y: 1 - region.maxY,
-                                              width: region.width, height: region.height)
-        }
-        try VNImageRequestHandler(cgImage: image, options: [:]).perform([request])
-        try Task.checkCancellation()
-        return (request.results ?? []).compactMap { $0.topCandidates(1).first?.string }
+    private static func recognize(_ image: CGImage, options: TextExtractionOptions) async throws -> String {
+        try await VisionTextRecognition.perform(on: image, language: options.language, region: options.region)
+            .compactMap { $0.topCandidates(1).first?.string }
             .joined(separator: "\n")
     }
 }

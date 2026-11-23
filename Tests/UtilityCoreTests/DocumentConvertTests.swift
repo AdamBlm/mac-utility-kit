@@ -18,12 +18,16 @@ struct DocumentConvertTests {
 
         options.target = .html
         let html = folder.appending(path: "Output.html")
-        let summary = try await DocumentConvert.export(input, to: html, options: options) { _ in }
+        let linked = folder.appending(path: "Linked.rtf")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: input)
+        let preview = try await DocumentConvert.preview(linked, options: options)
+        #expect(preview.matchesSource(linked))
+        let summary = try await DocumentConvert.export(linked, to: html, options: options) { _ in }
         let markup = try String(contentsOf: html, encoding: .utf8)
         #expect(markup.contains("Café et 東京"))
         #expect(markup.contains("&lt;tests&gt;&amp;"))
         #expect(!markup.contains("<tests>"))
-        #expect(summary.contains("macOS"))
+        #expect(summary.hasPrefix("Linked.rtf") && summary.contains("macOS"))
     }
 
     @Test func runnerPreservesEarlierOutputWhenFilenameTemplateCollides() async throws {
@@ -55,6 +59,37 @@ struct DocumentConvertTests {
         #expect(output.lastPathComponent == "Same.html")
         #expect(try String(contentsOf: output, encoding: .utf8).contains("first document"))
         #expect(try String(contentsOf: second, encoding: .utf8) == "second document")
+    }
+
+    @Test func onlySuccessfulConversionsClaimCaseEquivalentTemplateNames() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+
+        var inputs: [URL] = []
+        for (index, name) in ["Report.txt", "REPORT.txt", "report.txt", "Other.txt"].enumerated() {
+            let sourceDirectory = directory.appending(path: String(index), directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: sourceDirectory, withIntermediateDirectories: false)
+            let input = sourceDirectory.appending(path: name)
+            // The first conversion fails during decoding and leaves the name available.
+            let content = index == 0 ? Data([0xFF]) : Data("source \(index)".utf8)
+            try content.write(to: input)
+            inputs.append(input)
+        }
+        var options = ToolOptions()
+        options.documents.target = .html
+        options.documents.filenamePattern = "{name}"
+        #expect(DocumentConvert.conflictingOutputFilenames(inputs, options: options.documents) == ["Report.html"])
+
+        let report = try await ToolRunner.run(
+            .convertDocuments, inputs: inputs, destination: directory, imageSize: 0, options: options
+        ) { _ in }
+        #expect(report.outputs.map(\.lastPathComponent) == ["REPORT.html", "Other.html"])
+        #expect(report.failures.count == 2)
+        #expect(report.failures.first?.hasPrefix("Report.txt") == true)
+        #expect(report.failures.last?.contains("already in use") == true)
+        let first = try #require(report.outputs.first)
+        #expect(try String(contentsOf: first, encoding: .utf8).contains("source 1"))
+        #expect(try String(contentsOf: inputs[2], encoding: .utf8) == "source 2")
     }
 
     @Test func exportPreflightRejectsDirectoriesAndOversizedInputs() throws {

@@ -199,7 +199,7 @@ public enum ArchiveTools {
         throw ToolError.invalid("Could not find an available name for \(name).")
     }
 
-    private static func availableName(stem: String, extension fileExtension: String, index: Int) -> String {
+    static func availableName(stem: String, extension fileExtension: String, index: Int) -> String {
         let suffix = " (\(index))"
         let maximumBytes = Int(NAME_MAX)
         let extensionPart = fileExtension.isEmpty ? "" : "." + fileExtension

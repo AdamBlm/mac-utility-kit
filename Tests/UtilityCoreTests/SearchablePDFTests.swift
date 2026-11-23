@@ -59,7 +59,7 @@ struct SearchablePDFTests {
     }
 
     @Test
-    func previewsPagesAndRecognizedTextFromEachSourceInABatch() async throws {
+    func previewsAndExportsReadableSourcesFromAMixedBatch() async throws {
         let folder = try Self.makeFolder()
         defer { try? FileManager.default.removeItem(at: folder) }
         let scan = folder.appending(path: "Scan.pdf")
@@ -78,6 +78,22 @@ struct SearchablePDFTests {
         #expect(scannedPreview.result.text.contains("Searchable sample 7429"))
         #expect(nativePreview.result.text.contains("Second document"))
         #expect(nativePreview.result.status == .alreadySearchable)
+
+        let corrupt = folder.appending(path: "Corrupt.pdf")
+        try Data("not a PDF".utf8).write(to: corrupt)
+        let originalScan = try Data(contentsOf: scan)
+        let originalNative = try Data(contentsOf: native)
+        var job = ToolOptions()
+        job.searchablePDF = options
+        let result = try await ToolRunner.run(.makePDFSearchable, inputs: [scan, corrupt, native],
+                                              destination: folder, imageSize: 0, options: job) { _ in }
+        #expect(result.failures.count == 1 && result.failures.first?.hasPrefix("Corrupt.pdf") == true)
+        #expect(result.outputs.map(\.lastPathComponent) == ["1 - Scan.pdf", "3 - Native.pdf"])
+        let searchable = try #require(result.outputs.first)
+        #expect(PDFDocument(url: searchable)?.page(at: 0)?.string?.contains("Searchable sample 7429") == true)
+        #expect(try Data(contentsOf: #require(result.outputs.last)) == originalNative)
+        #expect(try Data(contentsOf: scan) == originalScan)
+        #expect(try Data(contentsOf: native) == originalNative)
     }
 
     @Test

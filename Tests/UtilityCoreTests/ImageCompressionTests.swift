@@ -52,6 +52,90 @@ import UtilityCore
     #expect(try Data(contentsOf: stripped) != original)
 }
 
+@Test func automaticImageBatchKeepsSmallFilesAndCompressesLargerOnesIndependently() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let other = directory.appending(path: "Other", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
+    let small = directory.appending(path: "photo.jpg")
+    let large = other.appending(path: "photo.jpg")
+    let corrupt = directory.appending(path: "broken.jpg")
+    try writeCompressionFixture(to: small, format: .jpeg, withAlpha: false, quality: 0.08)
+    try writeCompressionFixture(to: large, format: .jpeg, withAlpha: false, quality: 1)
+    try Data("not an image".utf8).write(to: corrupt)
+    let inputs = [small, corrupt, large]
+    let originals = try inputs.map { try Data(contentsOf: $0) }
+
+    var options = ToolOptions()
+    options.imageCompression = .recommended
+    let report = try await ToolRunner.run(.compressImages, inputs: inputs, destination: directory,
+                                          imageSize: 0, options: options) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.hasPrefix("2 - broken.jpg") == true)
+    #expect(report.outputs.map(\.lastPathComponent) == ["1 - photo.jpg", "3 - photo.jpg"])
+    #expect(report.summaries.first?.contains("Original kept") == true)
+    #expect(report.summaries.last?.contains("smaller") == true)
+    #expect(report.imageComparisons.map(\.source) == [small, large])
+    #expect(report.imageComparisons.map(\.inputLabel) == ["1 - photo.jpg", "3 - photo.jpg"])
+    let first = try #require(report.outputs.first)
+    let last = try #require(report.outputs.last)
+    #expect(try Data(contentsOf: first) == originals[0])
+    #expect(try Data(contentsOf: last).count < originals[2].count)
+    #expect(try inputs.map { try Data(contentsOf: $0) } == originals)
+    let firstPair = try #require(report.imageComparisons.first)
+    let secondPair = try #require(report.imageComparisons.last)
+    #expect(ImageComparisonPreview.load(secondPair.source, detail: false, expected: secondPair.sourceVersion) != nil)
+    try originals[2].write(to: large, options: .atomic)
+    #expect(ImageComparisonPreview.load(secondPair.source, detail: true, expected: secondPair.sourceVersion) == nil)
+    #expect(ImageComparisonPreview.load(firstPair.source, detail: true, expected: firstPair.sourceVersion) != nil)
+    #expect(ImageComparisonPreview.load(secondPair.output, detail: true) != nil)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
+func manualImageCompressionRejectsASourceReplacedDuringEncoding() async throws {
+    let directory = try compressionDirectory()
+    defer { try? FileManager.default.removeItem(at: directory) }
+    let source = directory.appending(path: "input.png")
+    let replacement = directory.appending(path: "replacement.png")
+    try writeCompressionFixture(to: source, format: .png, withAlpha: false)
+    let previous = try Data(contentsOf: source)
+    try previous.write(to: replacement)
+    let script = try imageMagickWithSourceReplacement(in: directory)
+    let output = directory.appending(path: "result.webp")
+    var options = ImageCompressionOptions()
+    options.mode = .lossy
+    options.format = .webp
+    options.imageMagickExecutable = script
+
+    await #expect {
+        try await ImageCompression.compress(source, to: output, options: options)
+    } throws: { error in
+        error.localizedDescription.hasPrefix("The source image changed during")
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: directory.path).sorted() ==
+            ["fixture-encoder", "input.png", "magick"])
+    #expect(try Data(contentsOf: source) == previous)
+}
+
+func imageMagickWithSourceReplacement(in directory: URL) throws -> URL {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
+    try FileManager.default.createSymbolicLink(at: directory.appending(path: "magick"),
+                                               withDestinationURL: URL(filePath: executable))
+    let script = directory.appending(path: "fixture-encoder")
+    let shell = #"""
+    #!/bin/sh
+    set -eu
+    root=$(/usr/bin/dirname "$0")
+    "$root/magick" "$@"
+    if test -f "$root/replacement.png"; then
+        /bin/mv "$root/replacement.png" "$root/input.png"
+    fi
+    """#
+    try Data(shell.utf8).write(to: script)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: script.path)
+    return script
+}
+
 @Test func imageCompressionPreviewCancellationRemovesItsTemporaryDirectory() async throws {
     let directory = try compressionDirectory()
     defer { try? FileManager.default.removeItem(at: directory) }

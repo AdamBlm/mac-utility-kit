@@ -16,8 +16,14 @@ struct FrameExtractionSettings: View {
         let bounds: Range<Double>?
         let error: String?
 
-        func plan(_ options: FrameExtractionOptions) -> Result<Int, Error>? {
-            bounds.map { bounds in Result { try FrameExtraction.times(in: bounds, options: options).count } }
+        func plan(_ options: FrameExtractionOptions) -> Result<(count: Int, outside: Int), Error>? {
+            bounds.map { bounds in
+                Result {
+                    let times = try FrameExtraction.times(in: bounds, options: options, allowOutside: true)
+                    let count = times.count(where: bounds.contains)
+                    return (count, times.count - count)
+                }
+            }
         }
     }
 
@@ -123,17 +129,22 @@ struct FrameExtractionSettings: View {
     private var framePlan: some View {
         if !inputs.isEmpty {
             if reviewedInputs == inputs, inputs.allSatisfy({ loaded[$0] != nil }) {
-                let rows = inputs.map { url -> (input: URL, count: Int?, issue: String?) in
+                let rows = inputs.map { url -> (input: URL, count: Int?, outside: Int, issue: String?) in
                     guard let video = loaded[url], let plan = video.plan(options) else {
-                        return (url, nil, loaded[url]?.error)
+                        return (url, nil, 0, loaded[url]?.error)
                     }
                     switch plan {
-                    case .success(let count): return (url, count, nil)
-                    case .failure(let error): return (url, nil, error.localizedDescription)
+                    case .success(let plan): return (url, plan.count, plan.outside, nil)
+                    case .failure(let error): return (url, nil, 0, error.localizedDescription)
                     }
                 }
                 let total = rows.compactMap(\.count).reduce(0, +)
                 let skipped = rows.count { $0.issue != nil }
+                let outside = rows.reduce(0) { $0 + $1.outside }
+                if outside > 0 {
+                    Text(outside == 1 ? "1 timestamp is outside the video." : "\(outside) timestamps are outside the video.")
+                        .font(.callout).foregroundStyle(.secondary)
+                }
                 if inputs.count > 1 || skipped == 0 {
                     Text(total == 1 ? "1 frame planned" : "\(total) frames planned")
                         .font(.callout.weight(.medium)).foregroundStyle(.secondary)

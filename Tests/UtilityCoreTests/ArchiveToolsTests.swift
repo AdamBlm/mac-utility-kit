@@ -73,6 +73,41 @@ struct ArchiveToolsTests {
         await #expect(throws: ToolError.self) { try await ArchiveTools.create([source], to: zip) }
     }
 
+    @Test func zipRoundTripKeepsSameNamedInputsAndExistingNumberedNames() async throws {
+        let stage = try staging()
+        defer { try? FileManager.default.removeItem(at: stage) }
+        let left = stage.appending(path: "Left")
+        let right = stage.appending(path: "Right")
+        let output = stage.appending(path: "Output")
+        for folder in [left, right, output] { try folder.ensureDirectory() }
+        let first = left.appending(path: "Notes.txt")
+        let second = right.appending(path: "notes.txt")
+        let numbered = right.appending(path: "Notes (2).txt")
+        let inputs = [first, second, numbered]
+        let payloads = [Data("first".utf8), Data("second".utf8), Data("third".utf8)]
+        for (input, payload) in zip(inputs, payloads) { try payload.write(to: input) }
+
+        let archive = stage.appending(path: "Batch.zip")
+        try await ArchiveTools.create(inputs, to: archive)
+        let listing = try await ArchiveTools.readContents(archive)
+        let names = ["Notes.txt", "notes (3).txt", "Notes (2).txt"]
+        #expect(listing.entries.map(\.path) == names)
+        _ = try await ArchiveTools.extract(archive, listing: listing, to: output,
+                                           selected: Set(listing.entries.map(\.id)), conflicts: .skip)
+        let damaged = stage.appending(path: "Damaged.zip")
+        try Data(Data(contentsOf: archive).prefix(12)).write(to: damaged)
+        await #expect(throws: ToolError.self) {
+            _ = try await ArchiveTools.extract(damaged, to: output, conflicts: .rename)
+        }
+        #expect(Set(try FileManager.default.contentsOfDirectory(atPath: output.path)) == Set(names))
+        for (name, payload) in zip(names, payloads) {
+            #expect(try Data(contentsOf: output.appending(path: name)) == payload)
+        }
+        for (input, payload) in zip(inputs, payloads) {
+            #expect(try Data(contentsOf: input) == payload)
+        }
+    }
+
     @Test func refusesToPublishWhenTheExtractionDestinationWasReplaced() async throws {
         let stage = try staging()
         let manager = FileManager.default

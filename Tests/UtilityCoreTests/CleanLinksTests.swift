@@ -2,6 +2,24 @@ import Testing
 import UtilityCore
 
 struct CleanLinksTests {
+    @Test func batchKeepsOrderAndReportsMalformedLinesIndividually() throws {
+        let link = "https://example.test/search?q=one&q=two&utm_source=x&UTM_SOURCE=y#section"
+        let clean = "https://example.test/search?q=one&q=two#section"
+        let signed = "https://example.test/?signature=123&utm_source=keep"
+        let invalid = "https://example.test/?x=%ZZ"
+        let input = ["", "  \(link) ", invalid, signed, " ", link].joined(separator: "\r\n")
+        let batch = try CleanLinks.cleanBatch(input, unwrapRedirects: true)
+        #expect(batch.map(\.input) == [link, invalid, signed, link])
+        #expect(batch.map(\.id) == [0, 1, 2, 3])
+        #expect(batch.compactMap { try? $0.result.get().cleaned } == [clean, signed, clean])
+        #expect(try batch[0].result.get().removedParameters == ["utm_source", "UTM_SOURCE"])
+        #expect(throws: ToolError.self) { try batch[1].result.get() }
+        #expect(try batch[2].result.get().keptSignedQuery)
+        #expect(throws: ToolError.self) {
+            try CleanLinks.cleanBatch(Array(repeating: link, count: 501).joined(separator: "\n"), unwrapRedirects: true)
+        }
+    }
+
     @Test func preservesFunctionalQueryBytesAndFragment() throws {
         let input = "https://example.test/search?q=a%2fb+z&UTM_Source=news&flag&v=%2B&fbclid=gone#page%2f2"
         let result = try CleanLinks.clean(input)

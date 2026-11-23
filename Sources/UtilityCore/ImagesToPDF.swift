@@ -50,6 +50,10 @@ public enum ImagesToPDF {
         guard output.isFileURL, !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a local output PDF path that does not already exist.")
         }
+        let reviewed = try inputs.map { input in
+            try Task.checkCancellation()
+            return try PDFSourceStamp.read(input)
+        }
         let manager = FileManager.default
         let staging = try PDFConversionStaging.create(in: output.deletingLastPathComponent())
         defer { try? manager.removeItem(at: staging) }
@@ -70,6 +74,12 @@ public enum ImagesToPDF {
         context.closePDF()
         guard let verified = CGPDFDocument(candidate as CFURL), verified.numberOfPages == inputs.count else {
             throw ToolError.invalid("Could not verify the exported PDF.")
+        }
+        for (input, stamp) in zip(inputs, reviewed) {
+            try Task.checkCancellation()
+            guard (try? PDFSourceStamp.read(input)) == stamp else {
+                throw ToolError.invalid("\(input.lastPathComponent) changed during PDF creation. Try again.")
+            }
         }
         try Task.checkCancellation()
         try manager.moveItem(at: candidate, to: output)
@@ -104,7 +114,8 @@ public enum ImagesToPDF {
     }
 
     private static func readImage(_ input: URL) throws -> (source: CGImageSource, index: Int, orientedSize: CGSize) {
-        guard input.isFileURL, let source = CGImageSourceCreateWithURL(input as CFURL, nil),
+        guard let resolved = LocalInputFile.regularFile(input),
+              let source = CGImageSourceCreateWithURL(resolved as CFURL, nil),
               let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true else {
             throw ToolError.invalid("Could not read \(input.lastPathComponent) as an image.")
         }

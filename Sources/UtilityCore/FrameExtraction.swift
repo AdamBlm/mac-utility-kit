@@ -71,12 +71,14 @@ public enum FrameExtraction {
         return try times(in: 0..<duration, options: options)
     }
 
-    package static func times(in bounds: Range<Double>, options: FrameExtractionOptions) throws -> [Double] {
+    package static func times(
+        in bounds: Range<Double>, options: FrameExtractionOptions, allowOutside: Bool = false
+    ) throws -> [Double] {
         switch options.selection {
         case .timestamps:
             let times = options.timestamps.isEmpty ? [bounds.lowerBound] : options.timestamps
             guard times.count <= maximumFrames else { throw tooManyFrames() }
-            guard times.allSatisfy({ $0.isFinite && bounds.contains($0) }) else {
+            guard times.allSatisfy({ $0.isFinite && (allowOutside || bounds.contains($0)) }) else {
                 throw ToolError.invalid("Each timestamp must be at or after the first video frame and before the end of the video.")
             }
             return Set(times).sorted()
@@ -123,8 +125,9 @@ public enum FrameExtraction {
         guard (CGImageDestinationCopyTypeIdentifiers() as? [String])?.contains(type) == true else {
             throw ToolError.invalid("This Mac cannot encode \(options.format.rawValue) images.")
         }
-        let source = try await load(input)
-        let times = try times(in: source.bounds, options: options)
+        let version = try LocalInputFile.Version.read(input)
+        let source = try await load(version.resolved)
+        let times = try times(in: source.bounds, options: options, allowOutside: true)
         let generator = makeGenerator(for: source.asset)
         let manager = FileManager.default
         var outputs: [URL] = []
@@ -138,6 +141,9 @@ public enum FrameExtraction {
                 let candidate = directory.appendingPathComponent(UUID().uuidString)
                 let output = directory.appendingPathComponent("\(stem).\(options.format.fileExtension)")
                 do {
+                    guard source.bounds.contains(time) else {
+                        throw ToolError.invalid("This timestamp is outside the visible video.")
+                    }
                     let frame = try await image(at: time, start: source.start, generator: generator)
                     try Task.checkCancellation()
                     try write(frame, to: candidate, options: options)
@@ -152,6 +158,9 @@ public enum FrameExtraction {
                 await progress(Double(index + 1) / Double(times.count))
             }
             try Task.checkCancellation()
+            guard (try? LocalInputFile.Version.read(input)) == version else {
+                throw ToolError.invalid("The video changed during frame extraction. Try again.")
+            }
             return FrameExtractionResult(outputs: outputs, failures: failures)
         } catch {
             for output in outputs { try? manager.removeItem(at: output) }

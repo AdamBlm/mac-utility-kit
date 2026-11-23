@@ -85,6 +85,7 @@ public struct ToolOptions: Sendable {
     public var speed = ChangeSpeedOptions()
     public var frames = FrameExtractionOptions()
     public var trim = TrimVideoOptions()
+    package var trimSourceVersions: [Int: LocalInputFile.Version]?
     public var mute = MuteVideoOptions()
     public var videoResize = VideoResizeOptions()
     public var videoGIF = VideoGIFOptions()

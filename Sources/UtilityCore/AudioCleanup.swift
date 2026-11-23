@@ -2,8 +2,10 @@ import AVFoundation
 
 public enum AudioCleanup {
     public static func duration(_ input: URL) async throws -> Double {
-        guard input.isFileURL else { throw ToolError.invalid("Choose a local audio or video file.") }
-        let asset = AVURLAsset(url: input, options: [
+        guard let source = LocalInputFile.regularFile(input) else {
+            throw ToolError.invalid("Choose a local audio or video file.")
+        }
+        let asset = AVURLAsset(url: source, options: [
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue)
         ])
         let seconds = try await asset.load(.duration).seconds
@@ -16,7 +18,7 @@ public enum AudioCleanup {
     public static func preview(
         _ input: URL, options: AudioCleanupOptions, start: Double, duration: Double
     ) async throws -> AudioCleanupPreview {
-        let executable = try validate(input, options: options)
+        let (version, executable) = try validate(input, options: options)
         guard start.isFinite, start >= 0, duration.isFinite, (0.1...12).contains(duration) else {
             throw ToolError.invalid("Choose a preview segment from 0.1 to 12 seconds.")
         }
@@ -33,7 +35,7 @@ public enum AudioCleanup {
         let selection = ["-map", "0:a:\(options.trackIndex)", "-t", segment, "-ar", "48000",
                          "-ac", "2", "-c:a", "pcm_f32le", "-f", "wav"]
         var arguments = prefix
-        arguments.append(contentsOf: ["-ss", decimal(start), "-i", input.path])
+        arguments.append(contentsOf: ["-ss", decimal(start), "-i", version.resolved.path])
         arguments.append(contentsOf: selection)
         arguments.append(dry.path)
         arguments.append(contentsOf: selection)
@@ -53,6 +55,7 @@ public enum AudioCleanup {
         let dryGain = match ? Float(target / dryLevel.rms) : 1
         let wetGain = match ? Float(target / wetLevel.rms) : 1
         try Task.checkCancellation()
+        try verify(input, version: version)
         return AudioCleanupPreview(original: try Data(contentsOf: dry), cleaned: try Data(contentsOf: wet),
                                    originalVolume: dryGain, cleanedVolume: wetGain,
                                    isNearClipping: sourcePeak >= nearClippingDB || wetLevel.peak >= 0.99,
@@ -63,7 +66,7 @@ public enum AudioCleanup {
         _ input: URL, to output: URL, options: AudioCleanupOptions,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
-        let executable = try validate(input, options: options)
+        let (version, executable) = try validate(input, options: options)
         let manager = FileManager.default
         guard output.isFileURL, output.standardizedFileURL != input.standardizedFileURL,
               !manager.fileExists(atPath: output.path) else {
@@ -77,7 +80,7 @@ public enum AudioCleanup {
         let levelOutput = try FileHandle(forWritingTo: report)
         defer { try? levelOutput.close() }
 
-        var arguments = prefix + ["-copyts", "-start_at_zero", "-i", input.path]
+        var arguments = prefix + ["-copyts", "-start_at_zero", "-i", version.resolved.path]
         if options.output == .mkv { arguments += ["-map", "0:V:0", "-c:v", "copy"] }
         arguments += ["-map", "0:a:\(options.trackIndex)", "-af", [filter(options), peakFilter].joined(separator: ","),
                       "-c:a", options.output == .wav ? "pcm_f32le" : "flac",
@@ -91,6 +94,7 @@ public enum AudioCleanup {
                                        directory: staging)
         }
         try Task.checkCancellation()
+        try verify(input, version: version)
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let warning = peak >= nearClippingDB ? " · Peaks near clipping" : ""
@@ -102,13 +106,19 @@ public enum AudioCleanup {
     private static let peakFilter = "astats=metadata=1:reset=0:measure_perchannel=none:measure_overall=Peak_level,"
         + "ametadata=mode=print:key=lavfi.astats.Overall.Peak_level:file=-:direct=1"
 
-    private static func validate(_ input: URL, options: AudioCleanupOptions) throws -> URL {
-        guard input.isFileURL, try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
-            throw ToolError.invalid("Choose a readable local audio or video file.")
-        }
+    private static func validate(
+        _ input: URL, options: AudioCleanupOptions
+    ) throws -> (version: LocalInputFile.Version, executable: URL) {
+        let version = try LocalInputFile.Version.read(input)
         if let issue = options.validationIssue { throw ToolError.invalid(issue) }
         guard let executable = options.executable else { throw ToolError.invalid("Choose an FFmpeg executable.") }
-        return executable
+        return (version, executable)
+    }
+
+    private static func verify(_ input: URL, version: LocalInputFile.Version) throws {
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The source changed during audio cleanup. Try again.")
+        }
     }
 
     private static func filter(_ options: AudioCleanupOptions) -> String {

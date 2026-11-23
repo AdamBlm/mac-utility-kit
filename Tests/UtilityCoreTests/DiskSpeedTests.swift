@@ -79,12 +79,16 @@ struct DiskSpeedTests {
         #expect(try Data(contentsOf: original) == Data("preserve".utf8))
     }
 
-    @Test func cancellationLeavesNoScratchFile() async throws {
+    @Test func cancellationLeavesNoScratchFileAndDoesNotInterruptAnotherRun() async throws {
         let temporary = try Self.folder()
         defer { try? FileManager.default.removeItem(at: temporary) }
+        let existing = temporary.appending(path: "keep.txt")
+        let original = Data("unchanged".utf8)
+        try original.write(to: existing)
         var options = DiskSpeedOptions()
         options.sizeMiB = 4
         let settings = options
+        async let sibling = DiskSpeed.run(in: temporary, options: settings)
         let task = Task {
             try await DiskSpeed.run(in: temporary, options: settings) { event in
                 if event.phase == .write && event.fraction > 0 {
@@ -93,7 +97,11 @@ struct DiskSpeedTests {
             }
         }
         await #expect(throws: CancellationError.self) { try await task.value }
-        #expect(try FileManager.default.contentsOfDirectory(atPath: temporary.path).isEmpty)
+        let completed = try await sibling
+        #expect(completed.passes.count == 1)
+        #expect(completed.writeMegabytesPerSecond.isFinite && completed.writeMegabytesPerSecond > 0)
+        #expect(try FileManager.default.contentsOfDirectory(atPath: temporary.path) == ["keep.txt"])
+        #expect(try Data(contentsOf: existing) == original)
     }
 
     @Test func detectsChangedFolderAndLeavesNoScratchFile() async throws {

@@ -10,28 +10,38 @@ struct ClipboardFileButton: View {
     let importsItemsIndividually: Bool
     let onPasteImage: ((CGImage) throws -> Void)?
     let onPastePDF: ((Data) throws -> Void)?
+    let stagePDF: ((Data) throws -> URL)?
+    let stageImage: ((CGImage) throws -> URL)?
     let onPaste: ([URL]) -> Void
-    var buttonOnlyTitle: String? = nil
+    let buttonOnlyTitle: String?
     @State private var message: String?
     @Environment(\.isEnabled) private var isEnabled
 
+    private var acceptsImage: Bool { onPasteImage != nil || stageImage != nil }
+    private var acceptsPDF: Bool { onPastePDF != nil || stagePDF != nil }
+
     init(allowedTypes: [UTType], allowsMultiple: Bool = true, importsItemsIndividually: Bool = false,
          onPasteImage: ((CGImage) throws -> Void)? = nil,
-         onPastePDF: ((Data) throws -> Void)? = nil, onPaste: @escaping ([URL]) -> Void) {
+         onPastePDF: ((Data) throws -> Void)? = nil, stagePDF: ((Data) throws -> URL)? = nil,
+         stageImage: ((CGImage) throws -> URL)? = nil, buttonOnlyTitle: String? = nil,
+         onPaste: @escaping ([URL]) -> Void) {
         self.allowedTypes = allowedTypes
         self.allowsMultiple = allowsMultiple
         self.importsItemsIndividually = importsItemsIndividually
         self.onPaste = onPaste
         self.onPasteImage = onPasteImage
         self.onPastePDF = onPastePDF
+        self.stagePDF = stagePDF
+        self.stageImage = stageImage
+        self.buttonOnlyTitle = buttonOnlyTitle
     }
 
     init(allowedTypes: [UTType], onPasteImage: ((CGImage) throws -> Void)? = nil,
          onPastePDF: ((Data) throws -> Void)? = nil, buttonOnlyTitle: String? = nil, onPasteFile: @escaping (URL) -> Void) {
-        self.init(allowedTypes: allowedTypes, allowsMultiple: false, onPasteImage: onPasteImage, onPastePDF: onPastePDF) { urls in
+        self.init(allowedTypes: allowedTypes, allowsMultiple: false, onPasteImage: onPasteImage,
+                  onPastePDF: onPastePDF, buttonOnlyTitle: buttonOnlyTitle) { urls in
             if let file = urls.first { onPasteFile(file) }
         }
-        self.buttonOnlyTitle = buttonOnlyTitle
     }
 
     var body: some View {
@@ -51,13 +61,13 @@ struct ClipboardFileButton: View {
     private var pasteButton: some View {
         if let buttonOnlyTitle {
             Button(buttonOnlyTitle, systemImage: "clipboard") { paste() }
-        } else if onPasteImage != nil, onPastePDF != nil {
+        } else if acceptsImage, acceptsPDF {
             Button("Paste Image or PDF", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL, .pdf, .image]) { _ in paste() }
-        } else if onPasteImage != nil {
+        } else if acceptsImage {
             Button("Paste Image", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL, .image]) { _ in paste() }
-        } else if onPastePDF != nil {
+        } else if acceptsPDF {
             Button("Paste PDF", systemImage: "clipboard") { paste() }
                 .onPasteCommand(of: [.fileURL, .pdf]) { _ in paste() }
         } else {
@@ -69,9 +79,13 @@ struct ClipboardFileButton: View {
     @discardableResult
     private func paste(reportsMissingInput: Bool = true) -> Bool {
         guard isEnabled else { return false }
-        let board = NSPasteboard.general
-        if !allowsMultiple || importsItemsIndividually,
-           onPasteImage != nil || onPastePDF != nil,
+        return paste(from: .general, reportsMissingInput: reportsMissingInput)
+    }
+
+    @discardableResult
+    func paste(from board: NSPasteboard, reportsMissingInput: Bool = true) -> Bool {
+        if !allowsMultiple || importsItemsIndividually || stagesBatch,
+           acceptsImage || acceptsPDF,
            let items = board.pasteboardItems, items.count > 1, pasteItems(items) {
             return true
         }
@@ -82,20 +96,22 @@ struct ClipboardFileButton: View {
             onPaste(files)
         } else {
             do {
-                if let onPastePDF, let data = board.data(forType: .pdf) {
-                    try pastePDF(data, using: onPastePDF)
-                } else if let onPasteImage, let image = try ClipboardFiles.readImage(from: board) {
-                    try onPasteImage(image)
+                if acceptsPDF, let data = board.data(forType: .pdf) {
+                    if let stagePDF { onPaste([try pastePDF(data, using: stagePDF)]) }
+                    else if let onPastePDF { try pastePDF(data, using: onPastePDF) }
+                } else if acceptsImage, let image = try ClipboardFiles.readImage(from: board) {
+                    if let stageImage { onPaste([try stageImage(image)]) }
+                    else { try onPasteImage?(image) }
                 } else {
                     guard reportsMissingInput else { return false }
-                    if onPastePDF != nil, onPasteImage != nil {
+                    if acceptsPDF, acceptsImage {
                         message = "Copy an image, PDF content, or a supported file, then try again."
-                    } else if onPastePDF != nil {
+                    } else if acceptsPDF {
                         message = "Copy PDF content or a PDF file in Finder, then try again."
                     } else {
-                        message = onPasteImage == nil
-                            ? "Copy a supported file in Finder, then try again."
-                            : "Copy an image or a supported file, then try again."
+                        message = acceptsImage
+                            ? "Copy an image or a supported file, then try again."
+                            : "Copy a supported file in Finder, then try again."
                     }
                 }
             } catch {
@@ -109,14 +125,15 @@ struct ClipboardFileButton: View {
         var handled = false
         var issues: [String] = []
         var singleInput: ClipboardFiles.Content?
+        var batch: [URL] = []
         for (index, item) in items.enumerated() {
             do {
                 guard let content = try ClipboardFiles.content(from: item, allowedTypes: allowedTypes,
-                                                                acceptsPDF: onPastePDF != nil,
-                                                                acceptsImage: onPasteImage != nil) else { continue }
+                                                                acceptsPDF: acceptsPDF,
+                                                                acceptsImage: acceptsImage) else { continue }
                 handled = true
                 if allowsMultiple {
-                    try deliver(content)
+                    try deliver(content, batch: &batch)
                 } else {
                     guard singleInput == nil else {
                         message = "Copy one supported item, then try again."
@@ -130,27 +147,35 @@ struct ClipboardFileButton: View {
             }
         }
         if let singleInput, issues.isEmpty {
-            do { try deliver(singleInput) }
+            do { try deliver(singleInput, batch: &batch) }
             catch { issues.append(error.localizedDescription) }
         }
+        if !batch.isEmpty { onPaste(batch) }
         if !issues.isEmpty { message = issues.joined(separator: "\n") }
         return handled
     }
 
-    private func deliver(_ content: ClipboardFiles.Content) throws {
+    private var stagesBatch: Bool { stagePDF != nil || stageImage != nil }
+
+    private func deliver(_ content: ClipboardFiles.Content, batch: inout [URL]) throws {
         switch content {
-        case .file(let url): onPaste([url])
+        case .file(let url):
+            if stagesBatch { batch.append(url) }
+            else { onPaste([url]) }
         case .pdf(let data):
-            if let onPastePDF { try pastePDF(data, using: onPastePDF) }
-        case .image(let image): try onPasteImage?(image)
+            if let stagePDF { batch.append(try pastePDF(data, using: stagePDF)) }
+            else if let onPastePDF { try pastePDF(data, using: onPastePDF) }
+        case .image(let image):
+            if let stageImage { batch.append(try stageImage(image)) }
+            else { try onPasteImage?(image) }
         }
     }
 
-    private func pastePDF(_ data: Data, using action: (Data) throws -> Void) throws {
+    private func pastePDF<Result>(_ data: Data, using action: (Data) throws -> Result) throws -> Result {
         guard data.count <= 256 * 1024 * 1024 else {
             throw ToolError.invalid("The copied PDF exceeds 256 MB. Save it to a file and import the file instead.")
         }
-        try action(data)
+        return try action(data)
     }
 }
 

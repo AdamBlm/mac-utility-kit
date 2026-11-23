@@ -96,7 +96,8 @@ public enum AudioExtraction {
         progress: @Sendable (Double) async -> Void
     ) async throws -> String {
         if let issue = options.validationIssue { throw ToolError.invalid(issue) }
-        let asset = AVURLAsset(url: input, options: [
+        let version = try LocalInputFile.Version.read(input)
+        let asset = AVURLAsset(url: version.resolved, options: [
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue)
         ])
         let tracks = try await asset.loadTracks(withMediaType: .audio)
@@ -113,32 +114,35 @@ public enum AudioExtraction {
         let track = tracks[selected]
         let description = try await describe(track, index: selected)
 
-        guard !FileManager.default.fileExists(atPath: output.path) else {
-            throw ToolError.invalid("The audio output file already exists.")
+        let manager = FileManager.default
+        guard LocalInputFile.isLocalURL(output), !manager.fileExists(atPath: output.path) else {
+            throw ToolError.invalid("Choose a new local audio output file.")
         }
         try validatePassthrough(description, options: options)
-
-        do {
-            if options.format.requiresFFmpeg {
-                guard let executable = options.ffmpegExecutable else {
-                    throw ToolError.invalid("Choose an FFmpeg executable to export \(options.format.title).")
-                }
-                try await exportUsingFFmpeg(
-                    asset, track: track, language: description.language,
-                    to: output, options: options, executable: executable, progress: progress
-                )
-            } else {
-                try await AVFoundationAudioExtraction.export(
-                    asset, track: track, to: output, options: options, preview: preview, progress: progress
-                )
+        let staging = output.deletingLastPathComponent().appending(path: ".audio-extract-\(UUID().uuidString)")
+        try manager.createDirectory(at: staging, withIntermediateDirectories: false)
+        defer { try? manager.removeItem(at: staging) }
+        let candidate = staging.appending(path: "Audio.\(options.format.rawValue)")
+        if options.format.requiresFFmpeg {
+            guard let executable = options.ffmpegExecutable else {
+                throw ToolError.invalid("Choose an FFmpeg executable to export \(options.format.title).")
             }
-            try Task.checkCancellation()
-            await progress(1)
-            return "\(input.lastPathComponent) • \(description.title) → \(options.format.title)"
-        } catch {
-            try? FileManager.default.removeItem(at: output)
-            throw error
+            try await exportUsingFFmpeg(
+                asset, track: track, language: description.language,
+                to: candidate, options: options, executable: executable, progress: progress
+            )
+        } else {
+            try await AVFoundationAudioExtraction.export(
+                asset, track: track, to: candidate, options: options, preview: preview, progress: progress
+            )
         }
+        await progress(1)
+        try Task.checkCancellation()
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The source changed during audio extraction. Try again.")
+        }
+        try manager.moveItem(at: candidate, to: output)
+        return "\(input.lastPathComponent) • \(description.title) → \(options.format.title)"
     }
 
     package static func selectedTrack(

@@ -60,11 +60,13 @@ public struct DuplicateScanResult: Sendable {
     }
 
     public func removing(_ moved: Set<URL>) -> Self {
+        var removedCount = 0
         let updated = groups.compactMap { group -> DuplicateGroup? in
             let remaining = group.files.filter { !moved.contains($0.url) }
+            removedCount += group.files.count - remaining.count
             return remaining.count > 1 ? DuplicateGroup(id: group.id, files: remaining) : nil
         }
-        return Self(groups: updated, issues: issues, fileCount: max(0, fileCount - moved.count))
+        return Self(groups: updated, issues: issues, fileCount: max(0, fileCount - removedCount))
     }
 }
 
@@ -209,6 +211,7 @@ public enum FindDuplicates {
         progress: @escaping @Sendable (DuplicateScanProgress) async -> Void
     ) async throws -> (files: [DuplicateFile], issues: [DuplicateIssue]) {
         var seen = Set<DuplicateFileIdentity>()
+        var visitedRoots = Set<URL>()
         var files: [DuplicateFile] = []
         var issues: [DuplicateIssue] = []
         var flags: FileManager.DirectoryEnumerationOptions = [.skipsPackageDescendants]
@@ -219,6 +222,7 @@ public enum FindDuplicates {
         for root in roots {
             try Task.checkCancellation()
             let folder = root.resolvingSymlinksInPath().standardizedFileURL
+            guard visitedRoots.insert(folder).inserted else { continue }
             do {
                 guard folder.isFileURL, try folder.resourceValues(forKeys: [.isDirectoryKey]).isDirectory == true else {
                     throw ToolError.invalid("Choose a local folder.")

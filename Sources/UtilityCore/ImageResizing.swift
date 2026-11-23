@@ -80,7 +80,8 @@ enum ImageResizing {
     }
 
     private static func orientedSource(_ input: URL) throws -> (CGImageSource, Int, Int) {
-        guard input.isFileURL, let source = CGImageSourceCreateWithURL(input as CFURL, nil),
+        guard let file = LocalInputFile.regularFile(input),
+              let source = CGImageSourceCreateWithURL(file as CFURL, nil),
               CGImageSourceGetCount(source) > 0 else {
             throw ToolError.invalid("Could not open this image.")
         }

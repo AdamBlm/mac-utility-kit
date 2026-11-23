@@ -49,16 +49,30 @@ struct ManagedVideoEnginesTests {
         let manager = try VideoEngineManager(root: root, feed: feed, publicKey: key.publicKey.rawRepresentation) {
             try await fixture.download($0)
         }
+        let secondManager = try VideoEngineManager(root: root, feed: feed, publicKey: key.publicKey.rawRepresentation) {
+            try await fixture.download($0)
+        }
         await #expect(throws: CancellationError.self) {
             _ = try await Task {
                 try await manager.install { _, completed, _, _ in
-                    if completed == 1 { withUnsafeCurrentTask { $0?.cancel() } }
+                    if completed == 1 {
+                        do {
+                            try await secondManager.remove()
+                            Issue.record("Another manager removed engines during installation.")
+                        } catch {
+                            #expect(error.localizedDescription.contains("another copy"))
+                        }
+                        withUnsafeCurrentTask { $0?.cancel() }
+                    }
                 }
             }.value
         }
         #expect(try await manager.installed() == nil)
         let installedFiles = try FileManager.default.contentsOfDirectory(atPath: root.path)
         #expect(installedFiles.filter { !$0.hasPrefix(".") }.isEmpty)
+        let retried = try await secondManager.install()
+        #expect(retried.revision == 1)
+        #expect(try await manager.installed()?.revision == 1)
     }
 }
 

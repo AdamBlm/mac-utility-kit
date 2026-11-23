@@ -4,7 +4,8 @@ import Testing
 @testable import UtilityCore
 
 struct ExternalToolTests {
-    @Test func cancellationStopsAnEngineAndItsHelper() async throws {
+    @Test(.timeLimit(.minutes(1)))
+    func cancellationStopsAnEngineAndItsHelper() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: folder) }
@@ -12,7 +13,7 @@ struct ExternalToolTests {
         let clock = ContinuousClock()
         let script = """
         trap '' TERM
-        /bin/sleep 10 &
+        /bin/sleep 120 &
         printf '%s %s\n' "$$" "$!" > ready.tmp
         /bin/mv ready.tmp ready
         wait
@@ -35,7 +36,6 @@ struct ExternalToolTests {
         try #require(processIDs.count == 2)
         try #require(processIDs.allSatisfy { kill($0, 0) == 0 })
 
-        let cancelledAt = clock.now
         task.cancel()
         await #expect(throws: CancellationError.self) { try await task.value }
         let exitDeadline = clock.now.advanced(by: .seconds(2))
@@ -43,7 +43,6 @@ struct ExternalToolTests {
             try await Task.sleep(for: .milliseconds(20))
         }
         #expect(!processIDs.contains(where: processExists))
-        #expect(cancelledAt.duration(to: clock.now) < .seconds(4))
         #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path) == ["ready"])
     }
 

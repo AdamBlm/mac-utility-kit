@@ -50,7 +50,7 @@ public enum HashGenerator {
 
     public static func file(_ url: URL, algorithm: HashAlgorithm) async throws -> String {
         try await run {
-            guard url.isFileURL else { throw HashGeneratorError.notLocalFile }
+            guard LocalInputFile.isLocalURL(url) else { throw HashGeneratorError.notLocalFile }
             let resolved = url.resolvingSymlinksInPath().standardizedFileURL
             guard let stamp = try DuplicateFileIO.inspect(resolved) else {
                 throw HashGeneratorError.notRegularFile

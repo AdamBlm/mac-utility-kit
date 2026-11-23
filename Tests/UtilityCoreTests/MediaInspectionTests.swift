@@ -87,6 +87,93 @@ func ffprobeMediaInspectionReportsObservedCadence(variable: Bool) async throws {
     #expect(report.summary.contains("Frame timing: " + expected))
 }
 
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil
+    && ProcessInfo.processInfo.environment["MAC_UTILITY_FFPROBE_TEST"] != nil))
+func mediaInspectionBatchFallsBackOnlyForFilesMacOSCannotRead() async throws {
+    let environment = ProcessInfo.processInfo.environment
+    let ffmpeg = URL(filePath: try #require(environment["MAC_UTILITY_FFMPEG_TEST"]))
+    let ffprobe = URL(filePath: try #require(environment["MAC_UTILITY_FFPROBE_TEST"]))
+    let folder = try mediaInspectionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+
+    let video = folder.appending(path: "clip.mkv")
+    try await ExternalTool.run(ffmpeg, name: "FFmpeg", arguments: [
+        "-v", "error", "-f", "lavfi", "-i", "testsrc2=size=160x90:rate=24",
+        "-t", "0.25", "-c:v", "ffv1", video.path
+    ], directory: folder)
+    let audio = folder.appending(path: "tone.wav")
+    try writeInspectionAudio(to: audio)
+    let corrupt = folder.appending(path: "corrupt.mkv")
+    try Data("not media".utf8).write(to: corrupt)
+    let playlist = folder.appending(path: "playlist.mkv")
+    try Data("ffconcat version 1.0\nfile clip.mkv\n".utf8).write(to: playlist)
+    let audioLink = folder.appending(path: "Linked tone.wav")
+    let videoLink = folder.appending(path: "Linked clip.mkv")
+    try FileManager.default.createSymbolicLink(at: audioLink, withDestinationURL: audio)
+    try FileManager.default.createSymbolicLink(at: videoLink, withDestinationURL: video)
+    let inputs = [audioLink, corrupt, videoLink, playlist]
+    #expect(inputs.allSatisfy { LocalInputFile.matches($0, allowedTypes: Tool.mediaInfo.inputTypes) })
+
+    var options = ToolOptions()
+    options.inspection.automaticFFprobeExecutable = ffprobe
+    let report = try await ToolRunner.run(
+        .mediaInfo, inputs: inputs, destination: folder, imageSize: 0, options: options
+    ) { _ in }
+
+    #expect(report.failures.count == 2)
+    #expect(report.failures.first?.hasPrefix("corrupt.mkv") == true)
+    #expect(report.failures.last?.hasPrefix("playlist.mkv") == true)
+    #expect(report.outputs.map(\.lastPathComponent) == ["1 - Linked tone.json", "3 - Linked clip.json"])
+    let native = try Data(contentsOf: #require(report.outputs.first))
+    let sections = try JSONDecoder().decode([MediaInspectionReport.Section].self, from: native)
+    #expect(sections.first?.rows.first { $0.label == "Filename" }?.value == audioLink.lastPathComponent)
+    let fallback = try Data(contentsOf: #require(report.outputs.last))
+    let document = try #require(JSONSerialization.jsonObject(with: fallback) as? [String: Any])
+    let format = try #require(document["format"] as? [String: Any])
+    #expect(format["filename"] as? String == videoLink.lastPathComponent)
+    let streams = try #require(document["streams"] as? [[String: Any]])
+    #expect(streams.first?["codec_name"] as? String == "ffv1")
+    #expect(report.summaries.last?.contains("Inspection engine: ffprobe") == true)
+}
+
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFPROBE_TEST"] != nil))
+func mediaInfoBatchDiscardsTheReportForAChangedFile() async throws {
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFPROBE_TEST"])
+    let folder = try mediaInspectionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appending(path: "first.wav")
+    let second = folder.appending(path: "second.wav")
+    try writeInspectionAudio(to: first)
+    try writeInspectionAudio(to: second)
+    let original = try Data(contentsOf: first)
+    try original.write(to: folder.appending(path: "replacement.wav"))
+    try FileManager.default.createSymbolicLink(at: folder.appending(path: "ffprobe"),
+                                               withDestinationURL: URL(filePath: executable))
+    let fixture = folder.appending(path: "fixture-probe")
+    let script = #"""
+    #!/bin/sh
+    set -eu
+    root=$(/usr/bin/dirname "$0")
+    "$root/ffprobe" "$@"
+    for argument in "$@"; do
+        case "$argument" in
+            */first.wav) /bin/mv "$root/replacement.wav" "$root/first.wav"; break ;;
+        esac
+    done
+    """#
+    try Data(script.utf8).write(to: fixture)
+    try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: fixture.path)
+    var options = ToolOptions()
+    options.inspection.ffprobeExecutable = fixture
+    let report = try await ToolRunner.run(.mediaInfo, inputs: [first, second], destination: folder,
+                                          imageSize: 0, options: options) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.contains("first.wav — The media file changed") == true)
+    #expect(report.inspections.map(\.filename) == ["second.wav"])
+    #expect(report.outputs.map(\.lastPathComponent) == ["2 - second.json"])
+    #expect(try Data(contentsOf: first) == original)
+}
+
 @Test func ffprobeCadenceDoesNotBridgeMissingPresentationTimestamps() {
     let intervals = FFprobeInspection.adjacentIntervals([0, 40, nil, 120, 160, 200])
     #expect(intervals == [40, 40, 40])
@@ -136,10 +223,7 @@ private func writeInspectionVideo(
     }
     CVPixelBufferUnlockBaseAddress(frame, [])
     for tick in ticks {
-        for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        try #require(input.isReadyForMoreMediaData)
+        try await waitForFixtureVideoInput(input, writer: writer)
         try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(tick), timescale: 600)))
     }
     input.markAsFinished()

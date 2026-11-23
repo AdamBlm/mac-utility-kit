@@ -12,6 +12,8 @@ struct AudioMergeTests {
         let second = folder.appending(path: "B [second].wav")
         try makeClip(first, rate: 44_100, level: 0.2)
         try makeClip(second, rate: 48_000, level: -0.4)
+        let linked = folder.appending(path: "Linked second.wav")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: second)
         let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"])
         var options = AudioMergeOptions()
         options.ffmpegExecutable = URL(fileURLWithPath: executable)
@@ -24,7 +26,7 @@ struct AudioMergeTests {
         ] {
             options.transition = transition
             let output = folder.appending(path: "\(transition).wav")
-            _ = try await AudioMerge.export([second, first], to: output, options: options) { _ in }
+            _ = try await AudioMerge.export([linked, first], to: output, options: options) { _ in }
             let file = try AVAudioFile(forReading: output)
             #expect(file.length == frames)
             #expect(file.processingFormat.sampleRate == 48_000)
@@ -73,6 +75,35 @@ struct AudioMergeTests {
             #expect(abs(Double(file.length) / file.processingFormat.sampleRate - 2) < 0.1)
             #expect(file.processingFormat.channelCount == 2)
         }
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func rejectsAClipReplacedBeforeFFmpegReadsIt() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appending(path: "first.wav")
+        let second = folder.appending(path: "second.wav")
+        let replacement = folder.appending(path: "replacement.wav")
+        let clips: [(URL, Float)] = [(first, 0.1), (second, 0.2), (replacement, 0.3)]
+        for (clip, level) in clips {
+            try makeClip(clip, rate: 48_000, level: level)
+        }
+        var options = AudioMergeOptions()
+        options.format = .wav
+        options.ffmpegExecutable = URL(filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))
+        let output = folder.appending(path: "output.wav")
+        await #expect {
+            try await AudioMerge.export([first, second], to: output, options: options) { progress in
+                if progress == 0.05 {
+                    do { _ = try FileManager.default.replaceItemAt(second, withItemAt: replacement) }
+                    catch { Issue.record("Could not replace the audio fixture: \(error)") }
+                }
+            }
+        } throws: { error in
+            error.localizedDescription == "second.wav changed during merging. Try again."
+        }
+        #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["first.wav", "second.wav"])
     }
 
     private func makeClip(_ output: URL, rate: Double, level: Float) throws {

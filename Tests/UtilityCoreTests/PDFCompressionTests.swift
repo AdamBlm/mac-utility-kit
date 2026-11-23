@@ -177,6 +177,48 @@ struct PDFCompressionTests {
         #expect(PDFDocument(url: result)?.page(at: 0)?.annotations.first?.url?.absoluteString == "https://example.test/page/1")
     }
 
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_QPDF_TEST"] != nil
+        && ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"] != nil))
+    func mixedBatchKeepsValidDocumentsWhenOneInputIsCorrupt() async throws {
+        let manager = FileManager.default
+        let root = try Self.directory()
+        defer { try? manager.removeItem(at: root) }
+        let textFolder = root.appending(path: "Text")
+        let imageFolder = root.appending(path: "Images")
+        for folder in [textFolder, imageFolder] {
+            try manager.createDirectory(at: folder, withIntermediateDirectories: false)
+        }
+        let text = try Self.linkedPDF(in: textFolder, count: 3)
+        let image = try Self.linkedPDF(in: imageFolder, count: 2, raster: true)
+        let corrupt = root.appending(path: "Corrupt.pdf")
+        try Data("not a PDF".utf8).write(to: corrupt)
+        let originals = try [text, image].map { try Data(contentsOf: $0) }
+
+        var options = ToolOptions()
+        options.pdfCompression = .recommended
+        options.pdfCompression.qpdfExecutable = try Self.qpdf()
+        options.pdfCompression.ghostscriptExecutable = URL(
+            filePath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_GHOSTSCRIPT_TEST"])
+        )
+        let report = try await ToolRunner.run(.compressPDF, inputs: [text, corrupt, image],
+                                              destination: root, imageSize: 0, options: options) { _ in }
+        #expect(report.failures.count == 1 && report.failures.first?.hasPrefix("2 - Corrupt.pdf — ") == true)
+        #expect(report.outputs.map(\.lastPathComponent) == ["1 - Source.pdf", "3 - Source.pdf"])
+        #expect(report.summaries.count == 2)
+        for (index, output) in report.outputs.enumerated() {
+            try Self.run(Self.qpdf(), ["--check", output.path])
+            #expect(try Data(contentsOf: output).count <= originals[index].count)
+            let document = try #require(PDFDocument(url: output))
+            #expect(document.pageCount == 3 - index)
+            for pageIndex in 0..<document.pageCount {
+                let page = try #require(document.page(at: pageIndex))
+                #expect(page.string?.contains("Searchable page \(pageIndex + 1)") == true)
+                #expect(page.annotations.contains { $0.url?.absoluteString == "https://example.test/page/\(pageIndex + 1)" })
+            }
+        }
+        #expect(try [text, image].map { try Data(contentsOf: $0) } == originals)
+    }
+
     @Test(arguments: [0.1, 0.8])
     func rejectsInputReplacedBeforeCompressionOrFallback(progressMarker: Double) async throws {
         let folder = try Self.directory()

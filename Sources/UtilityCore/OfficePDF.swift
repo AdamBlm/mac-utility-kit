@@ -54,14 +54,15 @@ public enum OfficePDF {
     }
 
     public static func optionIssue(_ input: URL, kind: OfficePDFKind, options: OfficePDFOptions) -> String? {
-        guard input.isFileURL, kind.extensions.contains(input.pathExtension.lowercased()) else {
+        let resolved = LocalInputFile.regularFile(input)
+        guard input.isFileURL, kind.extensions.contains((resolved ?? input).pathExtension.lowercased()) else {
             return "This file is unsupported for this conversion."
         }
         guard let selection = options.libreOfficeExecutable, LibreOfficeHeadless.hasExecutable(selection) else {
             return "Choose LibreOffice or its soffice executable."
         }
-        guard let values = try? input.resourceValues(forKeys: [.isRegularFileKey, .fileSizeKey]),
-              values.isRegularFile == true, let bytes = values.fileSize, bytes <= 256 * 1024 * 1024 else {
+        guard let resolved, let bytes = try? resolved.resourceValues(forKeys: [.fileSizeKey]).fileSize,
+              bytes <= 256 * 1024 * 1024 else {
             return "Choose a readable document up to 256 MB."
         }
         if kind == .excel, !options.singlePageSheets,
@@ -181,28 +182,17 @@ public enum OfficePDF {
         return document
     }
 
-    private struct WordSource: Equatable {
-        let resolved: URL
-        let metadata: DuplicateFileStamp
-
-        static func read(_ input: URL) throws -> Self {
-            let resolved = input.resolvingSymlinksInPath().standardizedFileURL
-            guard let metadata = try? DuplicateFileIO.inspect(resolved) else {
-                throw ToolError.invalid("Could not read the Word source.")
-            }
-            return Self(resolved: resolved, metadata: metadata)
-        }
-    }
-
     private struct PreparedInput {
         let file: URL
         let executable: URL
         let inputFilter: String?
-        let wordSource: WordSource?
+        let source: PDFSourceStamp
+        let kind: OfficePDFKind
 
         func verifySource(_ input: URL) throws {
-            if let wordSource, (try? WordSource.read(input)) != wordSource {
-                throw ToolError.invalid("The Word source changed during PDF conversion. Preview it again and retry.")
+            guard (try? PDFSourceStamp.read(input)) == source else {
+                let label = kind == .word ? "Word" : "Office"
+                throw ToolError.invalid("The \(label) source changed during PDF conversion. Preview it again and retry.")
             }
         }
     }
@@ -214,11 +204,12 @@ public enum OfficePDF {
         guard let executable = options.libreOfficeExecutable else {
             throw ToolError.invalid("Choose LibreOffice or its soffice executable.")
         }
-        let wordSource = kind == .word ? try WordSource.read(input) : nil
-        var prepared = input
+        let source = try PDFSourceStamp.read(input)
+        let resolved = source.resolved
+        var prepared = resolved
         var inputFilter: String?
-        if kind == .word, ["txt", "text"].contains(input.pathExtension.lowercased()) {
-            let text = try DocumentConvert.readText(input)
+        if kind == .word, ["txt", "text"].contains(resolved.pathExtension.lowercased()) {
+            let text = try DocumentConvert.readText(resolved)
             prepared = staging.appending(path: "Plain.txt")
             if !FileManager.default.fileExists(atPath: prepared.path) { try Data(text.utf8).write(to: prepared) }
             inputFilter = "Text (encoded):UTF8,LF"
@@ -230,11 +221,11 @@ public enum OfficePDF {
             inputFilter = OfficeWriterPreparation.flatFilter
         }
         if kind == .excel, !options.singlePageSheets, options.spreadsheetPrint.requiresPreparation {
-            prepared = try await OfficeCalcPreparation.prepare(input, options: options.spreadsheetPrint,
+            prepared = try await OfficeCalcPreparation.prepare(resolved, options: options.spreadsheetPrint,
                                                                executable: executable, in: staging)
             inputFilter = OfficeCalcPreparation.flatFilter
         }
-        return PreparedInput(file: prepared, executable: executable, inputFilter: inputFilter, wordSource: wordSource)
+        return PreparedInput(file: prepared, executable: executable, inputFilter: inputFilter, source: source, kind: kind)
     }
 
     private static func compose(

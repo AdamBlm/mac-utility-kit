@@ -69,6 +69,17 @@ public enum DocumentScanner {
     public static let pageLimit = 24
     public static let inputLimit = 48 * 1024 * 1024
 
+    package static func load(_ input: URL) throws -> [ScannedPage] {
+        try Task.checkCancellation()
+        guard let file = LocalInputFile.regularFile(input) else {
+            throw ToolError.invalid("Choose a readable local image or PDF scan.")
+        }
+        let handle = try FileHandle(forReadingFrom: file)
+        defer { try? handle.close() }
+        let data = try handle.read(upToCount: inputLimit + 1) ?? Data()
+        return try load(data, name: input.lastPathComponent)
+    }
+
     public static func load(_ data: Data, name: String) throws -> [ScannedPage] {
         try Task.checkCancellation()
         guard data.count <= inputLimit else { throw ToolError.invalid("Choose an image or scan smaller than 48 MB.") }
@@ -84,8 +95,25 @@ public enum DocumentScanner {
             }
         }
         guard let source = CGImageSourceCreateWithData(data as CFData, nil),
-              let type = CGImageSourceGetType(source), UTType(type as String)?.conforms(to: .image) == true,
-              let image = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
+              let identifier = CGImageSourceGetType(source), let type = UTType(identifier as String),
+              type.conforms(to: .image) else {
+            throw ToolError.invalid("Could not read an image or PDF scan from \(name).")
+        }
+        let count = type.conforms(to: .tiff) ? CGImageSourceGetCount(source) : 1
+        guard (1...pageLimit).contains(count) else {
+            throw ToolError.invalid("Choose a scan with up to \(pageLimit) pages.")
+        }
+        if count == 1 {
+            return [try imagePage(source, index: CGImageSourceGetPrimaryImageIndex(source), name: name)]
+        }
+        return try (0..<count).map { index in
+            try imagePage(source, index: index, name: "\(name) · \(index + 1)")
+        }
+    }
+
+    private static func imagePage(_ source: CGImageSource, index: Int, name: String) throws -> ScannedPage {
+        try Task.checkCancellation()
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, index, [
                   kCGImageSourceCreateThumbnailFromImageAlways: true,
                   kCGImageSourceCreateThumbnailWithTransform: true,
                   kCGImageSourceThumbnailMaxPixelSize: 2000
@@ -98,7 +126,7 @@ public enum DocumentScanner {
         let estimate = detection.results?.first.map {
             ScanCorners(topLeft: $0.topLeft, topRight: $0.topRight, bottomRight: $0.bottomRight, bottomLeft: $0.bottomLeft)
         }
-        return [ScannedPage(name: name, image: image, corners: estimate.flatMap { $0.isValid ? $0 : nil } ?? .fullPage)]
+        return ScannedPage(name: name, image: image, corners: estimate.flatMap { $0.isValid ? $0 : nil } ?? .fullPage)
     }
 
     public static func corrected(_ page: ScannedPage) throws -> CGImage {

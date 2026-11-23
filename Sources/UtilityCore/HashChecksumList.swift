@@ -55,24 +55,30 @@ package struct HashChecksumList: Sendable {
                 throw ToolError.invalid("Hash every selected file before exporting a checksum list.")
             }
             let path = absolute ? file.standardizedFileURL.path : file.lastPathComponent
-            let escapes = path.utf8.contains { $0 == 92 || $0 == 10 || $0 == 13 }
-            if escapes { result.append(92) }
-            result.append(contentsOf: digest.utf8)
-            result.append(contentsOf: [32, 42])
-            for byte in path.utf8 {
-                switch byte {
-                case 92: result.append(contentsOf: [92, 92])
-                case 10: result.append(contentsOf: [92, 110])
-                case 13: result.append(contentsOf: [92, 114])
-                default: result.append(byte)
-                }
-            }
-            result.append(10)
+            result.append(checksumLine(digest, path: path, binary: true))
             guard result.count <= maximumBytes else {
                 throw ToolError.invalid("Export fewer files to keep the checksum list within 512 KiB.")
             }
         }
         return String(decoding: result, as: UTF8.self)
+    }
+
+    package static func checksumLine(_ digest: String, path: String, binary: Bool) -> Data {
+        var result = Data()
+        let escapes = path.utf8.contains { $0 == 92 || $0 == 10 || $0 == 13 }
+        if escapes { result.append(92) }
+        result.append(contentsOf: digest.utf8)
+        result.append(contentsOf: [32, binary ? 42 : 32])
+        for byte in path.utf8 {
+            switch byte {
+            case 92: result.append(contentsOf: [92, 92])
+            case 10: result.append(contentsOf: [92, 110])
+            case 13: result.append(contentsOf: [92, 114])
+            default: result.append(byte)
+            }
+        }
+        result.append(10)
+        return result
     }
 
     package func expectations(for files: [URL]) -> [Expectation] {
@@ -84,7 +90,12 @@ package struct HashChecksumList: Sendable {
             for entry in entries {
                 let choices = indexes.filter { Self.matches(entry.name, path: paths[$0]) }
                 for index in choices {
-                    matched[index] = choices.count == 1 && matched[index] == .missing ? .digest(entry.digest) : .ambiguous
+                    let expected = Expectation.digest(entry.digest)
+                    if choices.count == 1, matched[index] == .missing || matched[index] == expected {
+                        matched[index] = expected
+                    } else {
+                        matched[index] = .ambiguous
+                    }
                 }
             }
         }

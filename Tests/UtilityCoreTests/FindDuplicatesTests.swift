@@ -43,6 +43,30 @@ struct FindDuplicatesTests {
         await #expect(throws: ToolError.self) { try await FindDuplicates.scan([root], options: options) }
     }
 
+    @Test func overlappingRootsKeepUniqueFilesOutOfDuplicateGroupsAndReportMissingRootsOnce() async throws {
+        let root = try Self.folder()
+        defer { try? FileManager.default.removeItem(at: root) }
+        let nested = root.appending(path: "Nested", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: nested, withIntermediateDirectories: false)
+        let payload = Data("duplicate".utf8)
+        let left = try Self.write("Notes.txt", payload, in: root)
+        let right = try Self.write("Notes.txt", payload, in: nested)
+        let unique = try Self.write("unique.txt", Data("different".utf8), in: nested)
+        let missing = root.appending(path: "Missing", directoryHint: .isDirectory)
+
+        let report = try await FindDuplicates.scan([nested, root, nested, missing, missing], options: .init())
+        #expect(report.fileCount == 3)
+        #expect(report.issues.map { $0.url.path } == [missing.path])
+        let group = try #require(report.groups.first)
+        #expect(report.groups.count == 1)
+        #expect(Set(group.files.map(\.url)) == [left, right])
+
+        let afterMove = report.removing([left, unique])
+        #expect(afterMove.fileCount == 2)
+        #expect(afterMove.groups.isEmpty)
+        #expect(afterMove.removing([left]).fileCount == 2)
+    }
+
     @Test func filtersFullPathsButKeepsAllCopiesOfEachMatchingGroup() async throws {
         let root = try Self.folder()
         defer { try? FileManager.default.removeItem(at: root) }

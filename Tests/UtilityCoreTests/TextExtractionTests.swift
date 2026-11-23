@@ -36,13 +36,21 @@ import UtilityCore
     let second = folder.appendingPathComponent("second.png")
     try writeTextExtractionImage(to: first)
     try writeTextExtractionImage(to: second, height: 640, top: "UPPER GARDEN")
+    let other = folder.appending(path: "Other", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
+    let linked = other.appending(path: first.lastPathComponent)
+    try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: second)
+    let corrupt = folder.appending(path: "Corrupt.png")
+    try Data("not an image".utf8).write(to: corrupt)
     var options = ToolOptions()
     options.textExtraction.language = "en-US"
     options.textExtraction.region = CGRect(x: 0, y: 0, width: 1, height: 0.5)
-    let report = try await ToolRunner.run(.extractText, inputs: [first, second],
+    let report = try await ToolRunner.run(.extractText, inputs: [first, corrupt, linked],
                                           destination: folder, imageSize: 0, options: options) { _ in }
-    #expect(report.failures.isEmpty)
-    #expect(report.textExtractions.map(\.source) == [first, second])
+    #expect(report.failures.count == 1 && report.failures.first?.hasPrefix("2 - Corrupt.png") == true)
+    #expect(report.textExtractions.map(\.source) == [first, linked])
+    #expect(report.textExtractions.map(\.inputLabel) == ["1 - first.png", "3 - first.png"])
+    #expect(report.outputs.map(\.lastPathComponent) == ["1 - first.txt", "3 - first.txt"])
     let text = report.textExtractions.map { $0.result.text }
     #expect(text.count == 2)
     #expect(text.first?.contains("UPPER ORCHARD") == true)
@@ -74,14 +82,16 @@ import UtilityCore
     #expect(scanned.text.contains("UPPER ORCHARD"))
     #expect(scanned.pages.first?.error == nil)
     options.range = "2, 1"
-    let extracted = try await TextExtraction.extract(embedded, options: options)
+    let linked = folder.appending(path: "Linked document.pdf")
+    try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: embedded)
+    let extracted = try await TextExtraction.extract(linked, options: options)
     #expect(extracted.pages.compactMap(\.pageNumber) == [2, 1])
     #expect(extracted.pages.first?.text == "SECOND DOCUMENT PAGE")
     #expect(extracted.text.contains("Page 2\n\nSECOND DOCUMENT PAGE\n\u{000C}\nPage 1"))
     options.includePageBreaks = false
     let withoutBreaks = try await TextExtraction.extract(embedded, options: options)
     #expect(withoutBreaks.text == "SECOND DOCUMENT PAGE\n\nFIRST DOCUMENT PAGE")
-    #expect(try await TextExtraction.regionPreviewPages(embedded, range: "2, 1", password: "") == [2, 1])
+    #expect(try await TextExtraction.regionPreviewPages(linked, range: "2, 1", password: "") == [2, 1])
     await #expect(throws: ToolError.self) {
         try await TextExtraction.regionPreviewPages(embedded, range: "none", password: "")
     }

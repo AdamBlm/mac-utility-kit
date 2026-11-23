@@ -34,7 +34,7 @@ public enum SpeechDocument {
         let markdown = ["md", "markdown"].contains(url.pathExtension.lowercased())
         let text: String
         if type?.conforms(to: .pdf) == true {
-            text = try extractPDF(url, range: pages, password: password, recognizesScans: recognizesScans)
+            text = try await extractPDF(url, range: pages, password: password, recognizesScans: recognizesScans)
         } else if type?.conforms(to: .rtf) == true {
             let data = try Data(contentsOf: url, options: .mappedIfSafe)
             text = try readRTF(data)
@@ -66,7 +66,7 @@ public enum SpeechDocument {
         return text
     }
 
-    private static func extractPDF(_ url: URL, range: String, password: String, recognizesScans: Bool) throws -> String {
+    private static func extractPDF(_ url: URL, range: String, password: String, recognizesScans: Bool) async throws -> String {
         let source = try PDFSourceStamp.read(url)
         guard source.bytes <= maximumDocumentBytes else { throw ToolError.invalid("Choose a local document under 24 MB.") }
         let pdf = try TextExtraction.openPDF(source.resolved, password: password)
@@ -82,7 +82,7 @@ public enum SpeechDocument {
             let text: String?
             if recognizesScans {
                 do {
-                    text = try SearchablePDF.recognitionResult(for: page, index: index, options: recognition).text
+                    text = try await SearchablePDF.recognitionResult(for: page, index: index, options: recognition).text
                 } catch {
                     try Task.checkCancellation()
                     throw ToolError.invalid("Could not recognize PDF page \(index + 1). \(error.localizedDescription)")

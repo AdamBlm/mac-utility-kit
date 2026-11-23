@@ -208,7 +208,16 @@ public enum OrganizeDownloads {
         let suffix = source.pathExtension.isEmpty ? "" : "." + source.pathExtension
         for count in 1...10_000 {
             try Task.checkCancellation()
-            let name = count == 1 ? source.lastPathComponent : "\(stem) \(count)\(suffix)"
+            let number = " \(count)"
+            let numberedExtension = number + suffix
+            let name: String
+            if count == 1 {
+                name = source.lastPathComponent
+            } else if OutputFilename.fits("a" + numberedExtension) {
+                name = OutputFilename.shortenedStem(stem, suffix: numberedExtension) + numberedExtension
+            } else {
+                name = OutputFilename.shortenedStem(source.lastPathComponent, suffix: number) + number
+            }
             if try rename(name) == 0 { return folder.appending(path: name) }
             let error = errno
             if error != EEXIST { throw posix(error) }

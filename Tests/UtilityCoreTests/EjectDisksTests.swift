@@ -85,11 +85,19 @@ struct EjectDisksTests {
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_EJECT_TEST_DISK"] != nil))
     func ejectsDisposableDiskImage() async throws {
         let identifier = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_EJECT_TEST_DISK"])
-        let groups = try await EjectDisks.inventory()
-        let group = try #require(groups.first {
-            $0.id.device == identifier && $0.isDiskImage && $0.name == "fixture.dmg"
-                && $0.volumes.count == 1 && $0.volumes.first?.name == "MUK Eject Fixture"
-        })
+        // Disk Arbitration and diskutil can observe a newly attached image at different times.
+        let deadline = ContinuousClock.now + .seconds(5)
+        var fixture: EjectDevice?
+        repeat {
+            let groups = try await EjectDisks.inventory()
+            fixture = groups.first {
+                $0.id.device == identifier && $0.isDiskImage && $0.name == "fixture.dmg"
+                    && $0.volumes.count == 1 && $0.volumes.first?.name == "MUK Eject Fixture"
+            }
+            if fixture != nil || ContinuousClock.now >= deadline { break }
+            try await Task.sleep(for: .milliseconds(100))
+        } while ContinuousClock.now < deadline
+        let group = try #require(fixture, "The disposable image did not appear in disk inventory before the deadline.")
         let volume = try #require(group.volumes.first)
         let unmount = await EjectDisks.perform([volume.id])
         #expect(unmount.map(\.status) == [.unmounted])

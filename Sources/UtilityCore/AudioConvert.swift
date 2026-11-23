@@ -186,9 +186,8 @@ public enum AudioConvert {
     }
 
     package static func sourceFormat(_ input: URL) -> SourceFormat? {
-        guard input.isFileURL,
-              (try? input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true,
-              let file = try? AVAudioFile(forReading: input) else { return nil }
+        guard let resolved = LocalInputFile.regularFile(input),
+              let file = try? AVAudioFile(forReading: resolved) else { return nil }
         let rate = file.fileFormat.sampleRate.rounded()
         guard rate.isFinite, rate > 0, rate < Double(Int.max) else { return nil }
         return SourceFormat(sampleRate: Int(rate), channels: Int(file.fileFormat.channelCount))
@@ -200,12 +199,13 @@ public enum AudioConvert {
     ) async throws -> String {
         if let issue = options.validationIssue { throw ToolError.invalid(issue) }
         let manager = FileManager.default
-        guard input.isFileURL, try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true,
-              output.isFileURL, input.standardizedFileURL != output.standardizedFileURL,
+        let version = try LocalInputFile.Version.read(input)
+        let resolved = version.resolved
+        guard LocalInputFile.isLocalURL(output), resolved != output.resolvingSymlinksInPath().standardizedFileURL,
               !manager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a local audio source and a new output file.")
         }
-        let source = sourceFormat(input)
+        let source = sourceFormat(resolved)
         if let source, let issue = options.sourceIssue(source) { throw ToolError.invalid(issue) }
         let options = options.resolved(for: source)
         let expectedRate = options.sampleRate ?? source?.sampleRate
@@ -215,9 +215,9 @@ public enum AudioConvert {
         defer { try? manager.removeItem(at: staging) }
         let candidate = staging.appending(path: "Converted." + options.format.rawValue)
         if options.format.requiresFFmpeg {
-            try await FFmpegAudioConvert.export(input, to: candidate, options: options, mp3Rate: expectedRate)
+            try await FFmpegAudioConvert.export(resolved, to: candidate, options: options, mp3Rate: expectedRate)
         } else {
-            let asset = AVURLAsset(url: input, options: [
+            let asset = AVURLAsset(url: resolved, options: [
                 AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue),
                 AVURLAssetPreferPreciseDurationAndTimingKey: true
             ])
@@ -254,6 +254,9 @@ public enum AudioConvert {
             throw ToolError.invalid("The converted file has no playable audio samples.")
         }
         try Task.checkCancellation()
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The source audio changed during conversion. Try again.")
+        }
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let khz = (Double(rate) / 1000).formatted(.number.precision(.fractionLength(0...3)))

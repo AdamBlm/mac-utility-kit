@@ -33,7 +33,9 @@ struct MacUtilityKitApp: App {
                 audioRecordingController: audioRecordingController,
                 screenRecordingController: screenRecordingController
             )
+            .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
             .task {
+                exportDelegate.attachPDFRouting(to: launcherController)
                 await VideoEngineSettings.shared.refresh()
                 while !Task.isCancelled {
                     await VideoEngineSettings.shared.updateAutomatically()
@@ -42,7 +44,7 @@ struct MacUtilityKitApp: App {
                 }
             }
         }
-            .windowToolbarStyle(.unifiedCompact(showsTitle: false))
+        .windowToolbarStyle(.unifiedCompact(showsTitle: false))
         .defaultSize(width: 940, height: 690)
         .commands { ImportFromDevicesCommands() }
 
@@ -50,6 +52,7 @@ struct MacUtilityKitApp: App {
             ToolLauncherView(controller: launcherController)
         }
         .defaultSize(width: 520, height: 370)
+        .handlesExternalEvents(matching: [])
         .defaultLaunchBehavior(.suppressed)
 
         MenuBarExtra("Mac Utility Kit", systemImage: "square.grid.2x2", isInserted: $launcher.menuBarEnabled) {
