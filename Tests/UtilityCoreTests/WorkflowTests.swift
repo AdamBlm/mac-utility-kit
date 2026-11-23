@@ -11,14 +11,34 @@ import UtilityCore
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let valid = try imageFixture(in: folder)
-    let invalid = folder.appendingPathComponent("invalid.png")
-    try Data().write(to: invalid)
+    let broken = try [1, 3].map { index in
+        let parent = folder.appendingPathComponent("Folder \(index)")
+        try FileManager.default.createDirectory(at: parent, withIntermediateDirectories: false)
+        let file = parent.appendingPathComponent(valid.lastPathComponent)
+        try Data().write(to: file)
+        return file
+    }
     let original = try Data(contentsOf: valid)
     let report = try await ToolRunner.run(
-        .resizeImages, inputs: [valid, invalid], destination: folder, imageSize: 40
-    ) { _ in }
+        .resizeImages, inputs: [broken[0], valid, broken[1]], destination: folder, imageSize: 40
+    ) { fraction in
+        guard fraction == 2.0 / 3.0 else { return }
+        do {
+            let files = try FileManager.default.contentsOfDirectory(atPath: folder.path)
+            let staging = try #require(files.first { $0.hasPrefix(".MacUtilityKit-") })
+            let path = folder.appendingPathComponent(staging).path
+            let permissions = try FileManager.default.attributesOfItem(atPath: path)[.posixPermissions] as? NSNumber
+            #expect(permissions?.intValue == 0o700)
+        } catch {
+            Issue.record("Could not check the batch staging permissions: \(error)")
+        }
+    }
 
-    #expect(report.failures.count == 1)
+    #expect(report.failures.count == 2)
+    #expect(report.failures.first?.hasPrefix("1 - \(valid.lastPathComponent) — ") == true)
+    #expect(report.failures.last?.hasPrefix("3 - \(valid.lastPathComponent) — ") == true)
+    #expect(report.outputs.count == 1)
+    #expect(report.outputs.first?.lastPathComponent == "2 - \(valid.lastPathComponent)")
     let output = try #require(report.outputs.first)
     let source = try #require(CGImageSourceCreateWithURL(output as CFURL, nil))
     let image = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
@@ -244,10 +264,7 @@ private func writeVideoFixture(
     CVPixelBufferUnlockBaseAddress(frame, [])
 
     for index in 0..<frames {
-        for _ in 0..<500 where !input.isReadyForMoreMediaData && writer.status == .writing {
-            try await Task.sleep(for: .milliseconds(2))
-        }
-        try #require(input.isReadyForMoreMediaData)
+        try await waitForFixtureVideoInput(input, writer: writer)
         try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 30)))
     }
     input.markAsFinished()
@@ -444,6 +461,31 @@ func resizeImageRejectsMultiplePagesAndPublishesOrientedStill(useImageMagick: Bo
     #expect(try Data(contentsOf: multi) == multiBytes)
 }
 
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
+func resizeBatchDiscardsAReplacedImageAndContinuesWithTheNextFile() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let source = try imageFixture(in: folder)
+    let first = folder.appending(path: "input.png")
+    let replacement = folder.appending(path: "replacement.png")
+    for file in [first, replacement] { try FileManager.default.copyItem(at: source, to: file) }
+    let original = try Data(contentsOf: source)
+    var options = ToolOptions()
+    options.imageMagickExecutable = try imageMagickWithSourceReplacement(in: folder)
+    let report = try await ToolRunner.run(.resizeImages, inputs: [first, source], destination: folder,
+                                          imageSize: 40, options: options) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.contains("input.png — The source image changed") == true)
+    #expect(report.outputs.map(\.lastPathComponent) == ["2 - " + source.lastPathComponent])
+    let published = try #require(report.outputs.first)
+    let decoded = try #require(CGImageSourceCreateWithURL(published as CFURL, nil))
+    let image = try #require(CGImageSourceCreateImageAtIndex(decoded, 0, nil))
+    #expect(image.width == 40 && image.height == 20)
+    #expect(try Data(contentsOf: source) == original)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: published.deletingLastPathComponent().path)
+            == [published.lastPathComponent])
+}
+
 @Test func videoSampleAndExportUseSelectedFormat() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
@@ -516,7 +558,8 @@ func resizeImageRejectsMultiplePagesAndPublishesOrientedStill(useImageMagick: Bo
     #expect(!names.contains { $0.hasPrefix(".MacUtilityKit-") })
 }
 
-@Test func trimVideoUsesEachPreviewedRangeInAMixedDurationBatch() async throws {
+@Test(arguments: [false, true])
+func trimVideoUsesEachPreviewedRangeInAMixedDurationBatch(replaceShort: Bool) async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let long = folder.appending(path: "long.mov")
@@ -529,9 +572,19 @@ func resizeImageRejectsMultiplePagesAndPublishesOrientedStill(useImageMagick: Bo
     let longRange = try await TrimVideo.plannedRange(long, options: options.trim)
     let shortRange = try await TrimVideo.plannedRange(short, options: options.trim)
     #expect(longRange.end > shortRange.end)
+    options.trimSourceVersions = try [0: LocalInputFile.Version.read(long), 1: LocalInputFile.Version.read(short)]
+    if replaceShort {
+        let sameBytes = try Data(contentsOf: short)
+        try sameBytes.write(to: short, options: .atomic)
+    }
     let report = try await ToolRunner.run(.trimVideo, inputs: inputs, destination: folder, imageSize: 0, options: options) { _ in }
-    #expect(report.failures.isEmpty)
-    #expect(report.outputs.count == 2)
+    if replaceShort {
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("short.mov — The video changed after the trim preview") == true)
+    } else {
+        #expect(report.failures.isEmpty)
+    }
+    #expect(report.outputs.count == (replaceShort ? 1 : 2))
     for (output, planned) in zip(report.outputs, [longRange, shortRange]) {
         let asset = AVURLAsset(url: output)
         #expect(try await asset.load(.isPlayable))
@@ -594,6 +647,27 @@ func resizeImageRejectsMultiplePagesAndPublishesOrientedStill(useImageMagick: Bo
         try await ToolRunner.run(.mergeVideos, inputs: [first, missing], destination: folder, imageSize: 0) { _ in }
     }
     #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == names)
+}
+
+@Test func mergeVideosRejectsAClipReplacedBeforeItReadsTheSequence() async throws {
+    let folder = try temporaryFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appending(path: "first.mov")
+    let second = folder.appending(path: "second.mov")
+    let replacement = folder.appending(path: "replacement.mov")
+    for clip in [first, second, replacement] { try await writeVideoFixture(to: clip, frames: 8) }
+    let output = folder.appending(path: "output.mov")
+    await #expect {
+        try await VideoMerge.export([first, second], to: output, options: VideoMergeOptions()) { progress in
+            if progress == 0 {
+                do { _ = try FileManager.default.replaceItemAt(second, withItemAt: replacement) }
+                catch { Issue.record("Could not replace the video fixture: \(error)") }
+            }
+        }
+    } throws: { error in
+        error.localizedDescription == "second.mov changed during merging. Try again."
+    }
+    #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["first.mov", "second.mov"])
 }
 
 @Test func replaceAudioPublishesPlayableSoundtrackThroughSharedRunner() async throws {
@@ -672,19 +746,28 @@ private func writeToneFixture(to audio: URL) throws {
     #expect(try AudioTrim.source(source).frameCount == 48_000)
 }
 
-@Test func balancedKeeps4KResolutionInExportAndSample() async throws {
+@Test func balancedKeepsEachSourceResolutionInMixedBatchAnd4KSample() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let source = folder.appendingPathComponent("4k.mov")
     let rotation = CGAffineTransform(a: 0, b: 1, c: -1, d: 0, tx: 2160, ty: 0)
     try await writeVideoFixture(to: source, width: 3840, height: 2160, frames: 8, transform: rotation)
 
+    let landscape = folder.appendingPathComponent("1080p.mov")
+    try await writeVideoFixture(to: landscape, width: 1920, height: 1080, frames: 8)
+
     let options = ToolOptions()
     let report = try await ToolRunner.run(
-        .compressVideo, inputs: [source], destination: folder, imageSize: 0, options: options
+        .compressVideo, inputs: [source, landscape], destination: folder, imageSize: 0, options: options
     ) { _ in }
     #expect(report.failures.isEmpty)
-    let export = try #require(report.outputs.first)
+    try #require(report.outputs.count == 2)
+    #expect(report.outputs.map { $0.deletingPathExtension().lastPathComponent } == ["1 - 4k", "2 - 1080p"])
+    let landscapeAsset = AVURLAsset(url: report.outputs[1])
+    let landscapeTrack = try #require(try await landscapeAsset.loadTracks(withMediaType: .video).first)
+    #expect(try await landscapeTrack.load(.naturalSize) == CGSize(width: 1920, height: 1080))
+    #expect(try await landscapeTrack.load(.preferredTransform) == .identity)
+    let export = report.outputs[0]
     let sample = try await ToolRunner.sampleVideo(source, destination: folder, options: options)
 
     for url in [export, sample.url] {
@@ -764,19 +847,71 @@ func imageMagickFillMatchesDimensionsAndPreservesInput() async throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: output.deletingLastPathComponent().path) == [output.lastPathComponent])
 }
 
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil),
+      arguments: [Tool.resizeImages, .convertImages])
+func imageMagickBatchPublishesOnlyVerifiedOutputs(tool: Tool) async throws {
+    let manager = FileManager.default
+    let executable = try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"])
+    let folder = try temporaryFolder()
+    defer { try? manager.removeItem(at: folder) }
+    let realEngine = folder.appending(path: "real-magick")
+    try manager.createSymbolicLink(at: realEngine, withDestinationURL: URL(filePath: executable))
+    let wrapper = folder.appending(path: "magick-wrapper")
+    try Data(#"""
+    #!/bin/sh
+    engine_dir=$(dirname "$0")
+    count=$(cat "$engine_dir/count" 2>/dev/null || echo 0)
+    count=$((count + 1))
+    echo "$count" > "$engine_dir/count"
+    printf '%s\n' diagnostic > engine-diagnostics.txt
+    "$engine_dir/real-magick" "$@" || exit $?
+    if [ "$count" -eq 2 ]; then
+        echo 'export failed after writing' >&2
+        exit 1
+    fi
+    """#.utf8).write(to: wrapper)
+    try manager.setAttributes([.posixPermissions: 0o700], ofItemAtPath: wrapper.path)
+    let source = try imageFixture(in: folder)
+    let failing = folder.appending(path: "fail.png")
+    let last = folder.appending(path: "last.png")
+    for copy in [failing, last] { try manager.copyItem(at: source, to: copy) }
+    let original = try Data(contentsOf: source)
+
+    var options = ToolOptions()
+    options.imageMagickExecutable = wrapper
+    options.imageConversion.format = .webp
+    options.imageConversion.imageMagickExecutable = wrapper
+    let report = try await ToolRunner.run(
+        tool, inputs: [source, failing, last], destination: folder, imageSize: 40, options: options
+    ) { _ in }
+
+    #expect(report.failures == ["fail.png — export failed after writing"])
+    #expect(report.outputs.count == 2)
+    let firstOutput = try #require(report.outputs.first)
+    let published = try manager.contentsOfDirectory(atPath: firstOutput.deletingLastPathComponent().path)
+    #expect(Set(published) == Set(report.outputs.map(\.lastPathComponent)))
+    for input in [source, failing, last] { #expect(try Data(contentsOf: input) == original) }
+}
+
 @Test func mediaInfoPublishesJSONAndPreservesOtherBatchResultsOnBadInput() async throws {
     let folder = try temporaryFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
     let valid = folder.appendingPathComponent("source.mov")
+    let other = folder.appending(path: "Other", directoryHint: .isDirectory)
+    try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
+    let duplicate = other.appending(path: valid.lastPathComponent)
     let invalid = folder.appendingPathComponent("broken.mov")
     try await writeVideoFixture(to: valid, frames: 8)
+    try FileManager.default.copyItem(at: valid, to: duplicate)
     try Data("No media".utf8).write(to: invalid)
     let report = try await ToolRunner.run(
-        .mediaInfo, inputs: [valid, invalid], destination: folder, imageSize: 0
+        .mediaInfo, inputs: [valid, invalid, duplicate], destination: folder, imageSize: 0
     ) { _ in }
     #expect(report.failures.count == 1)
-    #expect(report.outputs.count == 1)
-    #expect(report.summaries.first?.hasPrefix("source.mov\n") == true)
+    #expect(report.outputs.count == 2)
+    #expect(report.summaries.first?.hasPrefix("1 - source.mov\n") == true)
+    #expect(report.inspections.map(\.filename) == ["source.mov", "source.mov"])
+    #expect(report.inspections.map(\.inputLabel) == ["1 - source.mov", "3 - source.mov"])
     let output = try #require(report.outputs.first)
     #expect(output.pathExtension == "json")
     let data = try Data(contentsOf: output)

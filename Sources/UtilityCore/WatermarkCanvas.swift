@@ -46,6 +46,7 @@ struct WatermarkArtwork {
                   let logo = CGImageSourceCreateThumbnailAtIndex(source, CGImageSourceGetPrimaryImageIndex(source), [
                       kCGImageSourceCreateThumbnailFromImageAlways: true,
                       kCGImageSourceCreateThumbnailWithTransform: true,
+                      kCGImageSourceShouldCacheImmediately: true,
                       kCGImageSourceThumbnailMaxPixelSize: 2048
                   ] as CFDictionary) else {
                 throw ToolError.invalid("Choose a readable, single-frame logo image.")

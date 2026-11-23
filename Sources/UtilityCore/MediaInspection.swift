@@ -4,6 +4,7 @@ import UniformTypeIdentifiers
 
 public struct MediaInspectionOptions: Sendable {
     public var ffprobeExecutable: URL?
+    package var automaticFFprobeExecutable: URL?
 
     public init(ffprobeExecutable: URL? = nil) {
         self.ffprobeExecutable = ffprobeExecutable
@@ -40,13 +41,34 @@ public enum MediaInspection {
         _ input: URL, options: MediaInspectionOptions = .init()
     ) async throws -> MediaInspectionReport {
         try Task.checkCancellation()
-        guard input.isFileURL, try input.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile == true else {
-            throw ToolError.invalid("Choose a local video or audio file.")
-        }
+        let version = try LocalInputFile.Version.read(input)
+        let source = version.resolved
+        let filename = input.lastPathComponent
+        let report: MediaInspectionReport
         if let executable = options.ffprobeExecutable {
-            return try await FFprobeInspection.inspect(input, executable: executable)
+            report = try await FFprobeInspection.inspect(source, filename: filename, executable: executable)
+        } else {
+            do {
+                report = try await inspectNatively(source, filename: filename)
+            } catch {
+                try Task.checkCancellation()
+                guard let executable = options.automaticFFprobeExecutable else { throw error }
+                try verify(input, version: version)
+                report = try await FFprobeInspection.inspect(source, filename: filename, executable: executable, automatic: true)
+            }
         }
+        try Task.checkCancellation()
+        try verify(input, version: version)
+        return report
+    }
 
+    private static func verify(_ input: URL, version: LocalInputFile.Version) throws {
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The media file changed during inspection. Try again.")
+        }
+    }
+
+    private static func inspectNatively(_ input: URL, filename: String) async throws -> MediaInspectionReport {
         let asset = AVURLAsset(url: input, options: [
             AVURLAssetPreferPreciseDurationAndTimingKey: true,
             AVURLAssetReferenceRestrictionsKey: NSNumber(value: AVAssetReferenceRestrictions.forbidAll.rawValue)
@@ -59,7 +81,7 @@ public enum MediaInspection {
         let size = try input.resourceValues(forKeys: [.fileSizeKey]).fileSize
         let type = UTType(filenameExtension: input.pathExtension)
         var sections = [Section(title: "File", rows: [
-            row("Filename", input.lastPathComponent),
+            row("Filename", filename),
             row("Container (inferred from extension)", type?.localizedDescription),
             row("Duration", seconds(duration.seconds)),
             row("File size", size.map { bytes(Int64($0)) }),

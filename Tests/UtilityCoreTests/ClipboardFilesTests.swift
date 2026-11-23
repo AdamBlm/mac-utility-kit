@@ -64,6 +64,43 @@ struct ClipboardFilesTests {
         #expect(ClipboardFiles.read(from: board, allowedTypes: [.image]).isEmpty)
     }
 
+    @Test func acceptsClipboardSymlinksByTheirTargetType() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let pdf = folder.appending(path: "Document.pdf")
+        try Data().write(to: pdf)
+        let link = folder.appending(path: "Clipboard shortcut")
+        try FileManager.default.createSymbolicLink(at: link, withDestinationURL: pdf)
+
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        try #require(board.writeObjects([link as NSURL, pdf as NSURL]))
+        #expect(ClipboardFiles.read(from: board, allowedTypes: [.pdf]) == [link, pdf])
+    }
+
+    @Test func mixedWorkspaceInputsKeepSupportedFilesInOrder() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let image = folder.appending(path: "Picture.png")
+        let pdf = folder.appending(path: "Document.pdf")
+        let unrelated = folder.appending(path: "Notes.txt")
+        for url in [image, pdf, unrelated] { try Data().write(to: url) }
+        let directory = folder.appending(path: "Folder.pdf")
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        let linkedPDF = folder.appending(path: "Linked document.pdf")
+        try FileManager.default.createSymbolicLink(at: linkedPDF, withDestinationURL: pdf)
+        let missing = folder.appending(path: "Missing.pdf")
+        let remote = try #require(URL(string: "https://example.test/remote.pdf"))
+        let offered = [image, directory, unrelated, linkedPDF, missing, remote, pdf]
+
+        #expect(offered.filter { LocalInputFile.matches($0, allowedTypes: Tool.mergePDFs.inputTypes) }
+                == [image, linkedPDF, pdf])
+        #expect(offered.filter { LocalInputFile.matches($0, allowedTypes: Tool.splitPDF.inputTypes) }
+                == [linkedPDF, pdf])
+    }
+
     @Test func mergesCopiedPDFAndImageInClipboardOrder() async throws {
         let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)

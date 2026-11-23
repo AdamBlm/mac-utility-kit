@@ -5,12 +5,10 @@ import UniformTypeIdentifiers
 @MainActor
 package enum ClipboardFiles {
     package static func read(from board: NSPasteboard, allowedTypes: [UTType]) -> [URL] {
-        let options: [NSPasteboard.ReadingOptionKey: Any] = [
-            .urlReadingFileURLsOnly: true,
-            .urlReadingContentsConformToTypes: allowedTypes.map(\.identifier)
-        ]
+        // Check content types after resolving local symlinks, as file drops do.
+        let options: [NSPasteboard.ReadingOptionKey: Any] = [.urlReadingFileURLsOnly: true]
         return (board.readObjects(forClasses: [NSURL.self], options: options) as? [URL] ?? [])
-            .filter(isLocalFile)
+            .filter { LocalInputFile.matches($0, allowedTypes: allowedTypes) }
     }
 
     package enum Content {
@@ -29,17 +27,8 @@ package enum ClipboardFiles {
 
     private static func file(from item: NSPasteboardItem, allowedTypes: [UTType]) -> URL? {
         guard let value = item.string(forType: .fileURL), let url = URL(string: value),
-              isLocalFile(url), let type = try? url.resourceValues(forKeys: [.contentTypeKey]).contentType,
-              allowedTypes.contains(where: { type.conforms(to: $0) }) else { return nil }
+              LocalInputFile.matches(url, allowedTypes: allowedTypes) else { return nil }
         return url
-    }
-
-    private static func isLocalFile(_ file: URL) -> Bool {
-        let host = file.host()?.lowercased() ?? ""
-        guard file.isFileURL, host.isEmpty || host == "localhost",
-              file.user() == nil, file.password() == nil, file.port == nil,
-              file.query() == nil, file.fragment() == nil else { return false }
-        return (try? file.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true
     }
 
     package static func readImage(from board: NSPasteboard) throws -> CGImage? {

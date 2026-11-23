@@ -31,7 +31,8 @@ struct Hash: AsyncParsableCommand, CatalogCommandBinding {
         for file in files {
             do {
                 let value = try await HashGenerator.file(URL(filePath: file), algorithm: algorithm.hash)
-                print("\(value)  \(file)")
+                let line = HashChecksumList.checksumLine(value, path: file, binary: false)
+                print(String(decoding: line, as: UTF8.self), terminator: "")
             } catch {
                 failed = true
                 writeError("\(file): \(error.localizedDescription)")
@@ -72,7 +73,15 @@ struct FormatJSON: CatalogCommandBinding {
 }
 
 func readUTF8Text(file: String, limit: Int, invalidInput: String, preservesBOM: Bool = false) throws -> String {
-    let handle = file == "-" ? FileHandle.standardInput : try FileHandle(forReadingFrom: URL(filePath: file))
+    let handle: FileHandle
+    if file == "-" {
+        handle = .standardInput
+    } else {
+        guard let input = LocalInputFile.regularFile(URL(filePath: file)) else {
+            throw ValidationError("Choose a local regular file or use - for standard input.")
+        }
+        handle = try FileHandle(forReadingFrom: input)
+    }
     defer { if file != "-" { try? handle.close() } }
     var data = Data()
     while data.count <= limit, let chunk = try handle.read(upToCount: min(64 * 1024, limit + 1 - data.count)), !chunk.isEmpty {

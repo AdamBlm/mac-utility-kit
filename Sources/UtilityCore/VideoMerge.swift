@@ -77,6 +77,10 @@ public enum VideoMerge {
               !inputs.contains(where: { $0.standardizedFileURL == output.standardizedFileURL }) else {
             throw ToolError.invalid("Choose a new local output file.")
         }
+        let versions = try inputs.map(LocalInputFile.Version.read)
+        await progress(0)
+        try Task.checkCancellation()
+        for (version, input) in zip(versions, inputs) { try version.verify(input) }
         let prepared = try await prepare(inputs, options: options)
         if options.mode == .passthrough, let issue = prepared.plan.passthroughIssue {
             throw ToolError.invalid(issue)
@@ -101,6 +105,7 @@ public enum VideoMerge {
         try await export.exportMedia(to: candidate, as: fileType)
         try await verify(candidate, options: options, prepared: prepared)
         try Task.checkCancellation()
+        for (version, input) in zip(versions, inputs) { try version.verify(input) }
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return "\(inputs.count) clips · \(options.format.title) · \(options.mode.rawValue)"

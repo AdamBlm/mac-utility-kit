@@ -149,6 +149,34 @@ func imageConversionUsesImageMagickForWebPWithoutLosingAlpha() async throws {
     #expect(try FileManager.default.contentsOfDirectory(atPath: folder.path).sorted() == ["export.webp", "original.png"])
 }
 
+@Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_MAGICK_TEST"] != nil))
+func imageConversionBatchContinuesWhenASourceIsReplacedDuringEncoding() async throws {
+    let folder = try conversionFolder()
+    defer { try? FileManager.default.removeItem(at: folder) }
+    let first = folder.appending(path: "input.png")
+    let second = folder.appending(path: "unchanged.png")
+    let replacement = folder.appending(path: "replacement.png")
+    for file in [first, second, replacement] {
+        try writeConversionImage(to: file, type: .png, orientation: 1)
+    }
+    let original = try Data(contentsOf: second)
+    var options = ToolOptions()
+    options.imageConversion.format = .webp
+    options.imageConversion.losslessWebP = true
+    options.imageConversion.imageMagickExecutable = try imageMagickWithSourceReplacement(in: folder)
+
+    let report = try await ToolRunner.run(.convertImages, inputs: [first, second], destination: folder,
+                                          imageSize: 0, options: options) { _ in }
+    #expect(report.failures.count == 1)
+    #expect(report.failures.first?.contains("input.png — The source image changed during conversion") == true)
+    #expect(report.outputs.map(\.lastPathComponent) == ["2 - unchanged.webp"])
+    let output = try #require(report.outputs.first)
+    #expect(try ImageConversion.hasTransparency(output))
+    #expect(try Data(contentsOf: second) == original)
+    #expect(try FileManager.default.contentsOfDirectory(atPath: output.deletingLastPathComponent().path)
+            == [output.lastPathComponent])
+}
+
 private func conversionFolder() throws -> URL {
     let folder = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
     try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)

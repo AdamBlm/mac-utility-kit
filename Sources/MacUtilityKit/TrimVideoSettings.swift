@@ -7,6 +7,7 @@ struct TrimVideoReview {
     let inputs: [URL]
     let options: TrimVideoOptions
     let ranges: [Result<VideoTrimRange, Error>]
+    let sourceVersions: [Int: LocalInputFile.Version]
 
     var permitsExport: Bool { ranges.contains { (try? $0.get()) != nil } }
 }
@@ -230,16 +231,24 @@ struct TrimVideoSettings: View {
         do {
             try await Task.sleep(for: .milliseconds(250))
             var ranges: [Result<VideoTrimRange, Error>] = []
-            for input in request.inputs {
+            var sourceVersions: [Int: LocalInputFile.Version] = [:]
+            for (index, input) in request.inputs.enumerated() {
                 do {
-                    ranges.append(.success(try await TrimVideo.plannedRange(input, options: request.options)))
+                    let version = try LocalInputFile.Version.read(input)
+                    sourceVersions[index] = version
+                    let range = try await TrimVideo.plannedRange(input, options: request.options)
+                    guard (try? LocalInputFile.Version.read(input)) == version else {
+                        throw ToolError.invalid("The video changed during trim review. Remove it and add it again.")
+                    }
+                    ranges.append(.success(range))
                 } catch {
                     try Task.checkCancellation()
                     ranges.append(.failure(error))
                 }
             }
             try Task.checkCancellation()
-            review = TrimVideoReview(inputs: request.inputs, options: request.options, ranges: ranges)
+            review = TrimVideoReview(inputs: request.inputs, options: request.options, ranges: ranges,
+                                     sourceVersions: sourceVersions)
         } catch {
             return
         }

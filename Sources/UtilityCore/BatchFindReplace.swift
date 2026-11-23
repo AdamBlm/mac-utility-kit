@@ -28,8 +28,9 @@ package enum BatchFindReplace {
         package let after: String
         package let error: String?
         let version: PlainTextDecoding.FileVersion?
+        let output: Data?
 
-        package var changed: Bool { !before.utf8.elementsEqual(after.utf8) }
+        package var changed: Bool { output != nil }
     }
 
     @concurrent
@@ -54,7 +55,8 @@ package enum BatchFindReplace {
             try Task.checkCancellation()
             do {
                 let loaded = try await PlainTextDecoding.loadVerifiedFile(input, maximumBytes: maximumFileBytes)
-                guard let text = PlainTextDecoding.decode(loaded.bytes) else {
+                let format = PlainTextDecoding.Format(detecting: loaded.bytes)
+                guard let text = format.decode(loaded.bytes) else {
                     throw ToolError.invalid("Choose UTF-8 or BOM-marked Unicode text.")
                 }
                 let result: (text: String, count: Int)
@@ -66,18 +68,22 @@ package enum BatchFindReplace {
                 } else {
                     result = try replaceLiterally(text, options: options)
                 }
+                var output: Data?
                 if !text.utf8.elementsEqual(result.text.utf8) {
-                    let bytes = result.text.utf8.count
-                    guard bytes <= maximumBatchOutput - outputBytes else {
+                    guard let encoded = format.encode(result.text) else {
+                        throw ToolError.invalid("The replacement could not be encoded in the source format.")
+                    }
+                    guard encoded.count <= maximumBatchOutput - outputBytes else {
                         throw ToolError.invalid("The batch output limit was reached. Preview fewer files.")
                     }
-                    outputBytes += bytes
+                    outputBytes += encoded.count
+                    output = encoded
                 }
                 files.append(File(id: index, source: input, count: result.count,
-                                  before: text, after: result.text, error: nil, version: loaded.version))
+                                  before: text, after: result.text, error: nil, version: loaded.version, output: output))
             } catch {
                 try Task.checkCancellation()
-                files.append(File(id: index, source: input, count: 0, before: "", after: "", error: error.localizedDescription, version: nil))
+                files.append(File(id: index, source: input, count: 0, before: "", after: "", error: error.localizedDescription, version: nil, output: nil))
             }
         }
         return files
@@ -115,8 +121,7 @@ package enum BatchFindReplace {
 
     @concurrent
     package static func export(_ files: [File], to destination: URL) async throws -> URL {
-        let changed = files.filter(\.changed)
-        guard destination.isFileURL, !changed.isEmpty else {
+        guard destination.isFileURL, files.contains(where: \.changed) else {
             throw ToolError.invalid("Select a local destination and preview at least one changed file.")
         }
         let manager = FileManager.default
@@ -125,15 +130,16 @@ package enum BatchFindReplace {
         let result = destination.appendingPathComponent("Replaced Text - " + id, isDirectory: true)
         try manager.createDirectory(at: staging, withIntermediateDirectories: false)
         defer { try? manager.removeItem(at: staging) }
-        for file in changed {
+        for file in files {
+            guard let output = file.output else { continue }
             try Task.checkCancellation()
             let current = try await PlainTextDecoding.loadVerifiedFile(file.source, maximumBytes: maximumFileBytes)
             guard current.version.stamp == file.version?.stamp,
                   PlainTextDecoding.decode(current.bytes)?.utf8.elementsEqual(file.before.utf8) == true else {
                 throw ToolError.invalid("\(file.source.lastPathComponent) changed after preview. Preview the batch again.")
             }
-            let name = OutputFilename.numberedSource(file.source, position: file.id + 1, suffix: ".txt")
-            try Data(file.after.utf8).write(to: staging.appendingPathComponent(name))
+            let name = OutputFilename.numberedOriginal(file.source, position: file.id + 1)
+            try output.write(to: staging.appendingPathComponent(name))
         }
         try Task.checkCancellation()
         try manager.moveItem(at: staging, to: result)

@@ -104,6 +104,34 @@ struct ClipboardHistoryTests {
         #expect(history.entries.map(\.content) == [.text("permitted fixture")])
     }
 
+    @Test func preservesDistinctUnicodeBytesInAMultiItemCopy() throws {
+        let board = NSPasteboard.withUniqueName()
+        defer { board.releaseGlobally() }
+        let history = ClipboardHistoryController(pasteboard: { board }, foregroundApp: { ("example.app", "Example") })
+        history.start()
+        defer { history.disable() }
+
+        let composed = "Caf\u{00E9}"
+        let decomposed = "Cafe\u{0301}"
+        #expect(composed == decomposed)
+        let items = try [composed, decomposed].map { text in
+            let item = NSPasteboardItem()
+            try #require(item.setString(text, forType: .string))
+            return item
+        }
+        board.clearContents()
+        try #require(board.writeObjects(items))
+        history.poll()
+        #expect(history.entries.map(\.content) == [.text(composed), .text(decomposed)])
+
+        let second = try #require(history.entries.last)
+        #expect(history.copy(second))
+        let copied = try #require(board.string(forType: .string))
+        #expect(copied.utf8.elementsEqual(decomposed.utf8))
+        history.poll()
+        #expect(history.entries.count == 2)
+    }
+
     @Test func recopyRefreshesRetentionOrderWithoutLosingIdentityOrPin() throws {
         let board = NSPasteboard.withUniqueName()
         defer { board.releaseGlobally() }

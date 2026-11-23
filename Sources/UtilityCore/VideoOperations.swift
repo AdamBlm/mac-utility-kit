@@ -2,12 +2,14 @@ import AVFoundation
 
 enum VideoOperations {
     static func sample(_ input: URL, destination: URL, options: ToolOptions) async throws -> VideoSample {
+        try Task.checkCancellation()
+        let version = try LocalInputFile.Version.read(input)
         let folder = destination.appendingPathComponent("Video Sample - " + UUID().uuidString, isDirectory: true)
         try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
         let output = folder.appendingPathComponent("Preview." + options.videoFormat.rawValue)
         do {
-            try await compress(input, output: output, options: options, sample: true) { _ in }
-            let originalDuration = try await AVURLAsset(url: input).load(.duration).seconds
+            let originalDuration = try await AVURLAsset(url: version.resolved).load(.duration).seconds
+            try await compress(version.resolved, output: output, options: options, sample: true) { _ in }
             let sampleDuration = if options.videoFormat == .webm {
                 min(originalDuration, 5)
             } else {
@@ -17,6 +19,10 @@ enum VideoOperations {
             let estimate = bytes.flatMap { size -> Int64? in
                 guard originalDuration.isFinite, sampleDuration.isFinite, sampleDuration > 0 else { return nil }
                 return Int64(exactly: (Double(size) * originalDuration / sampleDuration).rounded())
+            }
+            try Task.checkCancellation()
+            guard (try? LocalInputFile.Version.read(input)) == version else {
+                throw ToolError.invalid("The source video changed while creating the sample. Try again.")
             }
             return VideoSample(url: output, estimatedBytes: estimate)
         } catch {

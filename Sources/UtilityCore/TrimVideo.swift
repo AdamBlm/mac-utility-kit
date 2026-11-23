@@ -68,10 +68,21 @@ public enum TrimVideo {
         _ input: URL, to output: URL, options: TrimVideoOptions,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
+        try await export(input, to: output, options: options, reviewedSource: nil, progress: progress)
+    }
+
+    static func export(
+        _ input: URL, to output: URL, options: TrimVideoOptions, reviewedSource: LocalInputFile.Version?,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> String {
         guard output.isFileURL, input.isFileURL,
               !FileManager.default.fileExists(atPath: output.path),
               output.standardizedFileURL != input.standardizedFileURL else {
             throw ToolError.invalid("Choose a new local output file.")
+        }
+        let inputVersion = try LocalInputFile.Version.read(input)
+        if let reviewedSource, inputVersion != reviewedSource {
+            throw ToolError.invalid("The video changed after the trim preview. Remove it and add it again.")
         }
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -85,6 +96,9 @@ public enum TrimVideo {
             range = try await exportPrecise(input, to: candidate, options: options, progress: progress)
         }
         try Task.checkCancellation()
+        guard (try? LocalInputFile.Version.read(input)) == inputVersion else {
+            throw ToolError.invalid("The video changed during trimming. Try again.")
+        }
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return "\(input.lastPathComponent) · \(range.start.formatted(.number.precision(.fractionLength(0...3))))–\(range.end.formatted(.number.precision(.fractionLength(0...3)))) s · \(options.mode.rawValue)"

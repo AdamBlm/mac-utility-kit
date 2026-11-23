@@ -20,13 +20,17 @@ struct ArchivePaths {
         return parts
     }
 
+    static func collisionKey(_ path: String) -> String {
+        path.precomposedStringWithCanonicalMapping.lowercased()
+    }
+
     mutating func insert(_ parts: [String], directory: Bool) throws -> String {
         let path = parts.joined(separator: "/")
         var prefix = ""
         for (index, name) in parts.enumerated() {
             prefix += index == 0 ? name : "/" + name
             let final = index == parts.count - 1
-            let key = prefix.precomposedStringWithCanonicalMapping.lowercased()
+            let key = Self.collisionKey(prefix)
             if var previous = members[key] {
                 guard previous.path == prefix, previous.directory, !final || (directory && !previous.explicit) else {
                     throw ToolError.invalid("Archive paths conflict at \(prefix).")

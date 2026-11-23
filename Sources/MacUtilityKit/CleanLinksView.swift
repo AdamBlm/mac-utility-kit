@@ -3,14 +3,8 @@ import UtilityCore
 
 struct CleanLinksDraft {
     var input = ""
-    var output: [CleanLinkRow] = []
+    var output: [CleanLinks.BatchRow] = []
     var unwrapRedirects = true
-}
-
-struct CleanLinkRow: Identifiable {
-    let id: Int
-    let input: String
-    let result: Result<CleanLinks.Result, Error>
 }
 
 struct CleanLinksView: View {
@@ -86,22 +80,12 @@ struct CleanLinksView: View {
     }
 
     private func clean() {
-        guard draft.input.utf8.count <= 1_048_576 else {
-            issue = "Enter up to 1 MB of links at a time."
-            return
+        do {
+            draft.output = try CleanLinks.cleanBatch(draft.input, unwrapRedirects: draft.unwrapRedirects)
+            issue = nil
+        } catch {
+            draft.output = []
+            issue = error.localizedDescription
         }
-        let lines = draft.input.split(whereSeparator: \.isNewline)
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .filter { !$0.isEmpty }
-        guard lines.count <= 500 else {
-            issue = "Enter up to 500 links at a time."
-            return
-        }
-        draft.output = lines.enumerated().map { index, line in
-            CleanLinkRow(id: index, input: line, result: Result {
-                try CleanLinks.clean(line, unwrapRedirects: draft.unwrapRedirects)
-            })
-        }
-        issue = nil
     }
 }

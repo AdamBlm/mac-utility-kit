@@ -16,16 +16,18 @@ struct BatchFindReplaceView: View {
     @State private var error: String?
     @State private var output: URL?
 
+    private let inputTypes = Tool.batchFindReplace.inputTypes
+
     var body: some View {
         InteractiveToolLayout(tool: .batchFindReplace) { palette in
             WorkspaceSection("Files", palette: palette) {
                 HStack {
                     Button("Add Text Files…", systemImage: "folder", action: openFiles)
-                    ClipboardFileButton(allowedTypes: [.plainText], buttonOnlyTitle: "Paste File") { add([$0]) }
+                    ClipboardFileButton(allowedTypes: inputTypes, buttonOnlyTitle: "Paste Files", onPaste: { _ = add($0) })
                 }
                 ForEach(Array(inputs.enumerated()), id: \.offset) { index, file in
                     HStack {
-                        Text(file.lastPathComponent).lineLimit(1)
+                        Text(file.lastPathComponent).lineLimit(1).help(file.path)
                         Spacer()
                         Button("Remove", systemImage: "xmark") { inputs.remove(at: index) }
                             .labelStyle(.iconOnly)
@@ -50,7 +52,9 @@ struct BatchFindReplaceView: View {
             if !results.isEmpty {
                 WorkspaceSection("Preview", palette: palette) {
                     Picker("File", selection: $selected) {
-                        ForEach(results) { file in Text(file.source.lastPathComponent).tag(Optional(file.id)) }
+                        ForEach(results) { file in
+                            Text("\(file.id + 1). \(file.source.lastPathComponent)").tag(Optional(file.id))
+                        }
                     }
                     if let file = results.first(where: { $0.id == selected }) {
                         if let error = file.error {
@@ -90,9 +94,7 @@ struct BatchFindReplaceView: View {
         .onChange(of: draft.options) { clearPreview() }
         .onDisappear { task?.cancel() }
         .dropDestination(for: URL.self) { urls, _ in
-            guard task == nil else { return false }
-            add(urls)
-            return true
+            task == nil && add(urls)
         }
     }
 
@@ -113,19 +115,23 @@ struct BatchFindReplaceView: View {
 
     private func openFiles() {
         let panel = NSOpenPanel()
-        panel.allowedContentTypes = [.plainText]
+        panel.allowedContentTypes = inputTypes
         panel.allowsMultipleSelection = true
-        if panel.runModal() == .OK { add(panel.urls) }
+        if panel.runModal() == .OK { _ = add(panel.urls) }
     }
 
-    private func add(_ urls: [URL]) {
+    private func add(_ urls: [URL]) -> Bool {
         var files = inputs
-        for url in urls where url.isFileURL && !files.contains(url) { files.append(url) }
+        for url in urls where !files.contains(url) && LocalInputFile.matches(url, allowedTypes: inputTypes) {
+            files.append(url)
+        }
+        guard files.count > inputs.count else { return false }
         guard files.count <= BatchFindReplace.maximumFiles else {
             error = "Choose up to \(BatchFindReplace.maximumFiles) text files."
-            return
+            return false
         }
         inputs = files
+        return true
     }
 
     private func clearPreview() {

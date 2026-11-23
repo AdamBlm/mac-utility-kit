@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import Synchronization
 import Testing
 @testable import UtilityCore
 
@@ -111,6 +112,80 @@ struct OrganizeDownloadsTests {
         #expect(try Data(contentsOf: second) == bytes)
         #expect(manager.fileExists(atPath: first.path) == (action == .copy))
         #expect(try manager.contentsOfDirectory(atPath: target.appending(path: "Unknown Source").path) == ["First.png"])
+    }
+
+    @Test(arguments: [OrganizeDownloads.FileAction.copy, .move])
+    func resolvesLongNameCollisionsWithoutTouchingExistingFiles(action: OrganizeDownloads.FileAction) throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        let source = root.appending(path: "Source")
+        let target = root.appending(path: "Target")
+        let origin = target.appending(path: "Unknown Source")
+        try manager.createDirectory(at: source, withIntermediateDirectories: true)
+        try manager.createDirectory(at: origin, withIntermediateDirectories: true)
+        defer { try? manager.removeItem(at: root) }
+
+        let bytes = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
+        let ascii = String(repeating: "a", count: 250)
+        let accented = String(repeating: "é", count: 83)
+        let names = [ascii + ".png", accented + "xx.png"]
+        let originals = names.map { source.appending(path: $0) }
+        let existing = names.map { origin.appending(path: $0) }
+        let priorBytes = Data("keep".utf8)
+        for (input, prior) in zip(originals, existing) {
+            try bytes.write(to: input)
+            try priorBytes.write(to: prior)
+        }
+
+        let entries = try OrganizeDownloads.scan(source)
+        let destination = try OrganizeDownloads.inspectDestination(target)
+        let result = try OrganizeDownloads.export(entries, to: destination, action: action)
+        #expect(result.failures.isEmpty)
+        let renamed = [String(ascii.prefix(249)) + " 2.png", accented + " 2.png"]
+        #expect(Set(result.completed.map { URL(filePath: $0).lastPathComponent }) == Set(renamed))
+        for name in renamed {
+            #expect(try Data(contentsOf: origin.appending(path: name)) == bytes)
+        }
+        for (input, prior) in zip(originals, existing) {
+            #expect(try Data(contentsOf: prior) == priorBytes)
+            #expect(manager.fileExists(atPath: input.path) == (action == .copy))
+        }
+    }
+
+    @Test func photoAlbumsStageDistinctCopiesAndSkipRepeatedOrChangedSources() async throws {
+        let manager = FileManager.default
+        let root = manager.temporaryDirectory.appending(path: UUID().uuidString)
+        let firstFolder = root.appending(path: "Left")
+        let secondFolder = root.appending(path: "Right")
+        for folder in [firstFolder, secondFolder] {
+            try manager.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
+        defer { try? manager.removeItem(at: root) }
+
+        let original = try #require(Data(base64Encoded: "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2XxkAAAAASUVORK5CYII="))
+        let inputs = [firstFolder.appending(path: "Photo.png"), secondFolder.appending(path: "Photo.png"),
+                      root.appending(path: "Changed.png")]
+        for input in inputs { try original.write(to: input) }
+        let entries = try OrganizeDownloads.scan(root, includesSubfolders: true)
+        let changed = Data("changed after review".utf8)
+        try changed.write(to: inputs[2], options: .atomic)
+        let repeatEntry = try #require(entries.first { $0.relativePath == "Left/Photo.png" })
+        let seen = Mutex<[URL]>([])
+        let result = try await DownloadPhotoAlbums.importSelected(entries + [repeatEntry]) { album, images async throws in
+            #expect(album == "Unknown Source")
+            #expect(images.map(\.source.relativePath) == ["Left/Photo.png", "Right/Photo.png"])
+            let staged = images.map(\.url)
+            #expect(Set(staged).count == 2)
+            for file in staged { #expect(try Data(contentsOf: file) == original) }
+            seen.withLock { $0.append(contentsOf: staged) }
+        }
+
+        #expect(result.completed == ["Left/Photo.png → Unknown Source", "Right/Photo.png → Unknown Source"])
+        #expect(result.skipped == ["Left/Photo.png"])
+        #expect(result.failures.count == 1 && result.failures.first?.hasPrefix("Changed.png") == true)
+        let staged = seen.withLock { $0 }
+        #expect(staged.count == 2 && staged.allSatisfy { !manager.fileExists(atPath: $0.path) })
+        #expect(try inputs.map { try Data(contentsOf: $0) } == [original, original, changed])
     }
 
     @Test func groupsBrowserMetadataAndCopiesWithoutOverwriting() throws {

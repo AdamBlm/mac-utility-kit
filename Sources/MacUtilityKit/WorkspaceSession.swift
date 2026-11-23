@@ -64,6 +64,18 @@ struct ToolDraft {
     var pdfOrganizerHistory = PDFOrganizerHistory()
     var destination = URL.downloadsDirectory
 
+    mutating func addInputs(_ urls: [URL], for tool: Tool) -> Bool {
+        let files = urls.filter { LocalInputFile.matches($0, allowedTypes: tool.inputTypes) }
+        guard !files.isEmpty else { return false }
+        if tool.requiresSinglePDF {
+            guard files.count == 1 else { return false }
+            replacePDF(with: files[0])
+        } else {
+            inputs.append(contentsOf: files)
+        }
+        return true
+    }
+
     mutating func replacePDF(with input: URL) {
         inputs = [input]
         pdfSourceRevision = UUID()
@@ -73,6 +85,7 @@ struct ToolDraft {
         options.pdfDelete = PDFDeleteOptions()
         options.pdfExtract = PDFExtractOptions()
         options.pdfSignature = PDFSignatureOptions()
+        options.pdfCrop = PDFCropOptions()
         options.pdfToImages.password = ""
         options.pdfToImages.range = ""
     }
@@ -316,6 +329,17 @@ final class WorkspaceSession {
                     options.pdfMergeOrder = plan
                     options.pdfMergeSourceStamps = mergeStamps(draft, plan: plan)
                 }
+                let managed: ManagedVideoEngines?
+                if tool == .mediaInfo, options.inspection.ffprobeExecutable == nil {
+                    let engines = VideoEngineSettings.shared
+                    if engines.installed == nil { await engines.refresh() }
+                    managed = engines.installed
+                    options.inspection.automaticFFprobeExecutable =
+                        managed?.ffprobe ?? HomebrewVideoTools.ffmpegPair()?.ffprobe
+                } else {
+                    managed = nil
+                }
+                defer { withExtendedLifetime(managed) {} }
                 let destination = preview ? try pdfDirectory().url : draft.destination
                 let report = try await ToolRunner.run(
                     tool, inputs: draft.inputs,

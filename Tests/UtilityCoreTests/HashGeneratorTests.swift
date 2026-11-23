@@ -40,6 +40,22 @@ struct HashGeneratorTests {
         #expect(duplicate.expectations(for: files) == [.ambiguous, .ambiguous, .missing, .missing])
     }
 
+    @Test func repeatedChecksumsOnlyConflictWhenTheDigestOrFileIsAmbiguous() throws {
+        let first = URL(fileURLWithPath: "/tmp/left/photo.png")
+        let second = URL(fileURLWithPath: "/tmp/right/photo.png")
+        let a = String(repeating: "a", count: 64)
+        let b = String(repeating: "b", count: 64)
+        let repeated = "\(a) */tmp/left/photo.png\n\(a.uppercased())  ./left/photo.png\n\(b) */tmp/right/photo.png\n"
+        let same = try HashChecksumList(repeated, algorithm: .sha256)
+        #expect(same.expectations(for: [first, second]) == [.digest(a), .digest(b)])
+
+        let conflict = try HashChecksumList(repeated + "\(b) */tmp/left/photo.png\n", algorithm: .sha256)
+        #expect(conflict.expectations(for: [first, second]) == [.ambiguous, .digest(b)])
+
+        let potentialMatches = try HashChecksumList(repeated + "\(a) *photo.png\n", algorithm: .sha256)
+        #expect(potentialMatches.expectations(for: [first, second]) == [.ambiguous, .ambiguous])
+    }
+
     @Test func readsGNUEscapedNamesAndRejectsMalformedManifestRows() throws {
         let digest = String(repeating: "a", count: 64)
         let path = URL(fileURLWithPath: "/tmp/back\\slash\nline\rbreak")
@@ -110,6 +126,29 @@ struct HashGeneratorTests {
         let new = try await HashGenerator.file(link, algorithm: .sha384)
         #expect(new != old)
         #expect(new == (try await HashGenerator.text("new", algorithm: .sha384)))
+    }
+
+    @Test func rejectsRemoteFileAuthoritiesWithoutChangingLocalDigests() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appending(path: "first.txt")
+        let second = folder.appending(path: "second.txt")
+        try Data("first".utf8).write(to: first)
+        try Data("second".utf8).write(to: second)
+
+        let expectedFirst = try await HashGenerator.text("first", algorithm: .sha256)
+        let expectedSecond = try await HashGenerator.text("second", algorithm: .sha256)
+        #expect(try await HashGenerator.file(first, algorithm: .sha256) == expectedFirst)
+        var components = try #require(URLComponents(url: second, resolvingAgainstBaseURL: false))
+        components.host = "other-machine.invalid"
+        let remote = try #require(components.url)
+        await #expect(throws: HashGeneratorError.notLocalFile) {
+            try await HashGenerator.file(remote, algorithm: .sha256)
+        }
+        components.host = "localhost"
+        let local = try #require(components.url)
+        #expect(try await HashGenerator.file(local, algorithm: .sha256) == expectedSecond)
     }
 
     @Test

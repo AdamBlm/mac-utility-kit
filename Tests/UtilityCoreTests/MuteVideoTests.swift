@@ -154,11 +154,9 @@ struct MuteVideoTests {
             memset(bytes, 180, CVPixelBufferGetBytesPerRow(frame) * 48)
         }
         CVPixelBufferUnlockBaseAddress(frame, [])
+        defer { if writer.status == .writing { writer.cancelWriting() } }
         for index in 0..<12 {
-            for _ in 0..<200 where !sink.isReadyForMoreMediaData && writer.status == .writing {
-                try await Task.sleep(for: .milliseconds(2))
-            }
-            try #require(sink.isReadyForMoreMediaData)
+            try await waitForFixtureVideoInput(sink, writer: writer)
             try #require(adaptor.append(frame, withPresentationTime: CMTime(value: Int64(index), timescale: 24)))
         }
         sink.markAsFinished()

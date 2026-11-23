@@ -1,12 +1,20 @@
 import AppKit
 import Observation
 import PDFKit
+import UtilityCore
 
 @MainActor
 @Observable
 final class PDFReaderSession {
-    let view: PDFView
+    @ObservationIgnored private(set) lazy var view: PDFView = {
+        let view = PDFView()
+        view.displayMode = .singlePageContinuous
+        view.autoScales = true
+        view.backgroundColor = .windowBackgroundColor
+        return view
+    }()
     private(set) var source: URL?
+    private(set) var queuedFiles: [URL] = []
     private(set) var document: PDFDocument?
     private(set) var error: String?
     private(set) var pageNumber = 0
@@ -23,27 +31,64 @@ final class PDFReaderSession {
         return nil
     }
 
-    init() {
-        view = PDFView()
-        view.displayMode = .singlePageContinuous
-        view.autoScales = true
-        view.backgroundColor = .windowBackgroundColor
+    @discardableResult
+    func open(_ url: URL?) -> Bool {
+        guard let url else {
+            queuedFiles = []
+            replaceDocument(with: nil, source: nil)
+            return true
+        }
+        return openFirst(in: [url])
     }
 
-    func open(_ url: URL?) {
-        resetSearch()
-        source = url
-        view.document = nil
-        document = nil
-        error = nil
-        pageNumber = 0
-        guard let url else { return }
-        guard url.isFileURL, let pdf = PDFDocument(url: url), pdf.isLocked || pdf.pageCount > 0 else {
-            error = "This PDF could not be opened."
+    func openFirst(in urls: [URL]) -> Bool {
+        var seen = Set<URL>()
+        let candidates = urls.filter {
+            LocalInputFile.regularFile($0) != nil && seen.insert($0.standardizedFileURL).inserted
+        }
+        for url in candidates {
+            guard let pdf = readDocument(url) else { continue }
+            queuedFiles = candidates
+            replaceDocument(with: pdf, source: url)
+            return true
+        }
+        error = urls.count == 1 ? "This PDF could not be opened." : "None of the selected PDFs could be opened."
+        return false
+    }
+
+    func openDeliveredFile(_ url: URL) {
+        guard url.isFileURL, let pdf = readDocument(url) else {
+            error = "“\(url.lastPathComponent)” could not be opened."
             return
         }
+        let existing = queuedFiles.first { $0.standardizedFileURL == url.standardizedFileURL }
+        if existing == nil { queuedFiles.append(url) }
+        replaceDocument(with: pdf, source: existing ?? url)
+    }
+
+    func selectQueuedFile(_ url: URL) {
+        guard source != url, queuedFiles.contains(url) else { return }
+        guard let pdf = readDocument(url) else {
+            error = "“\(url.lastPathComponent)” could not be opened."
+            return
+        }
+        replaceDocument(with: pdf, source: url)
+    }
+
+    private func readDocument(_ url: URL) -> PDFDocument? {
+        guard let file = LocalInputFile.regularFile(url), let pdf = PDFDocument(url: file),
+              pdf.isLocked || pdf.pageCount > 0 else { return nil }
+        return pdf
+    }
+
+    private func replaceDocument(with pdf: PDFDocument?, source: URL?) {
+        resetSearch()
+        self.source = source
+        view.document = nil
         document = pdf
-        if !pdf.isLocked { show(pdf) }
+        error = nil
+        pageNumber = 0
+        if let pdf, !pdf.isLocked { show(pdf) }
     }
 
     func unlock(_ password: String) {

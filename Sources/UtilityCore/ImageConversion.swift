@@ -72,7 +72,8 @@ public enum ImageConversion {
         }
         if let issue = optionIssue(options) { throw ToolError.invalid(issue) }
         try Task.checkCancellation()
-        let source = try loadSource(input)
+        let version = try LocalInputFile.Version.read(input)
+        let source = try loadSource(version.resolved)
         let properties = try imageProperties(source)
         let (width, height) = try validatedDimensions(properties)
         let index = CGImageSourceGetPrimaryImageIndex(source)
@@ -122,11 +123,15 @@ public enum ImageConversion {
         guard outputOrientation == 1 else {
             throw ToolError.invalid("The encoder did not preserve the intended display orientation.")
         }
-        if !flatten, imageContainsAlpha(image), !imageContainsAlpha(outputImage) {
+        if !flatten, !imageContainsAlpha(outputImage), try containsNonOpaquePixels(image) {
             throw ToolError.invalid("The encoder did not preserve transparency. Try PNG or enable flattening.")
         }
         if flatten, imageContainsAlpha(image), keepsHighDepth, outputImage.bitsPerComponent < 16 {
             throw ToolError.invalid("The encoder did not retain 16-bit color precision after flattening.")
+        }
+        try Task.checkCancellation()
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The source image changed during conversion. Try again.")
         }
         try FileManager.default.moveItem(at: staging, to: output)
         let notice = CGImageSourceGetCount(source) > 1 ? " · Primary image only" : ""

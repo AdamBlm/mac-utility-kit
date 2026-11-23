@@ -116,7 +116,8 @@ private func makeTaggedAudioTracks(
     try await exporter.exportMedia(to: input, as: .mov)
 }
 
-@Test func languageSelectionHandlesReorderedMissingAndAmbiguousTracksInOneBatch() async throws {
+@Test(arguments: [false, true])
+func languageSelectionHandlesReorderedMissingAndAmbiguousTracksInOneBatch(replaceFirst: Bool) async throws {
     let folder = try audioTestFolder()
     defer { try? FileManager.default.removeItem(at: folder) }
 
@@ -129,12 +130,20 @@ private func makeTaggedAudioTracks(
     try await makeTaggedAudioTracks([(0.8, "fr")], in: folder, at: missing)
     try await makeTaggedAudioTracks([(0.4, "en-US"), (0.6, "en-GB")], in: folder, at: duplicate)
 
+    let firstBytes = try Data(contentsOf: first)
     var options = ToolOptions()
     options.extraction.trackLanguage = "eng"
     let report = try await ToolRunner.run(.extractAudio, inputs: [first, second, missing, duplicate],
-                                          destination: folder, imageSize: 0, options: options) { _ in }
-    #expect(report.outputs.count == 2)
-    #expect(report.failures.count == 2)
+                                          destination: folder, imageSize: 0, options: options) { fraction in
+        if replaceFirst, fraction == 0.25 {
+            do { try firstBytes.write(to: first, options: .atomic) }
+            catch { Issue.record("Could not replace the video fixture: \(error)") }
+        }
+    }
+    #expect(report.outputs.count == (replaceFirst ? 1 : 2))
+    #expect(report.failures.count == (replaceFirst ? 3 : 2))
+    if replaceFirst { #expect(report.failures.first?.contains("The source changed during audio extraction") == true) }
+    #expect(report.outputs.last?.lastPathComponent == "2 - English second.m4a")
     #expect(report.failures.contains { $0.contains("French only.mov") && $0.contains("No audio track is tagged") })
     #expect(report.failures.contains { $0.contains("Two English tracks.mov") && $0.contains("Multiple audio tracks") })
     for output in report.outputs {

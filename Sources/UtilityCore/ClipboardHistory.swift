@@ -28,6 +28,17 @@ package final class ClipboardHistoryController {
             case text(String)
             case image(Data, NSPasteboard.PasteboardType)
 
+            package static func == (lhs: Self, rhs: Self) -> Bool {
+                switch (lhs, rhs) {
+                case let (.text(left), .text(right)):
+                    left.utf8.elementsEqual(right.utf8)
+                case let (.image(left, leftType), .image(right, rightType)):
+                    leftType == rightType && left == right
+                default:
+                    false
+                }
+            }
+
             var byteCount: Int {
                 switch self {
                 case .text(let text): text.utf8.count

@@ -1,6 +1,7 @@
 import CoreGraphics
 import Foundation
 import ImageIO
+import PDFKit
 import Testing
 import UniformTypeIdentifiers
 @testable import UtilityCore
@@ -60,6 +61,80 @@ struct DocumentScannerTests {
         let restored = try DocumentScanner.corrected(page)
         #expect(restored.width == initial.width && restored.height == initial.height)
         #expect(restored.width != source.image.width)
+    }
+
+    @Test func boundedFileImportRejectsOversizedAndNonlocalSources() throws {
+        let directory = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let image = directory.appending(path: "scan.png")
+        try imageData().write(to: image)
+        #expect(try DocumentScanner.load(image).count == 1)
+        #expect(throws: ToolError.self) { try DocumentScanner.load(directory) }
+        let remote = try #require(URL(string: "file://other-machine.invalid/scan.png"))
+        #expect(throws: ToolError.self) { try DocumentScanner.load(remote) }
+
+        let handle = try FileHandle(forWritingTo: image)
+        try handle.truncate(atOffset: UInt64(DocumentScanner.inputLimit + 1))
+        try handle.close()
+        #expect(throws: ToolError.self) { try DocumentScanner.load(image) }
+    }
+
+    @Test func importsRotatedCroppedPDFAlongsideAnImageAndExportsInOrder() async throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let base = folder.appending(path: "base.pdf")
+        var media = CGRect(x: 0, y: 0, width: 200, height: 300)
+        let context = try #require(CGContext(base as CFURL, mediaBox: &media, nil))
+        for _ in 0..<2 {
+            context.beginPDFPage(nil)
+            context.fill(CGRect(x: 30, y: 40, width: 60, height: 40))
+            context.endPDFPage()
+        }
+        context.closePDF()
+
+        let document = try #require(PDFDocument(url: base))
+        let rotated = try #require(document.page(at: 1))
+        rotated.rotation = 90
+        rotated.setBounds(CGRect(x: 10, y: 20, width: 120, height: 260), for: .cropBox)
+        let sourcePDF = folder.appending(path: "source.pdf")
+        try #require(document.write(to: sourcePDF))
+        let image = folder.appending(path: "scan.png")
+        try imageData().write(to: image)
+
+        let pages = try [sourcePDF, image].flatMap { try DocumentScanner.load($0) }
+        #expect(pages.map(\.name) == ["source.pdf · 1", "source.pdf · 2", "scan.png"])
+        #expect(pages.map { CGSize(width: $0.image.width, height: $0.image.height) }
+            == [CGSize(width: 600, height: 900), CGSize(width: 780, height: 360), CGSize(width: 180, height: 100)])
+        let output = folder.appending(path: "assembled.pdf")
+        try await DocumentScanner.export(pages, to: output, paper: .original) { _ in }
+        let assembled = try #require(CGPDFDocument(output as CFURL))
+        #expect(assembled.numberOfPages == 3)
+        let boxes = (1...3).compactMap { assembled.page(at: $0)?.getBoxRect(.mediaBox).size }
+        #expect(boxes.count == 3)
+        #expect(boxes.map { $0.width > $0.height } == [false, true, true])
+    }
+
+    @Test func importsEveryTIFFPageBeforeTheNextFile() throws {
+        let folder = FileManager.default.temporaryDirectory.appending(path: UUID().uuidString)
+        try FileManager.default.createDirectory(at: folder, withIntermediateDirectories: false)
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let png = folder.appending(path: "next.png")
+        let tiff = folder.appending(path: "scan.tiff")
+        let data = try imageData()
+        try data.write(to: png)
+        let source = try #require(CGImageSourceCreateWithData(data as CFData, nil))
+        let first = try #require(CGImageSourceCreateImageAtIndex(source, 0, nil))
+        let second = try #require(first.cropping(to: CGRect(x: 0, y: 0, width: 60, height: 80)))
+        let writer = try #require(CGImageDestinationCreateWithURL(tiff as CFURL, UTType.tiff.identifier as CFString, 2, nil))
+        CGImageDestinationAddImage(writer, first, nil)
+        CGImageDestinationAddImage(writer, second, nil)
+        try #require(CGImageDestinationFinalize(writer))
+
+        let pages = try [tiff, png].flatMap { try DocumentScanner.load($0) }
+        #expect(pages.map(\.name) == ["scan.tiff · 1", "scan.tiff · 2", "next.png"])
+        #expect(pages.map { $0.image.width } == [180, 60, 180])
     }
 
     private func imageData() throws -> Data {

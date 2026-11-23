@@ -25,7 +25,7 @@ package enum PlainTextDecoding {
     package static func loadVerifiedFile(_ input: URL, maximumBytes: Int) async throws -> (bytes: Data, version: FileVersion) {
         try Task.checkCancellation()
         let work = Task.detached(priority: .userInitiated) {
-            guard input.isFileURL else { throw ReadIssue.nonLocal }
+            guard LocalInputFile.isLocalURL(input) else { throw ReadIssue.nonLocal }
             let resolved = input.resolvingSymlinksInPath().standardizedFileURL
             guard let stamp = try DuplicateFileIO.inspect(resolved) else { throw ReadIssue.notRegular }
             guard stamp.bytes <= maximumBytes else { throw ReadIssue.tooLarge }
@@ -48,20 +48,37 @@ package enum PlainTextDecoding {
         }
     }
 
-    package static func decode(_ data: Data) -> String? {
-        let text: String?
-        if data.starts(with: [0xFF, 0xFE, 0x00, 0x00]) || data.starts(with: [0x00, 0x00, 0xFE, 0xFF]) {
-            guard data.count.isMultiple(of: 4) else { return nil }
-            text = String(data: data, encoding: .utf32)
-        } else if data.starts(with: [0xFF, 0xFE]) || data.starts(with: [0xFE, 0xFF]) {
-            guard data.count.isMultiple(of: 2) else { return nil }
-            text = String(data: data, encoding: .utf16)
-        } else if data.starts(with: [0xEF, 0xBB, 0xBF]) {
-            text = String(data: data.dropFirst(3), encoding: .utf8)
-        } else {
-            text = String(data: data, encoding: .utf8)
+    struct Format {
+        let encoding: String.Encoding
+        let marker: [UInt8]
+        let unitBytes: Int
+
+        init(detecting data: Data) {
+            let candidates: [(String.Encoding, [UInt8], Int)] = [
+                (.utf32LittleEndian, [0xFF, 0xFE, 0x00, 0x00], 4),
+                (.utf32BigEndian, [0x00, 0x00, 0xFE, 0xFF], 4),
+                (.utf16LittleEndian, [0xFF, 0xFE], 2),
+                (.utf16BigEndian, [0xFE, 0xFF], 2),
+                (.utf8, [0xEF, 0xBB, 0xBF], 1)
+            ]
+            (encoding, marker, unitBytes) = candidates.first { data.starts(with: $0.1) } ?? (.utf8, [], 1)
         }
-        guard let text, !text.unicodeScalars.contains(where: { $0.value == 0 }) else { return nil }
-        return text
+
+        func decode(_ data: Data) -> String? {
+            let payload = data.dropFirst(marker.count)
+            guard payload.count.isMultiple(of: unitBytes),
+                  let text = String(data: payload, encoding: encoding),
+                  !text.unicodeScalars.contains(where: { $0.value == 0 }) else { return nil }
+            return text
+        }
+
+        func encode(_ text: String) -> Data? {
+            guard let payload = text.data(using: encoding) else { return nil }
+            return Data(marker) + payload
+        }
+    }
+
+    package static func decode(_ data: Data) -> String? {
+        Format(detecting: data).decode(data)
     }
 }

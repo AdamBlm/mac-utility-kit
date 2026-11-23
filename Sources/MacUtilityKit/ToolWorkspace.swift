@@ -479,7 +479,9 @@ struct ToolWorkspace: View {
                 }
                 Button(tool == .mediaInfo ? "Inspect media" : tool.title) {
                     let failures = passthroughReview.flatMap { $0.request == passthroughRequest ? $0.failures : nil } ?? []
-                    session.start(tool, draft: draft, recheckVideoInputs: Set(failures.map(\.index)))
+                    var exportDraft = draft
+                    if tool == .trimVideo { exportDraft.options.trimSourceVersions = trimReview?.sourceVersions }
+                    session.start(tool, draft: exportDraft, recheckVideoInputs: Set(failures.map(\.index)))
                 }
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.return, modifiers: .command)
@@ -522,6 +524,7 @@ struct ToolWorkspace: View {
                 if draft.inputs.isEmpty {
                     dropWell(for: tool)
                 } else {
+                    let labels = ToolRunner.inputLabels(draft.inputs)
                     ForEach(Array(draft.inputs.enumerated()), id: \.offset) { index, input in
                         VStack(alignment: .leading, spacing: 8) {
                             HStack(spacing: 10) {
@@ -530,7 +533,7 @@ struct ToolWorkspace: View {
                                     .frame(width: 20)
                                     .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(input.lastPathComponent).lineLimit(1)
+                                    Text(labels[index]).lineLimit(1).help(input.path)
                                     if tool == .resizeImages {
                                         Text(resizePreview(for: input))
                                             .font(.caption).foregroundStyle(.secondary)
@@ -542,7 +545,7 @@ struct ToolWorkspace: View {
                                         draft.moveInputUp(at: index)
                                     }
                                     .labelStyle(.iconOnly)
-                                    .accessibilityLabel("Move \(input.lastPathComponent) up")
+                                    .accessibilityLabel("Move \(labels[index]) up")
                                     .accessibilityHint("Source \(index + 1) of \(draft.inputs.count)")
                                     .help("Move source up")
                                     .disabled(index == 0)
@@ -551,7 +554,7 @@ struct ToolWorkspace: View {
                                     draft.removeInput(at: index)
                                 }
                                 .labelStyle(.iconOnly)
-                                .accessibilityLabel("Remove \(input.lastPathComponent)")
+                                .accessibilityLabel("Remove \(labels[index])")
                                 .accessibilityHint("Source \(index + 1) of \(draft.inputs.count)")
                                 .help("Remove source")
                             }
@@ -630,15 +633,8 @@ struct ToolWorkspace: View {
     }
 
     private func addDroppedFiles(_ urls: [URL], to tool: Tool) -> Bool {
-        let files = urls.filter(\.isFileURL)
-        guard !files.isEmpty else { return false }
-        if tool.requiresSinglePDF {
-            guard files.count == 1 else { return false }
-            pdfEditorReady = false
-            draft.replacePDF(with: files[0])
-        } else {
-            draft.inputs.append(contentsOf: files)
-        }
+        guard draft.addInputs(urls, for: tool) else { return false }
+        if tool.requiresSinglePDF { pdfEditorReady = false }
         return true
     }
 

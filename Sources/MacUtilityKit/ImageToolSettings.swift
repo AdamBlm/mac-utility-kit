@@ -254,7 +254,7 @@ struct MetadataRemovalResultView: View {
     let item: ImageMetadataResult
 
     var body: some View {
-        DisclosureGroup(item.filename) {
+        DisclosureGroup(item.inputLabel) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(item.removal.summary).font(.callout).textSelection(.enabled)
                 DisclosureGroup("Before") { MetadataSnapshotView(snapshot: item.removal.before) }

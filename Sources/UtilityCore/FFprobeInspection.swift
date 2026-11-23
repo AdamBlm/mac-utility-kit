@@ -1,7 +1,14 @@
 import Foundation
 
 enum FFprobeInspection {
-    static func inspect(_ input: URL, executable: URL) async throws -> MediaInspectionReport {
+    static func inspect(
+        _ input: URL, filename: String, executable: URL, automatic: Bool = false
+    ) async throws -> MediaInspectionReport {
+        var inputOptions = ["-v", "error", "-protocol_whitelist", "file"]
+        if automatic {
+            // Skip playlist and other reference-based formats when probing automatically.
+            inputOptions += ["-format_whitelist", "mov,matroska,webm,avi,mpegts,mpeg,asf,flv,mxf,ogg,wav,mp3,flac,aiff,aac,ac3,amr,caf"]
+        }
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: false)
         defer { try? FileManager.default.removeItem(at: directory) }
@@ -9,8 +16,8 @@ enum FFprobeInspection {
         try Data().write(to: output)
         let handle = try FileHandle(forWritingTo: output)
         defer { try? handle.close() }
-        try await ExternalTool.run(executable, name: "ffprobe", arguments: [
-            "-v", "error", "-protocol_whitelist", "file", "-show_format", "-show_streams",
+        try await ExternalTool.run(executable, name: "ffprobe", arguments: inputOptions + [
+            "-show_format", "-show_streams",
             "-of", "json", "-i", input.path
         ], directory: directory, standardOutput: handle)
         try Task.checkCancellation()
@@ -22,12 +29,13 @@ enum FFprobeInspection {
         else { throw ToolError.invalid("ffprobe found no video or audio tracks.") }
 
         let timing = try await inspectFrameTiming(input, executable: executable, directory: directory,
-                                                  streams: streams, format: format)
+                                                  streams: streams, format: format, inputOptions: inputOptions)
         try Task.checkCancellation()
-        format["filename"] = input.lastPathComponent
+        format["filename"] = filename
         document["format"] = format
         var sections = [MediaInspectionReport.Section(title: "File", rows: [
-            MediaInspection.row("Filename", input.lastPathComponent),
+            MediaInspection.row("Filename", filename),
+            MediaInspection.row("Inspection engine", "ffprobe"),
             MediaInspection.row("Container", string(format["format_long_name"]) ?? string(format["format_name"])),
             MediaInspection.row("Duration", MediaInspection.seconds(number(format["duration"]))),
             MediaInspection.row("File size", string(format["size"]).flatMap(Int64.init).map(MediaInspection.bytes)),
@@ -44,7 +52,7 @@ enum FFprobeInspection {
     }
 
     private static func inspectFrameTiming(
-        _ input: URL, executable: URL, directory: URL, streams: [[String: Any]], format: [String: Any]
+        _ input: URL, executable: URL, directory: URL, streams: [[String: Any]], format: [String: Any], inputOptions: [String]
     ) async throws -> [String: String] {
         let videos = streams.filter {
             string($0["codec_type"]) == "video" && ($0["disposition"] as? [String: Int])?["attached_pic"] != 1
@@ -66,7 +74,8 @@ enum FFprobeInspection {
             try Task.checkCancellation()
             do {
                 let frames = try await frameSample(input, executable: executable, directory: directory,
-                                                   filename: "frames-\(index).json", window: window)
+                                                   filename: "frames-\(index).json", window: window,
+                                                   inputOptions: inputOptions)
                 // A seek can land at a nearby keyframe. Compare adjacent frames only inside each window.
                 let grouped = Dictionary(grouping: frames, by: \.stream)
                 for (stream, frames) in grouped {
@@ -108,14 +117,14 @@ enum FFprobeInspection {
     }
 
     private static func frameSample(
-        _ input: URL, executable: URL, directory: URL, filename: String, window: String
+        _ input: URL, executable: URL, directory: URL, filename: String, window: String, inputOptions: [String]
     ) async throws -> [Frame] {
         let output = directory.appendingPathComponent(filename)
         try Data().write(to: output)
         let handle = try FileHandle(forWritingTo: output)
         defer { try? handle.close() }
-        try await ExternalTool.run(executable, name: "ffprobe", arguments: [
-            "-v", "error", "-protocol_whitelist", "file", "-select_streams", "V",
+        try await ExternalTool.run(executable, name: "ffprobe", arguments: inputOptions + [
+            "-select_streams", "V",
             "-read_intervals", window, "-show_frames",
             "-show_entries", "frame=stream_index,best_effort_timestamp",
             "-of", "json", "-i", input.path

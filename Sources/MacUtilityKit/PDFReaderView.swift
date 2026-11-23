@@ -5,13 +5,12 @@ import UniformTypeIdentifiers
 import UtilityCore
 
 struct PDFReaderView: View {
-    @Binding var source: URL?
+    let reader: PDFReaderSession
     let canHandoffForms: Bool
     let onHandoff: (Tool, URL) -> Void
     let stageClipboardPDF: (Data) throws -> URL
 
     @Environment(\.colorScheme) private var colorScheme
-    @State private var reader = PDFReaderSession()
     @State private var thumbnails = true
     @State private var password = ""
     @State private var query = ""
@@ -21,8 +20,28 @@ struct PDFReaderView: View {
 
     var body: some View {
         VStack(spacing: 0) {
+            if reader.queuedFiles.count > 1 {
+                Picker("Selected PDF", selection: Binding(
+                    get: { reader.source },
+                    set: { if let url = $0 { reader.selectQueuedFile(url) } }
+                )) {
+                    let labels = ToolRunner.inputLabels(reader.queuedFiles)
+                    ForEach(Array(reader.queuedFiles.enumerated()), id: \.element) { index, url in
+                        Text(labels[index]).tag(Optional(url))
+                    }
+                }
+                .padding(.horizontal, 16)
+                .padding(.vertical, 8)
+            }
             if let document = reader.document, !document.isLocked {
                 toolbar(document)
+                if let message = reader.error {
+                    Text(message)
+                        .font(.callout)
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 8)
+                }
                 Divider()
                 HStack(spacing: 0) {
                     if thumbnails {
@@ -36,7 +55,7 @@ struct PDFReaderView: View {
                 ContentUnavailableView {
                     Label("Locked PDF", systemImage: "lock.doc")
                 } description: {
-                    Text(source?.lastPathComponent ?? "")
+                    Text(reader.source?.lastPathComponent ?? "")
                 } actions: {
                     VStack(spacing: 10) {
                         SecureField("PDF password", text: $password)
@@ -64,16 +83,11 @@ struct PDFReaderView: View {
             }
         }
         .background(palette.canvas)
-        .onChange(of: source, initial: true) { previous, next in
-            if previous != next || reader.source != next { load(next) }
-        }
+        .onChange(of: reader.document.map(ObjectIdentifier.init)) { _, _ in resetInputs() }
         .onDisappear { reader.resetSearch() }
         .dropDestination(for: URL.self) { urls, _ in
-            guard let pdf = urls.first(where: { $0.isFileURL && $0.pathExtension.lowercased() == "pdf" }) else {
-                return false
-            }
-            open(pdf)
-            return true
+            let candidates = urls.filter { LocalInputFile.matches($0, allowedTypes: [.pdf]) }
+            return !candidates.isEmpty && reader.openFirst(in: candidates)
         }
         .onReceive(NotificationCenter.default.publisher(for: .PDFViewPageChanged, object: reader.view)) { _ in
             reader.synchronizePage()
@@ -94,11 +108,11 @@ struct PDFReaderView: View {
                     .help("Open PDF")
                 pastePDFButton
                     .labelStyle(.iconOnly)
-                Text(source?.lastPathComponent ?? "PDF Reader")
+                Text(reader.source?.lastPathComponent ?? "PDF Reader")
                     .font(.headline)
                     .truncationMode(.middle)
                     .lineLimit(1)
-                    .help(source?.path ?? "")
+                    .help(reader.source?.path ?? "")
                 Spacer(minLength: 0)
                 Button("Print…", systemImage: "printer", action: reader.printDocument)
                     .labelStyle(.iconOnly)
@@ -201,26 +215,21 @@ struct PDFReaderView: View {
     }
 
     private var pastePDFButton: some View {
-        ClipboardFileButton(allowedTypes: [.pdf], onPastePDF: { data in
-            open(try stageClipboardPDF(data))
-        }, onPasteFile: open)
+        ClipboardFileButton(allowedTypes: [.pdf], stagePDF: stageClipboardPDF) { urls in
+            _ = reader.openFirst(in: urls)
+        }
     }
 
     private func choosePDF() {
         let panel = NSOpenPanel()
         panel.allowedContentTypes = [.pdf]
-        if panel.runModal() == .OK, let url = panel.url { open(url) }
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK { _ = reader.openFirst(in: panel.urls) }
     }
 
-    private func open(_ url: URL) {
-        if source == url { load(url) }
-        else { source = url }
-    }
-
-    private func load(_ url: URL?) {
+    private func resetInputs() {
         password = ""
         query = ""
-        reader.open(url)
     }
 
     private func unlock() {

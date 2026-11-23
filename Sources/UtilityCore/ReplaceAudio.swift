@@ -40,14 +40,40 @@ public enum ReplaceAudio {
         public var isNearClipping: Bool { peak >= 0.99 }
     }
 
+    struct Soundtrack {
+        private let url: URL
+        private let version: LocalInputFile.Version
+
+        init(_ options: ReplaceAudioOptions) throws {
+            guard let url = options.source else { throw ToolError.invalid("Choose an audio file.") }
+            self.url = url
+            version = try LocalInputFile.Version.read(url)
+        }
+
+        func verify() throws {
+            guard (try? LocalInputFile.Version.read(url)) == version else {
+                throw ToolError.invalid("The replacement soundtrack changed during export. Choose the audio file again.")
+            }
+        }
+    }
+
     public static func export(
         _ input: URL, to output: URL, options: ReplaceAudioOptions,
+        progress: @escaping @Sendable (Double) async -> Void
+    ) async throws -> String {
+        try await export(input, to: output, options: options, soundtrack: Soundtrack(options), progress: progress)
+    }
+
+    static func export(
+        _ input: URL, to output: URL, options: ReplaceAudioOptions, soundtrack: Soundtrack,
         progress: @escaping @Sendable (Double) async -> Void
     ) async throws -> String {
         guard output.isFileURL, output.standardizedFileURL != input.standardizedFileURL,
               !FileManager.default.fileExists(atPath: output.path) else {
             throw ToolError.invalid("Choose a new local output file.")
         }
+        let inputVersion = try LocalInputFile.Version.read(input)
+        try soundtrack.verify()
         let graph = try await makeGraph(input, options: options, preview: nil)
         let manager = FileManager.default
         let staging = output.deletingLastPathComponent().appending(path: ".audio-mix-\(UUID().uuidString)", directoryHint: .isDirectory)
@@ -77,6 +103,10 @@ public enum ReplaceAudio {
             throw ToolError.invalid("The exported file did not contain the expected video and audio duration.")
         }
         try Task.checkCancellation()
+        try soundtrack.verify()
+        guard (try? LocalInputFile.Version.read(input)) == inputVersion else {
+            throw ToolError.invalid("\(input.lastPathComponent) changed during export. Try again.")
+        }
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         return "\(input.lastPathComponent) · \(options.mode.rawValue) · \(duration.seconds.formatted(.number.precision(.fractionLength(2)))) s · MP4"

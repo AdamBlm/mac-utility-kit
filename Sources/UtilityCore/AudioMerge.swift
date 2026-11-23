@@ -45,14 +45,15 @@ public enum AudioMerge {
               output.pathExtension.lowercased() == options.format.rawValue else {
             throw ToolError.invalid("Choose a new local output with the selected audio format.")
         }
+        let versions = try inputs.map(LocalInputFile.Version.read)
+        let sources = versions.map(\.resolved)
         var durations: [Double] = []
-        for (index, url) in inputs.enumerated() {
+        for (index, resolved) in sources.enumerated() {
             try Task.checkCancellation()
-            guard url.isFileURL, url.standardizedFileURL != output.standardizedFileURL,
-                  (try? url.resourceValues(forKeys: [.isRegularFileKey]).isRegularFile) == true else {
+            guard resolved != output.resolvingSymlinksInPath().standardizedFileURL else {
                 throw ToolError.invalid("Choose a readable audio file for clip \(index + 1).")
             }
-            let duration = (try? AudioTrim.source(url)).map { Double($0.frameCount) / $0.sampleRate }
+            let duration = (try? AudioTrim.source(resolved)).map { Double($0.frameCount) / $0.sampleRate }
             if options.transition == .crossfade {
                 let fades = (index == 0 || index == inputs.count - 1) ? 1 : 2
                 let requiredDuration = Double(fades * options.transitionMilliseconds) / 1_000
@@ -68,8 +69,10 @@ public enum AudioMerge {
         defer { try? manager.removeItem(at: staging) }
         let candidate = staging.appending(path: "Merged.\(options.format.rawValue)")
         await progress(0.05)
+        try Task.checkCancellation()
+        for (version, input) in zip(versions, inputs) { try version.verify(input) }
         try await ExternalTool.run(
-            executable, name: "FFmpeg", arguments: arguments(inputs, output: candidate, options: options), directory: staging
+            executable, name: "FFmpeg", arguments: arguments(sources, output: candidate, options: options), directory: staging
         )
         let audio = try AVAudioFile(forReading: candidate)
         let duration = Double(audio.length) / audio.fileFormat.sampleRate
@@ -85,6 +88,7 @@ public enum AudioMerge {
             }
         }
         try Task.checkCancellation()
+        for (version, input) in zip(versions, inputs) { try version.verify(input) }
         try manager.moveItem(at: candidate, to: output)
         await progress(1)
         let seconds = duration.formatted(.number.precision(.fractionLength(0...2)))

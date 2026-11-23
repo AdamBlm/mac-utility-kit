@@ -46,11 +46,13 @@ struct AudioCleanupTests {
             "aevalsrc=0.5*sin(2*PI*60*t)+0.24*sin(2*PI*120*t)+0.12*sin(2*PI*1000*t):s=48000:d=3",
             "-c:a", "pcm_f32le", source.path
         ])
+        let linked = folder.appending(path: "Linked input.wav")
+        try FileManager.default.createSymbolicLink(at: linked, withDestinationURL: source)
         var options = AudioCleanupOptions()
         options.executable = engine
         options.hum = .hz60
         options.reductionDB = 0
-        let comparison = try await AudioCleanup.preview(source, options: options, start: 0, duration: 2)
+        let comparison = try await AudioCleanup.preview(linked, options: options, start: 0, duration: 2)
         let dry = folder.appending(path: "dry.wav")
         let wet = folder.appending(path: "wet.wav")
         try comparison.original.write(to: dry)
@@ -61,7 +63,7 @@ struct AudioCleanupTests {
                     - Self.rms(wetSignal) * Double(comparison.cleanedVolume)) < 0.001)
         #expect(!comparison.isNearClipping)
 
-        _ = try await AudioCleanup.export(source, to: output, options: options) { _ in }
+        _ = try await AudioCleanup.export(linked, to: output, options: options) { _ in }
         let signal = try Self.samples(in: output)
         let original = try Self.samples(in: source)
         #expect(signal.count == original.count)
@@ -124,6 +126,48 @@ struct AudioCleanupTests {
         _ = try await AudioCleanup.export(source, to: output, options: options) { _ in }
         let packets = ["-map", "0:v:0", "-c", "copy", "-f", "hash", "-hash", "sha256", "-"]
         #expect(try Self.run(engine, ["-i", source.path] + packets) == Self.run(engine, ["-i", output.path] + packets))
+    }
+
+    @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
+    func mixedBatchDiscardsChangedInputAndPublishesTheUntouchedAudio() async throws {
+        let ffmpeg = try Self.executable()
+        let folder = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let first = folder.appending(path: "first.wav")
+        let second = folder.appending(path: "second.wav")
+        for (clip, frequency) in [(first, 440), (second, 660)] {
+            _ = try Self.run(ffmpeg, ["-f", "lavfi", "-i", "sine=f=\(frequency):r=48000:d=2", clip.path])
+        }
+        let bytes = try Data(contentsOf: first)
+        try bytes.write(to: folder.appending(path: "replacement.wav"))
+        try FileManager.default.createSymbolicLink(at: folder.appending(path: "ffmpeg"), withDestinationURL: ffmpeg)
+        let wrapper = folder.appending(path: "fixture-encoder")
+        let script = #"""
+        #!/bin/sh
+        set -eu
+        root=$(/usr/bin/dirname "$0")
+        "$root/ffmpeg" "$@"
+        for argument in "$@"; do
+            case "$argument" in
+                */first.wav) /bin/mv "$root/replacement.wav" "$root/first.wav"; break ;;
+            esac
+        done
+        """#
+        try Data(script.utf8).write(to: wrapper)
+        try FileManager.default.setAttributes([.posixPermissions: 0o700], ofItemAtPath: wrapper.path)
+        var options = ToolOptions()
+        options.audioCleanup.executable = wrapper
+        options.audioCleanup.reductionDB = 0
+        let report = try await ToolRunner.run(.cleanUpAudio, inputs: [first, second], destination: folder,
+                                              imageSize: 0, options: options) { _ in }
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("first.wav — The source changed during audio cleanup") == true)
+        #expect(report.outputs.map(\.lastPathComponent) == ["2 - second.wav"])
+        let output = try #require(report.outputs.first)
+        let signal = try Self.samples(in: output)
+        try #require(signal.count > 48_000)
+        #expect(Self.amplitude(signal, at: 660) > 0.05)
+        #expect(try Data(contentsOf: first) == bytes)
     }
 
     private static func makeDirectory() throws -> URL {

@@ -44,6 +44,13 @@ extension ArchiveTools {
         defer { close(fd) }
         try writeZIP(sources, to: fd, password: password, destination: destinationIdentity, directoryListed: directoryListed)
         try Task.checkCancellation()
+        for (input, original) in sources {
+            try Task.checkCancellation()
+            var located = stat()
+            guard lstat(input.path, &located) == 0, sameZIPSource(located, as: original) else {
+                throw ToolError.invalid("Source changed while creating the ZIP: \(input.lastPathComponent)")
+            }
+        }
         guard (try? ArchivePublication.identity(destination.path, in: AT_FDCWD)) == destinationIdentity else {
             throw ToolError.invalid("The ZIP destination changed during creation.")
         }
@@ -68,16 +75,44 @@ extension ArchiveTools {
             try check(archive_write_set_format_option(writer, "zip", "encryption", "aes256"), writer)
         }
         try check(archive_write_open_fd(writer, fd), writer)
+        let names = try uniqueZIPRootNames(sources.map { $0.0.lastPathComponent })
         var paths = ArchivePaths()
         var count = 0
-        for (input, original) in sources {
-            try appendZIPMember(in: AT_FDCWD, named: input.path, parts: [input.lastPathComponent],
+        for ((input, original), name) in zip(sources, names) {
+            try appendZIPMember(in: AT_FDCWD, named: input.path, parts: [name],
                                 expected: original, destination: destination, writer: writer, paths: &paths, count: &count,
                                 directoryListed: directoryListed)
         }
         try Task.checkCancellation()
         try check(archive_write_close(writer), writer)
         finalized = true
+    }
+
+    private static func uniqueZIPRootNames(_ names: [String]) throws -> [String] {
+        var reserved = Set(names.map(ArchivePaths.collisionKey))
+        var used = Set<String>()
+        var nextIndex: [String: Int] = [:]
+        return try names.map { name in
+            try Task.checkCancellation()
+            guard try ArchivePaths.components(name) == [name] else {
+                throw ToolError.invalid("This item has an unsupported ZIP path: \(name)")
+            }
+            let key = ArchivePaths.collisionKey(name)
+            guard !used.insert(key).inserted else { return name }
+
+            let source = name as NSString
+            var index = nextIndex[key, default: 2]
+            while index <= 100_000 {
+                try Task.checkCancellation()
+                let candidate = availableName(stem: source.deletingPathExtension, extension: source.pathExtension, index: index)
+                index += 1
+                if reserved.insert(ArchivePaths.collisionKey(candidate)).inserted {
+                    nextIndex[key] = index
+                    return candidate
+                }
+            }
+            throw ToolError.invalid("Could not find an available name for \(name).")
+        }
     }
 
     private static func appendZIPMember(
@@ -154,17 +189,18 @@ extension ArchiveTools {
     ) throws {
         var opened = stat()
         var located = stat()
-        func matches(_ item: stat) -> Bool {
-            item.st_dev == original.st_dev && item.st_ino == original.st_ino
-                && item.st_mode == original.st_mode && item.st_size == original.st_size
-                && item.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec
-                && item.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec
-                && item.st_ctimespec.tv_sec == original.st_ctimespec.tv_sec
-                && item.st_ctimespec.tv_nsec == original.st_ctimespec.tv_nsec
-        }
         guard fstat(fd, &opened) == 0, fstatat(parent, name, &located, AT_SYMLINK_NOFOLLOW) == 0,
-              matches(opened), matches(located)
+              sameZIPSource(opened, as: original), sameZIPSource(located, as: original)
         else { throw ToolError.invalid("Source changed while creating the ZIP: \(path)") }
+    }
+
+    private static func sameZIPSource(_ item: stat, as original: stat) -> Bool {
+        item.st_dev == original.st_dev && item.st_ino == original.st_ino
+            && item.st_mode == original.st_mode && item.st_size == original.st_size
+            && item.st_mtimespec.tv_sec == original.st_mtimespec.tv_sec
+            && item.st_mtimespec.tv_nsec == original.st_mtimespec.tv_nsec
+            && item.st_ctimespec.tv_sec == original.st_ctimespec.tv_sec
+            && item.st_ctimespec.tv_nsec == original.st_ctimespec.tv_nsec
     }
 
     private static func writeZIPEntry(

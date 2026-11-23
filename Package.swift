@@ -34,6 +34,7 @@ let package = Package(
             "UtilityCore", .product(name: "ArgumentParser", package: "swift-argument-parser"),
             .product(name: "MCP", package: "swift-sdk"),
         ]),
+        .testTarget(name: "MacUtilityKitTests", dependencies: ["MacUtilityKit"]),
         .testTarget(name: "UtilityCoreTests", dependencies: ["UtilityCore"],
                     resources: [.copy("Fixtures/tagged-audio.m4a")])
     ]

@@ -70,16 +70,6 @@ struct WorkspaceSection<Content: View>: View {
 }
 
 extension Tool {
-    func matchesCapability(_ search: String) -> Bool {
-        let capabilities: [String] = switch self {
-        case .rotateImages: ["Crop Images", "Image Crop"]
-        case .organizePDF: ["Add PDF Page Numbers", "PDF Numbering"]
-        case .compressPDF: ["PDF Compress", "PDF Compression", "Reduce PDF Size"]
-        default: []
-        }
-        return capabilities.contains { $0.localizedStandardContains(search) }
-    }
-
     var symbol: String {
         switch self {
         case .resizeImages: "photo.on.rectangle"

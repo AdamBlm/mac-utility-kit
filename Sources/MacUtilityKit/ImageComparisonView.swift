@@ -13,12 +13,16 @@ struct ImageComparisonView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
             HStack {
-                Text("Compare images").font(.title2.weight(.semibold))
+                Text(pair.inputLabel)
+                    .font(.title2.weight(.semibold))
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .help(pair.source.path)
                 Spacer()
                 Button("Done") { dismiss() }.keyboardShortcut(.cancelAction)
             }
             HStack(spacing: 14) {
-                comparisonPane("Original", url: pair.source, bytes: pair.sourceBytes)
+                comparisonPane("Original", url: pair.source, bytes: pair.sourceBytes, expected: pair.sourceVersion)
                 comparisonPane("Compressed", url: pair.output, bytes: pair.outputBytes)
             }
             if let summary {
@@ -40,7 +44,9 @@ struct ImageComparisonView: View {
         .frame(minWidth: 640, minHeight: 420)
     }
 
-    private func comparisonPane(_ title: String, url: URL, bytes: Int?) -> some View {
+    private func comparisonPane(
+        _ title: String, url: URL, bytes: Int?, expected: LocalInputFile.Version? = nil
+    ) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             HStack {
                 Text(title).font(.callout.weight(.semibold))
@@ -50,7 +56,7 @@ struct ImageComparisonView: View {
                         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                 }
             }
-            ImageComparisonPane(url: url, magnification: magnification, center: CGPoint(x: x, y: y))
+            ImageComparisonPane(url: url, expected: expected, magnification: magnification, center: CGPoint(x: x, y: y))
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
@@ -58,6 +64,7 @@ struct ImageComparisonView: View {
 
 private struct ImageComparisonPane: View {
     let url: URL
+    let expected: LocalInputFile.Version?
     let magnification: Double
     let center: CGPoint
     @Environment(\.displayScale) private var displayScale
@@ -67,6 +74,7 @@ private struct ImageComparisonPane: View {
     private struct Request: Equatable {
         let url: URL
         let detail: Bool
+        let expected: LocalInputFile.Version?
     }
 
     var body: some View {
@@ -106,13 +114,13 @@ private struct ImageComparisonPane: View {
                 }
             }
         }
-        .task(id: Request(url: url, detail: magnification > 0)) {
+        .task(id: Request(url: url, detail: magnification > 0, expected: expected)) {
             let detail = magnification > 0
             preview = nil
             failed = false
             let worker = Task.detached(priority: .userInitiated) {
                 guard !Task.isCancelled else { return nil as ImageComparisonPreview? }
-                return ImageComparisonPreview.load(url, detail: detail)
+                return ImageComparisonPreview.load(url, detail: detail, expected: expected)
             }
             let loaded = await withTaskCancellationHandler {
                 await worker.value

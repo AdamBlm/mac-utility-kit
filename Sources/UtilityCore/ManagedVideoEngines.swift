@@ -13,6 +13,7 @@ package struct ManagedVideoEngines: Sendable {
 
     package var downloader: URL { directory.appendingPathComponent("yt-dlp") }
     package var ffmpeg: URL { directory.appendingPathComponent("ffmpeg") }
+    package var ffprobe: URL { directory.appendingPathComponent("ffprobe") }
     package var deno: URL { directory.appendingPathComponent("deno") }
 }
 
@@ -131,7 +132,7 @@ package actor VideoEngineManager {
         busy = true
         defer { busy = false }
         let lock = try lockStore()
-        defer { try? lock.close() }
+        defer { unlockStore(lock) }
         try Task.checkCancellation()
         var state = try readState()
         let (file, response) = try await download(feed)
@@ -203,7 +204,7 @@ package actor VideoEngineManager {
     package func rollback() throws {
         guard !busy else { throw ToolError.invalid("Wait for the current installation to finish.") }
         let lock = try lockStore()
-        defer { try? lock.close() }
+        defer { unlockStore(lock) }
         var state = try readState()
         guard engineSet(state.previous) != nil else { throw ToolError.invalid("There is no previous Video Tools installation.") }
         swap(&state.current, &state.previous)
@@ -213,7 +214,7 @@ package actor VideoEngineManager {
     package func remove() throws {
         guard !busy else { throw ToolError.invalid("Wait for the current installation to finish.") }
         let lock = try lockStore()
-        defer { try? lock.close() }
+        defer { unlockStore(lock) }
         var state = try readState()
         _ = engineSet(state.current)
         _ = engineSet(state.previous)
@@ -233,6 +234,12 @@ package actor VideoEngineManager {
             throw ToolError.invalid("Video Tools are being changed by another copy of Mac Utility Kit.")
         }
         return handle
+    }
+
+    private func unlockStore(_ lock: FileHandle) {
+        // A concurrent process launch can briefly share the open file description.
+        flock(lock.fileDescriptor, LOCK_UN)
+        try? lock.close()
     }
 
     private func retireUnused(keeping state: State) {

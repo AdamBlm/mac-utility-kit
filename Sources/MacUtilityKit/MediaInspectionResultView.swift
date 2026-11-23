@@ -25,7 +25,7 @@ struct MediaInspectionResultView: View {
             .padding(.top, 8)
         } label: {
             HStack {
-                Text(inspection.filename).lineLimit(1)
+                Text(inspection.inputLabel).lineLimit(1)
                 Spacer(minLength: 8)
                 Button("Copy summary", systemImage: "doc.on.doc") {
                     NSPasteboard.general.clearContents()

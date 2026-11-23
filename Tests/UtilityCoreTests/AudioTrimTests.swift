@@ -11,14 +11,16 @@ struct AudioTrimTests {
         let input = folder.appending(path: "source.\(format.rawValue)")
         let output = folder.appending(path: "cut.\(format.rawValue)")
         try Self.makeSource(input, format: format, allSamplesEqual: false)
-        let source = try AudioTrim.source(input)
+        let alias = folder.appending(path: "linked.\(format.rawValue)")
+        try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: input)
+        let source = try AudioTrim.source(alias)
         #expect(source.losslessFormat == format)
         var options = AudioTrimOptions()
         options.mode = .lossless
         options.format = format
         options.start = 0.125
         options.end = 0.625
-        _ = try await AudioTrim.export(input, to: output, options: options) { _ in }
+        _ = try await AudioTrim.export(alias, to: output, options: options) { _ in }
         let exact = try Self.samples(in: input)
         let trimmed = try Self.samples(in: output)
         #expect(trimmed == Array(exact[6000..<30000]))
@@ -102,6 +104,37 @@ struct AudioTrimTests {
         let output = try #require(report.outputs.first)
         let source = try Self.samples(in: wav)
         #expect(try Self.samples(in: output) == Array(source[Int(selection.firstFrame)..<Int(selection.endFrame)]))
+    }
+
+    @Test func batchDiscardsAChangedAudioSourceAndKeepsTheOtherTrim() async throws {
+        let folder = try Self.makeDirectory()
+        defer { try? FileManager.default.removeItem(at: folder) }
+        let other = folder.appending(path: "Other", directoryHint: .isDirectory)
+        try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
+        let first = folder.appending(path: "source.wav")
+        let second = other.appending(path: first.lastPathComponent)
+        for clip in [first, second] {
+            try Self.makeSource(clip, format: .wav, allSamplesEqual: false)
+        }
+        let firstBytes = try Data(contentsOf: first)
+        var options = ToolOptions()
+        options.audioTrim.mode = .lossless
+        options.audioTrim.start = 0.125
+        options.audioTrim.end = 0.625
+        let expected = try AudioTrimSelection.plan(AudioTrim.source(second), options: options.audioTrim)
+        let report = try await ToolRunner.run(.trimAudio, inputs: [first, second], destination: folder,
+                                              imageSize: 0, options: options) { fraction in
+            if fraction == 0.99 / 2 {
+                do { try firstBytes.write(to: first, options: .atomic) }
+                catch { Issue.record("Could not replace the audio fixture: \(error)") }
+            }
+        }
+        #expect(report.failures.count == 1)
+        #expect(report.failures.first?.contains("1 - source.wav — The audio source changed") == true)
+        #expect(report.outputs.map(\.lastPathComponent) == ["2 - source.wav"])
+        let output = try #require(report.outputs.first)
+        let samples = try Self.samples(in: second)
+        #expect(try Self.samples(in: output) == Array(samples[Int(expected.firstFrame)..<Int(expected.endFrame)]))
     }
 
     private static func makeDirectory() throws -> URL {

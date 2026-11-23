@@ -43,6 +43,43 @@ struct WatermarkTests {
         }
     }
 
+    @Test func batchUsesTheSameLogoEvenIfTheSourceImageIsReplaced() async throws {
+        let directory = try Self.directory()
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = directory.appending(path: "first.png")
+        let second = directory.appending(path: "second.png")
+        let logo = directory.appending(path: "logo.png")
+        let replacement = directory.appending(path: "replacement.png")
+        for file in [first, second] {
+            try Self.writeImage(file, width: 200, height: 120, color: CGColor(srgbRed: 1, green: 1, blue: 1, alpha: 1))
+        }
+        try Self.writeImage(logo, width: 24, height: 18, color: CGColor(srgbRed: 0, green: 0, blue: 1, alpha: 1))
+        try Self.writeImage(replacement, width: 24, height: 18, color: CGColor(srgbRed: 1, green: 0, blue: 0, alpha: 1))
+        let replacementBytes = try Data(contentsOf: replacement)
+        var options = ToolOptions()
+        options.watermark.content = .logo
+        options.watermark.logo = logo
+        options.watermark.placement = .topLeft
+        options.watermark.opacity = 1
+        options.watermark.scale = 0.25
+        options.watermark.margin = 0.05
+
+        let report = try await ToolRunner.run(.watermark, inputs: [first, second], destination: directory,
+                                              imageSize: 0, options: options) { fraction in
+            if fraction == 0.5 {
+                do { try replacementBytes.write(to: logo, options: .atomic) }
+                catch { Issue.record("Could not replace the logo fixture: \(error)") }
+            }
+        }
+        #expect(report.failures.isEmpty)
+        #expect(report.outputs.count == 2)
+        for output in report.outputs {
+            let pixels = try Self.pixels(Self.image(output))
+            #expect(pixels.at(17, 13) == [0, 0, 255, 255])
+        }
+        #expect(try Data(contentsOf: logo) == replacementBytes)
+    }
+
     @Test func stampsSelectedRotatedPDFPageAndKeepsBothPagesSearchable() async throws {
         let directory = try Self.directory()
         defer { try? FileManager.default.removeItem(at: directory) }

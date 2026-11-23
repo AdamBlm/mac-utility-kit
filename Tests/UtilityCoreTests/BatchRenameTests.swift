@@ -155,6 +155,55 @@ import UtilityCore
         }
     }
 
+    @Test func rejectsRepeatedSourceEvenWhenItsFirstPreviewRowDoesNotMove() throws {
+        try fixture { directory in
+            let source = try file("note-1.txt", in: directory)
+            var replace = BatchRenameRule(kind: .replace)
+            replace.search = "-1"
+            var number = BatchRenameRule(kind: .number)
+            number.padding = 1
+            var options = BatchRenameOptions()
+            options.rules = [replace, number]
+
+            let single = try BatchRename.plan(files: [source], options: options)
+            #expect(single.changes.first?.destination.lastPathComponent == "note-1.txt")
+            #expect(throws: BatchRenameError.self) {
+                try BatchRename.plan(files: [source, source], options: options)
+            }
+            let alias = directory.appendingPathComponent("NOTE-1.txt")
+            if FileManager.default.fileExists(atPath: alias.path) {
+                #expect(throws: BatchRenameError.self) {
+                    try BatchRename.plan(files: [source, alias], options: options)
+                }
+            }
+            #expect(try String(contentsOf: source, encoding: .utf8) == "note-1.txt")
+        }
+    }
+
+    @Test func sameNamesInSeparateFoldersCanBeRenamedAndUndone() throws {
+        try fixture { directory in
+            let first = try file("Notes.txt", in: directory)
+            let other = directory.appending(path: "Other", directoryHint: .isDirectory)
+            try FileManager.default.createDirectory(at: other, withIntermediateDirectories: false)
+            let second = other.appending(path: first.lastPathComponent)
+            try Data("Second file".utf8).write(to: second)
+            var rule = BatchRenameRule(kind: .replace)
+            rule.search = "Notes"
+            rule.replacement = "Renamed"
+            var options = BatchRenameOptions()
+            options.rules = [rule]
+
+            let plan = try BatchRename.plan(files: [first, second], options: options)
+            #expect(plan.changes.map(\.destination.lastPathComponent) == ["Renamed.txt", "Renamed.txt"])
+            let receipt = try plan.apply()
+            #expect(try plan.changes.map { try String(contentsOf: $0.destination, encoding: .utf8) }
+                    == ["Notes.txt", "Second file"])
+            try receipt.undo()
+            #expect(try String(contentsOf: first, encoding: .utf8) == "Notes.txt")
+            #expect(try String(contentsOf: second, encoding: .utf8) == "Second file")
+        }
+    }
+
     @Test func stackedRulesKeepExtensionsAndUndoRestoresContents() throws {
         try fixture { directory in
             let source = try file("draft-file.JPG", in: directory)

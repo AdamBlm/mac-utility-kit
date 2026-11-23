@@ -3,26 +3,26 @@ import Foundation
 import Synchronization
 
 struct VideoCompressionSizes {
-    let input: URL
+    let inputLabel: String
     let sourceBytes: Int64
     let outputBytes: Int64
 
-    init(input: URL, output: URL) throws {
-        self.input = input
-        sourceBytes = Int64(try input.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
+    init(inputLabel: String, sourceBytes: Int64, output: URL) throws {
+        self.inputLabel = inputLabel
+        self.sourceBytes = sourceBytes
         outputBytes = Int64(try output.resourceValues(forKeys: [.fileSizeKey]).fileSize ?? 0)
     }
 
     var needsReview: Bool { sourceBytes > 0 && outputBytes >= sourceBytes }
 
     var summary: String {
-        guard sourceBytes > 0, outputBytes > 0 else { return input.lastPathComponent }
+        guard sourceBytes > 0, outputBytes > 0 else { return inputLabel }
         let change = Double(sourceBytes - outputBytes) / Double(sourceBytes)
         let percent = abs(change).formatted(.percent.precision(.fractionLength(1)))
         let sizeChange = change == 0 ? "Same size" : percent + (change > 0 ? " saved" : " larger")
         let before = ByteCountFormatter.string(fromByteCount: sourceBytes, countStyle: .file)
         let after = ByteCountFormatter.string(fromByteCount: outputBytes, countStyle: .file)
-        return "\(input.lastPathComponent) • \(before) → \(after) • \(sizeChange)"
+        return "\(inputLabel) • \(before) → \(after) • \(sizeChange)"
     }
 }
 

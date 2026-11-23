@@ -28,6 +28,52 @@ struct AudioConvertTests {
         #expect(summary.contains("Mono"))
     }
 
+    @Test(arguments: [false, true])
+    func batchPreservesEachSampleRateAndChecksFileSymlinks(retargetLink: Bool) async throws {
+        let directory = try Self.makeDirectory()
+        let manager = FileManager.default
+        defer { try? manager.removeItem(at: directory) }
+        let first = try Self.writeStereoWAV(to: directory, sampleRate: 48_000)
+        let other = directory.appending(path: "Other", directoryHint: .isDirectory)
+        let links = directory.appending(path: "Links", directoryHint: .isDirectory)
+        for folder in [other, links] { try manager.createDirectory(at: folder, withIntermediateDirectories: false) }
+        let second = try Self.writeStereoWAV(to: other, sampleRate: 44_100)
+        let alias = links.appending(path: first.lastPathComponent)
+        try manager.createSymbolicLink(at: alias, withDestinationURL: second)
+        let corrupt = directory.appending(path: "Bad.wav")
+        try Data("not audio".utf8).write(to: corrupt)
+        let originals = try [first, second].map { try Data(contentsOf: $0) }
+
+        var options = ToolOptions()
+        options.audioConvert = .recommended
+        options.audioConvert.format = .wav
+        let report = try await ToolRunner.run(.convertAudio, inputs: [first, corrupt, alias],
+                                              destination: directory, imageSize: 0, options: options) { fraction in
+            if retargetLink, fraction > 2.0 / 3, fraction < 1,
+               (try? FileManager.default.destinationOfSymbolicLink(atPath: alias.path)) == second.path {
+                do {
+                    try FileManager.default.removeItem(at: alias)
+                    try FileManager.default.createSymbolicLink(at: alias, withDestinationURL: first)
+                } catch {
+                    Issue.record("Could not retarget the audio fixture: \(error)")
+                }
+            }
+        }
+
+        #expect(report.failures.count == (retargetLink ? 2 : 1))
+        #expect(report.failures.first?.hasPrefix("2 - Bad.wav — ") == true)
+        if retargetLink {
+            #expect(report.failures.last?.contains("3 - source.wav — The source audio changed") == true)
+        }
+        let names = retargetLink ? ["1 - source.wav"] : ["1 - source.wav", "3 - source.wav"]
+        #expect(report.outputs.map(\.lastPathComponent) == names)
+        let formats = try report.outputs.map { try AVAudioFile(forReading: $0).fileFormat }
+        let rates: [Double] = retargetLink ? [48_000] : [48_000, 44_100]
+        #expect(formats.map(\.sampleRate) == rates)
+        #expect(formats.allSatisfy { $0.channelCount == 2 })
+        #expect(try [first, second].map { try Data(contentsOf: $0) } == originals)
+    }
+
     @Test func appliesMetadataToggleToAAC() async throws {
         let directory = try Self.makeDirectory()
         defer { try? FileManager.default.removeItem(at: directory) }

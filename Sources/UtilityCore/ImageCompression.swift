@@ -59,17 +59,9 @@ public enum ImageCompression {
         guard !fileManager.fileExists(atPath: output.path) else {
             throw ToolError.invalid("The output file already exists.")
         }
-        let original: DuplicateFile?
-        if options.mode == .automatic && options.format == .original && options.preserveMetadata {
-            let resolved = input.resolvingSymlinksInPath().standardizedFileURL
-            guard let stamp = try DuplicateFileIO.inspect(resolved) else {
-                throw ToolError.invalid("Choose a local image file.")
-            }
-            original = DuplicateFile(url: resolved, stamp: stamp)
-        } else {
-            original = nil
-        }
-        let sourceInput = original?.url ?? input
+        let version = try LocalInputFile.Version.read(input)
+        let sourceInput = version.resolved
+        let canKeepOriginal = options.mode == .automatic && options.format == .original && options.preserveMetadata
         let format = try selectedFormat(for: sourceInput, options: options)
         let target = try targetBytes(options.targetKilobytes)
         let quality = options.mode == .automatic ? ImageCompressionOptions().quality : options.quality
@@ -129,31 +121,30 @@ public enum ImageCompression {
                                            minimumQuality: minimumQuality)
         }
         try Task.checkCancellation()
-        if let original {
-            guard input.resolvingSymlinksInPath().standardizedFileURL == original.url else {
-                throw ToolError.invalid("The source image changed during compression. Try again.")
-            }
-            try DuplicateFileIO.check(original)
-            if best.bytes >= sourceSize {
-                let unchanged = staging.appending(path: "Original.\(format.rawValue)")
-                try copyOriginal(original, to: unchanged)
-                try Task.checkCancellation()
-                guard input.resolvingSymlinksInPath().standardizedFileURL == original.url else {
-                    throw ToolError.invalid("The source image changed during compression. Try again.")
-                }
-                try DuplicateFileIO.check(original)
-                try fileManager.moveItem(at: unchanged, to: output)
-                let bytes = ByteCountFormatter.string(fromByteCount: Int64(sourceSize), countStyle: .file)
-                let goal = target.map { sourceSize <= $0 ? " · Size goal reached" : " · Size goal not reached" } ?? ""
-                return "\(input.lastPathComponent) · Original kept at \(bytes) · No savings\(goal)"
-            }
+        try verifySource(input, version: version)
+        if canKeepOriginal, best.bytes >= sourceSize {
+            let unchanged = staging.appending(path: "Original.\(format.rawValue)")
+            try copyOriginal(DuplicateFile(url: sourceInput, stamp: version.stamp), to: unchanged)
+            try Task.checkCancellation()
+            try verifySource(input, version: version)
+            try fileManager.moveItem(at: unchanged, to: output)
+            let bytes = ByteCountFormatter.string(fromByteCount: Int64(sourceSize), countStyle: .file)
+            let goal = target.map { sourceSize <= $0 ? " · Size goal reached" : " · Size goal not reached" } ?? ""
+            return "\(input.lastPathComponent) · Original kept at \(bytes) · No savings\(goal)"
         }
         if usesLosslessEncoding {
             try validatePrecision(of: best.url, against: source)
         }
+        try verifySource(input, version: version)
         try fileManager.moveItem(at: best.url, to: output)
         return summary(input, sourceSize: sourceSize, outputSize: best.bytes, target: target,
                        format: format, lossless: usesLosslessEncoding, quality: best.quality)
+    }
+
+    private static func verifySource(_ input: URL, version: LocalInputFile.Version) throws {
+        guard (try? LocalInputFile.Version.read(input)) == version else {
+            throw ToolError.invalid("The source image changed during compression. Try again.")
+        }
     }
 
     private static func copyOriginal(_ original: DuplicateFile, to destination: URL) throws {

@@ -147,6 +147,25 @@ private final class ExportDockProgressView: NSView {
 
 @MainActor
 final class ExportTerminationDelegate: NSObject, NSApplicationDelegate {
+    private weak var launcher: LauncherController?
+    private var pendingPDFs: [URL] = []
+
+    func attachPDFRouting(to launcher: LauncherController) {
+        self.launcher = launcher
+        if !pendingPDFs.isEmpty {
+            // The launch workspace is already being constructed. Its window bridge will drain the batch.
+            launcher.openPDFs(pendingPDFs, opensWorkspaceIfNeeded: false)
+            pendingPDFs.removeAll()
+        }
+    }
+
+    func application(_ application: NSApplication, open urls: [URL]) {
+        let pdfs = urls.filter { $0.isFileURL && $0.pathExtension.lowercased() == "pdf" }
+        guard !pdfs.isEmpty else { return }
+        if let launcher { launcher.openPDFs(pdfs) }
+        else { pendingPDFs.append(contentsOf: pdfs) }
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         DraftRetention.shared.persist()
     }

@@ -13,18 +13,20 @@ Resize Images also supports a user-installed ImageMagick 7 executable via **Choo
 ## Media tools
 
 - **Record Screen** records a display, window, or single-display region with optional system and microphone audio. Set resolution and frame rate, then pause, resume, or stop from the menu bar.
-- **Extract Subtitles** exports a selected embedded text track to SRT or WebVTT with FFmpeg.
+- **Extract Subtitles** queues several videos and exports one selected embedded text track at a time to SRT or WebVTT with FFmpeg.
 - **Merge Audio** joins clips in the selected order with straight cuts, silent gaps, or crossfades.
 - **Download Video** inspects a URL using a managed, Homebrew, or manually selected yt-dlp executable. Preview builds include a copyable Homebrew setup command. Choose a stream and output format, then download with separate video, audio, and finishing progress and cancellation. Stream merging and conversion require FFmpeg.
 
 - **Convert Video** converts to MP4, MOV, and M4V with AVFoundation. A user-selected FFmpeg adds WebM export and resolution and frame rate options. Passthrough requires streams compatible with the destination container. WebM results identify observed codecs and report dropped tracks.
-- **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections, while the optional user-selected ffprobe exports its detailed stream metadata. The native frame-timing check samples five short windows across the track and labels the result as an observation.
+- **Media Info** inspects streams locally and exports a JSON report. The native engine exports labeled sections. The app falls back to installed ffprobe for files the native engine cannot read. Select ffprobe in Advanced to use its detailed stream metadata for every input. The native frame-timing check samples five short windows across the track and labels the result as an observation.
 - **Extract Audio** selects a track by language or number, previews a chosen source, and exports to M4A, WAV, or AIFF. Language selection matches each file independently and reports missing or ambiguous tracks. A user-selected FFmpeg adds MP3 and FLAC. Source track discovery uses AVFoundation. Passthrough is supported for AAC and ALAC tracks in M4A.
+
+Use `muk media-info --ffprobe /path/to/ffprobe --destination /path/to/output input.webm` to select the same engine from the CLI.
 
 Set `MAC_UTILITY_FFPROBE_TEST` to a local ffprobe binary to exercise the external Media Info integration fixture.
 
 - **Change Speed** adjusts video timing with optional pitch preservation. Choose a queued video to preview its adjusted speed and pitch before export. Pitch-preserving preview and export use AVFoundation. Changing pitch along with speed requires a selected FFmpeg executable for clips with audio.
-- **Extract Frames** scrubs and previews source video, then exports selected timestamps or a fixed interval to PNG, JPEG, or HEIC. Fixed intervals start at the first visible video frame, and timestamps use the source timeline. It uses the video formats supported by AVFoundation.
+- **Extract Frames** scrubs and previews source video, then exports selected timestamps or a fixed interval to PNG, JPEG, or HEIC. Fixed intervals start at the first visible video frame. Timestamps use the source timeline, and the batch reports out-of-range timestamps while exporting the remaining frames. It uses the video formats supported by AVFoundation.
 
 - **Trim Video** previews an in/out range, re-encodes a precise MP4 cut, or copies video and audio streams to MKV at keyframe-aligned boundaries with selected FFmpeg and ffprobe executables.
 - **Mute Video** previews the audio track list and removes selected tracks or all audio. It copies encoded video through AVFoundation when the chosen MOV, MP4, or M4V container supports the retained streams.
@@ -65,7 +67,7 @@ Set `MAC_UTILITY_EXIFTOOL_TEST` to a local ExifTool executable to run its integr
 
 ## PDF reader
 
-Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom, or print. PDF output and merge previews can open directly in the reader. The **Use in Tool** menu sends the open file to tools such as **Crop PDF**, **Compress PDF**, **PDF to Word**, and **Fill & Flatten Forms**, subject to the document's permissions. In **Settings → PDF Reader**, choose whether macOS should open PDFs with Mac Utility Kit.
+Open a PDF from **PDF Reader** in the sidebar to browse thumbnails, search, zoom, or print. Open, drop, or paste several PDF files to switch between them using **Selected PDF**. The reader starts with the first file it can load and keeps the current document if a selection fails to open. PDF output and merge previews can open directly in the reader. The **Use in Tool** menu sends the open file to tools such as **Crop PDF**, **Compress PDF**, **PDF to Word**, and **Fill & Flatten Forms**, subject to the document's permissions. In **Settings → PDF Reader**, choose whether macOS should open PDFs with Mac Utility Kit.
 
 Use **Add Password** for an unencrypted PDF or **Remove Password** after opening an encrypted PDF. The protection tool receives the file and prompts separately for the password.
 
@@ -88,7 +90,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Make PDF Searchable** adds invisible, selectable Vision OCR text to chosen PDF pages. Preview recognized text, choose a language, and optionally skip pages that already contain text.
 - **Redact PDF** permanently removes marked content in a rasterized copy of an unencrypted PDF. The copy contains rendered pages, with text selection, links, and forms removed.
 - **Web Page to PDF** previews an HTTP or HTTPS page and exports a continuous or paginated PDF. Paginated export supports paper, margins, and print backgrounds.
-- **Convert Documents** uses Pandoc and LibreOffice for supported conversion pairs, with text previews and batch filename templates. Plain-text export drops formatting and images.
+- **Convert Documents** uses Pandoc and LibreOffice for supported conversion pairs, with text previews and batch filename templates. If filenames differ only by case, the first successful conversion keeps the name. Use `{index}` to give each export a distinct name. Plain-text export drops formatting and images.
 - **Word to PDF** uses LibreOffice to preview the document at its saved size, A4, US Letter, or US Legal and export selected pages with searchable text and links. Page ranges apply after layout. LibreOffice may substitute missing fonts.
 - **PowerPoint to PDF** previews selectable slides, including hidden slides when requested, and exports individual slides or 2-, 4-, or 6-slide handouts. Videos and animations export as static slides.
 - **Excel to PDF** previews printed workbook pages and supports sheet and cell ranges, paper and orientation, and fitting to one page wide. Saved print settings are used by default.
@@ -122,7 +124,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Diff Checker** compares two UTF-8 texts or files, with inline and side-by-side views, word changes, and navigation.
 - **Password Generator** generates random passwords or EFF-wordlist passphrases locally, with configurable rules and a randomness estimate. Generated secrets stay in the current view until copied or cleared.
 - **Disk Speed Test** measures sequential reads and writes on a chosen volume in one or three passes, using temporary storage.
-- **Zip & Unzip** creates standard or AES-256 ZIPs and extracts selected items from ZIP, RAR, 7z, and TAR. Extraction asks you to read the contents again if the reviewed archive changes. Encrypted format support varies with macOS libarchive.
+- **Zip & Unzip** creates standard or AES-256 ZIPs and extracts selected items from ZIP, RAR, 7z, and TAR. When top-level ZIP inputs share a name, later copies get a numbered name inside the archive. Extraction asks you to read the contents again if the reviewed archive changes. Encrypted format support varies with macOS libarchive.
 - **Regex Tester** shows numbered and named ICU regex captures and previews replacements with bounded matching.
 - **CSV ↔ JSON** converts CSV to JSON or Markdown and flat JSON rows to CSV. CSV fields remain strings, and malformed records show their location.
 - **Coordinate Picker** places or moves two map points, converts decimal and DMS coordinates, measures distance, and looks up a pasted list.
@@ -138,7 +140,7 @@ Each tool operates on one PDF at a time and writes new copies. These page edits 
 - **Translate** uses Apple’s on-device language packs for text, Markdown, SRT, and VTT. Markdown exports preserve supported formatting, link targets, and code. Subtitle exports retain cue timing.
 - **Ask a Document** retrieves source passages locally and uses Apple Intelligence to answer with verified quotations linked to pages or sections.
 - **Reset Permissions** asks macOS to reset one chosen privacy permission for the selected app’s bundle identifier.
-- **Scan Document** imports photos or scans, corrects selectable corners, rotates or recolors pages, and saves the ordered pages as a PDF.
+- **Scan Document** imports photos, PDFs, and multipage TIFF files, corrects selectable corners, rotates or recolors pages, and saves the ordered pages as a PDF.
 - **Fix “App Is Damaged”** inspects signing integrity, quarantine status, and current macOS policy through read-only checks.
 - **Login & Background Items** reviews discoverable system entries and opens the native settings for managing them.
 - **PDF to Word** uses LibreOffice to export selected pages as flowing editable text or a layout with positioned text and images. Optional OCR handles scans, including pages that already contain some selectable text. Preserve Layout skips OCR for interactive forms.

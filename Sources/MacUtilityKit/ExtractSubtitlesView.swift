@@ -31,8 +31,13 @@ struct ExtractSubtitlesView: View {
             .flatMapExecutable() ?? HomebrewVideoTools.ffmpegPair()?.ffprobe
     }
 
+    private var reviewedInventory: SubtitleInventory? {
+        guard let inventory, inventory.selection == source else { return nil }
+        return inventory
+    }
+
     private var track: EmbeddedSubtitleTrack? {
-        inventory?.tracks.first { $0.id == selectedTrack && $0.supportsTextExport }
+        reviewedInventory?.tracks.first { $0.id == selectedTrack && $0.supportsTextExport }
     }
 
     var body: some View {
@@ -40,14 +45,17 @@ struct ExtractSubtitlesView: View {
             WorkspaceSection("Source", palette: palette) {
                 if inputs.count > 1 {
                     Picker("Video", selection: Binding(get: { source }, set: { chosenInput = $0 })) {
-                        ForEach(inputs, id: \.self) { Text($0.lastPathComponent).tag(Optional($0)) }
+                        ForEach(Array(inputs.enumerated()), id: \.offset) { index, url in
+                            Text("\(index + 1). \(url.lastPathComponent)").tag(Optional(url))
+                        }
                     }
                 } else if let source {
                     Text(source.lastPathComponent).textSelection(.enabled)
                 }
-                Button(source == nil ? "Choose Video" : "Choose Another Video", systemImage: "film") {
-                    if let file = DeveloperToolFiles.choose(allowedTypes: Self.videoTypes) { inputs = [file] }
-                }
+                Button("Choose Videos…", systemImage: "film", action: chooseVideos)
+                ClipboardFileButton(allowedTypes: Self.videoTypes, buttonOnlyTitle: "Paste Videos", onPaste: {
+                    _ = setInputs($0)
+                })
                 if encoder == nil || probe == nil {
                     executablePicker("FFmpeg", selection: $encoderOverride)
                     executablePicker("ffprobe", selection: $probeOverride)
@@ -62,7 +70,7 @@ struct ExtractSubtitlesView: View {
             }
             .disabled(task != nil)
 
-            if let inventory {
+            if let inventory = reviewedInventory {
                 WorkspaceSection("Subtitles", palette: palette) {
                     if inventory.tracks.isEmpty {
                         Text("This video has no embedded subtitle tracks.").foregroundStyle(.secondary)
@@ -98,6 +106,9 @@ struct ExtractSubtitlesView: View {
                 }
             }
         }
+        .dropDestination(for: URL.self) { urls, _ in
+            task == nil && setInputs(urls)
+        }
         .task { await engines.refresh() }
         .onChange(of: source) { reset() }
         .onChange(of: probeOverride) { reset() }
@@ -106,6 +117,23 @@ struct ExtractSubtitlesView: View {
 
     private static var videoTypes: [UTType] {
         [.movie, .mpeg4Movie, .quickTimeMovie] + ["mkv", "webm"].compactMap { UTType(filenameExtension: $0) }
+    }
+
+    private func chooseVideos() {
+        let panel = NSOpenPanel()
+        panel.allowedContentTypes = Self.videoTypes
+        panel.allowsMultipleSelection = true
+        if panel.runModal() == .OK { _ = setInputs(panel.urls) }
+    }
+
+    private func setInputs(_ urls: [URL]) -> Bool {
+        var seen = Set<URL>()
+        let videos = urls.filter { LocalInputFile.matches($0, allowedTypes: Self.videoTypes) && seen.insert($0).inserted }
+        guard !videos.isEmpty else { return false }
+        reset()
+        chosenInput = nil
+        inputs = videos
+        return true
     }
 
     private func reset() {
@@ -130,7 +158,7 @@ struct ExtractSubtitlesView: View {
     }
 
     private func export() {
-        guard let source, let inventory, let track, let encoder else { return }
+        guard let source, let inventory = reviewedInventory, let track, let encoder else { return }
         let format = format
         let panel = NSSavePanel()
         panel.allowedContentTypes = [UTType(filenameExtension: format.fileExtension) ?? .plainText]

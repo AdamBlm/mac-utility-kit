@@ -38,10 +38,12 @@ final class LauncherController {
     @ObservationIgnored private var openWindow: OpenWindowAction?
     @ObservationIgnored private var routes: [ObjectIdentifier: WorkspaceRoute] = [:]
     @ObservationIgnored private var pendingTool: Tool?
+    @ObservationIgnored private var pendingPDFs: [URL] = []
 
     private struct WorkspaceRoute {
         weak var window: NSWindow?
         let openTool: @MainActor (Tool) -> Void
+        let openPDFs: @MainActor ([URL]) -> Void
     }
 
     init(defaults: UserDefaults = .standard) {
@@ -67,27 +69,51 @@ final class LauncherController {
     }
 
     func showWorkspace(tool: Tool? = nil) {
+        if let route = revealWorkspace() {
+            if let tool { route.openTool(tool) }
+        } else {
+            pendingTool = tool
+            openWindow?(id: Self.workspaceID)
+        }
+    }
+
+    func openPDFs(_ urls: [URL], opensWorkspaceIfNeeded: Bool = true) {
+        if let route = revealWorkspace() {
+            route.openPDFs(urls)
+        } else {
+            let alreadyWaiting = !pendingPDFs.isEmpty
+            pendingPDFs.append(contentsOf: urls)
+            if opensWorkspaceIfNeeded && !alreadyWaiting {
+                openWindow?(id: Self.workspaceID)
+            }
+        }
+    }
+
+    private func revealWorkspace() -> WorkspaceRoute? {
         // Activation alone can leave windows hidden. Restore their visibility before routing.
         if NSApp.isHidden { NSApp.unhide(nil) }
         NSApp.activate()
         routes = routes.filter { $0.value.window != nil }
         let visible = NSApp.orderedWindows.first { $0.isVisible && routes[ObjectIdentifier($0)] != nil }
         let minimized = NSApp.windows.first { $0.isMiniaturized && routes[ObjectIdentifier($0)] != nil }
-        if let window = visible ?? minimized, let route = routes[ObjectIdentifier(window)] {
-            if let tool { route.openTool(tool) }
-            if window.isMiniaturized { window.deminiaturize(nil) }
-            window.makeKeyAndOrderFront(nil)
-            return
-        }
-        pendingTool = tool
-        openWindow?(id: Self.workspaceID)
+        guard let window = visible ?? minimized, let route = routes[ObjectIdentifier(window)] else { return nil }
+        if window.isMiniaturized { window.deminiaturize(nil) }
+        window.makeKeyAndOrderFront(nil)
+        return route
     }
 
-    func register(_ window: NSWindow, openTool: @escaping @MainActor (Tool) -> Void) {
-        routes[ObjectIdentifier(window)] = WorkspaceRoute(window: window, openTool: openTool)
-        guard let tool = pendingTool else { return }
+    func register(_ window: NSWindow, openTool: @escaping @MainActor (Tool) -> Void,
+                  openPDFs: @escaping @MainActor ([URL]) -> Void) {
+        routes[ObjectIdentifier(window)] = WorkspaceRoute(window: window, openTool: openTool, openPDFs: openPDFs)
+        let tool = pendingTool
+        let pdfs = pendingPDFs
         pendingTool = nil
-        Task { @MainActor in openTool(tool) }
+        pendingPDFs.removeAll()
+        guard tool != nil || !pdfs.isEmpty else { return }
+        Task { @MainActor in
+            if let tool { openTool(tool) }
+            if !pdfs.isEmpty { openPDFs(pdfs) }
+        }
     }
 
     func unregister(_ window: NSWindow) {
@@ -121,6 +147,7 @@ final class LauncherController {
 struct LauncherWorkspaceBridge: NSViewRepresentable {
     let controller: LauncherController
     let openTool: @MainActor (Tool) -> Void
+    let openPDFs: @MainActor ([URL]) -> Void
     @Environment(\.openWindow) private var openWindow
 
     func makeNSView(context: Context) -> WorkspaceWindowObserver {
@@ -130,6 +157,7 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
     func updateNSView(_ view: WorkspaceWindowObserver, context: Context) {
         view.controller = controller
         view.openTool = openTool
+        view.openPDFs = openPDFs
         view.connect()
         let action = openWindow
         Task { @MainActor in controller.attach(openWindow: action) }
@@ -139,6 +167,7 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
         weak var controller: LauncherController?
         weak var registeredWindow: NSWindow?
         var openTool: (@MainActor (Tool) -> Void)?
+        var openPDFs: (@MainActor ([URL]) -> Void)?
 
         override func viewDidMoveToWindow() {
             super.viewDidMoveToWindow()
@@ -148,7 +177,9 @@ struct LauncherWorkspaceBridge: NSViewRepresentable {
         func connect() {
             if let oldWindow = registeredWindow, oldWindow !== window { controller?.unregister(oldWindow) }
             registeredWindow = window
-            if let window, let openTool { controller?.register(window, openTool: openTool) }
+            if let window, let openTool, let openPDFs {
+                controller?.register(window, openTool: openTool, openPDFs: openPDFs)
+            }
         }
     }
 }
