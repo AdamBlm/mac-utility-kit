@@ -173,12 +173,13 @@ final class WorkspaceSession {
 
     var isRunning: Bool { runningTool != nil }
 
-    func loadFinderAction(_ action: FinderFileAction) -> Bool {
+    func loadFinderAction(_ action: FinderFileAction, with tool: Tool) -> Bool {
+        guard action.supports(tool) else { return false }
         var draft = ToolDraft()
-        guard draft.addInputs(action.files, for: action.tool) else { return false }
-        drafts[action.tool] = draft
-        reports[action.tool] = nil
-        errors[action.tool] = nil
+        guard draft.addInputs(action.files, for: tool) else { return false }
+        drafts[tool] = draft
+        reports[tool] = nil
+        errors[tool] = nil
         return true
     }
 

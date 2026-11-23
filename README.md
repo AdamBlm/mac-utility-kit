@@ -19,10 +19,11 @@ See the [full tool catalog](docs/feature-inventory.md) or the [tool guide](docs/
 
 ## Open files from Finder
 
-In builds that include Finder Services, right-click a PDF or image in Finder and look under **Services** for an action ending in **with Mac Utility Kit**. If you don't see the actions, enable them in **System Settings → Keyboard → Keyboard Shortcuts → Services**.
+In builds that include Finder Services, right-click a PDF or image in Finder and look for Mac Utility Kit actions, which Finder may group under **Services**. If you don't see the actions, enable them in **System Settings → Keyboard → Keyboard Shortcuts → Services**.
 
-- **PDFs:** Compress PDF, Organize PDF Pages (one file), and Combine PDFs (two or more).
-- **Images:** Compress Images, Resize Images, and Convert Images.
+- **PDFs:** Compress PDF or Combine PDFs (two or more).
+- **Images:** Compress Images.
+- **Favorite Actions in Mac Utility Kit:** Choose from starred tools that can open the entire Finder selection.
 
 The selected files open in the matching tool, ready for you to review the settings and export.
 

@@ -11,6 +11,7 @@ struct Workspace: View {
     let screenRecordingController: ScreenRecordingController
     @State private var selection = Destination.browse(.overview)
     @State private var pdfReader = PDFReaderSession()
+    @State private var finderFavorites: FinderFileAction?
     @State private var captureHandoffError: String?
     @State private var search = ""
     @AppStorage("workspace.favoriteTools") private var storedFavorites = ""
@@ -149,11 +150,18 @@ struct Workspace: View {
             for url in urls { pdfReader.openDeliveredFile(url) }
             selection = .pdfReader
         }, openFinderAction: { action in
-            guard session.loadFinderAction(action) else { return }
-            selection = .tool(action.tool)
-            search = ""
-            searching = false
+            if let tool = action.tool {
+                finderFavorites = nil
+                openFinderFiles(action, with: tool)
+            } else {
+                finderFavorites = action
+            }
         }))
+        .sheet(item: $finderFavorites) { action in
+            FinderFavoritesView(tools: action.compatibleFavorites(favorites)) { tool in
+                openFinderFiles(action, with: tool)
+            }
+        }
         .onChange(of: selection) { _, destination in
             guard case .tool(let tool) = destination else { return }
             let updated = [tool] + recents.filter { $0 != tool }
@@ -246,6 +254,13 @@ struct Workspace: View {
         } catch {
             captureHandoffError = error.localizedDescription
         }
+    }
+
+    private func openFinderFiles(_ action: FinderFileAction, with tool: Tool) {
+        guard session.loadFinderAction(action, with: tool) else { return }
+        selection = .tool(tool)
+        search = ""
+        searching = false
     }
 
     private func handoffPDF(to tool: Tool, input: URL) {
