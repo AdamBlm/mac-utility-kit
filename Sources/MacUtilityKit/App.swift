@@ -35,7 +35,7 @@ struct MacUtilityKitApp: App {
             )
             .handlesExternalEvents(preferring: ["*"], allowing: ["*"])
             .task {
-                exportDelegate.attachPDFRouting(to: launcherController)
+                exportDelegate.attachFileRouting(to: launcherController)
                 await VideoEngineSettings.shared.refresh()
                 while !Task.isCancelled {
                     await VideoEngineSettings.shared.updateAutomatically()

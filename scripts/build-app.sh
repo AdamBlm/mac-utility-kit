@@ -70,6 +70,7 @@ cat > "$app/Contents/Info.plist" <<PLIST
 </plist>
 PLIST
 plist="$app/Contents/Info.plist"
+/usr/bin/plutil -insert NSServices -xml "$(cat scripts/finder-services.plist)" "$plist"
 add_release_feed() {
     local feed="$1" key="$2" feed_name="$3" key_name="$4"
     if [[ -z "$feed" && -z "$key" ]]; then return; fi
