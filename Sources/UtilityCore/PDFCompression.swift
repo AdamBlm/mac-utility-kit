@@ -44,6 +44,10 @@ public struct PDFCompressionOptions: Equatable, Sendable {
         }
     }
 
+    package var defaultEmbeddedImageQuality: Int {
+        preset == .smaller ? 25 : 30
+    }
+
     public var defaultDPI: Int {
         switch preset {
         case .smaller: 96
@@ -54,7 +58,7 @@ public struct PDFCompressionOptions: Equatable, Sendable {
 
     public var validationIssue: String? {
         if let imageQuality, !(1...100).contains(imageQuality) { return "Choose JPEG quality from 1 to 100." }
-        if engine != .qpdf, let imageDPI, !(72...600).contains(imageDPI) { return "Choose a target DPI between 72 and 600." }
+        if let imageDPI, !(72...600).contains(imageDPI) { return "Choose a target PPI between 72 and 600." }
         if engine == .automatic && qpdfExecutable == nil && ghostscriptExecutable == nil {
             return "Set up qpdf or Ghostscript to enable automatic compression."
         }
@@ -176,8 +180,10 @@ public enum PDFCompression {
         let bytes: Int64
         let options: PDFCompressionOptions
         let structurallyOptimized: Bool
+        var replacedEmbeddedImages = false
 
         var method: String {
+            if replacedEmbeddedImages { return "qpdf · embedded images · \(options.imageDPI ?? options.defaultDPI) PPI target" }
             let primary = PDFCompression.method(for: options)
             return structurallyOptimized ? primary + " + qpdf lossless" : primary
         }
@@ -195,6 +201,29 @@ public enum PDFCompression {
             // Keep the earlier, less destructive result on a tie.
             if let current = best, candidate.bytes >= current.bytes { return }
             best = candidate
+        }
+
+        if let options = candidates.first(where: { $0.engine == .qpdf && $0.preset != .higherQuality }),
+           let qpdf = options.qpdfExecutable,
+           try PDFCompressionEngines.allowsEmbeddedImageChanges(in: reference) {
+            let embedded = output.deletingLastPathComponent().appending(path: "Embedded-images.pdf")
+            do {
+                if try await PDFEmbeddedImages.optimize(input, to: embedded, qpdf: qpdf, options: options) {
+                    try verify(open(embedded), against: reference, engine: .qpdf)
+                    let size = try bytes(embedded)
+                    let optimized = VerifiedCandidate(url: embedded, bytes: size, options: options,
+                                                      structurallyOptimized: false, replacedEmbeddedImages: true)
+                    consider(optimized)
+                    if !candidates.contains(where: { $0.engine == .ghostscript }),
+                       Double(size) <= Double(try bytes(input)) * 0.75 {
+                        try FileManager.default.moveItem(at: embedded, to: output)
+                        return optimized
+                    }
+                }
+            } catch {
+                try Task.checkCancellation()
+                failure = error
+            }
         }
 
         for (index, options) in candidates.enumerated() {
@@ -220,7 +249,12 @@ public enum PDFCompression {
         guard let best else {
             throw failure ?? ToolError.invalid("No compression engine produced a verified PDF.")
         }
-        if compare { try FileManager.default.moveItem(at: best.url, to: output) }
+        if best.url != output {
+            if !compare, FileManager.default.fileExists(atPath: output.path) {
+                try FileManager.default.removeItem(at: output)
+            }
+            try FileManager.default.moveItem(at: best.url, to: output)
+        }
         return best
     }
 
