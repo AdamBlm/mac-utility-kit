@@ -50,16 +50,15 @@ struct JSONFormatterView: View {
                     .frame(minHeight: 160)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("JSON input")
                     .disabled(isLoading)
-                HStack {
+                WorkspaceFlowLayout(spacing: 8) {
                     Button("Open file…", systemImage: "folder", action: openFile)
                     ClipboardFileButton(allowedTypes: Self.inputTypes, buttonOnlyTitle: "Paste File", onPasteFile: load)
                     Button("Paste Text", systemImage: "doc.on.clipboard") {
                         if let text = NSPasteboard.general.string(forType: .string) { updateText(text) }
                     }
-                    Spacer()
                     Button("Clear") { updateText("") }
                         .disabled(draft.text.isEmpty)
                 }
@@ -122,7 +121,7 @@ struct JSONFormatterView: View {
                     }
                     .frame(minHeight: 130, idealHeight: 200, maxHeight: 300)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     if preview.endIndex != result.text.endIndex {
                         Text("Preview limited to 20,000 characters. Copy and export include the full result.")
                             .font(.callout).foregroundStyle(.secondary)

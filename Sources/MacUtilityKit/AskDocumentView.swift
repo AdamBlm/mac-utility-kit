@@ -76,9 +76,6 @@ struct AskDocumentView: View {
                     WorkspaceSection("Answers", palette: palette) { turns(index) }
                 }
             }
-            if let issue {
-                Text(issue).font(.callout).foregroundStyle(.red).textSelection(.enabled)
-            }
         }
         .dropDestination(for: URL.self) { urls, _ in
             guard job == nil, let source = urls.first, urls.count == 1, source.isFileURL,
@@ -118,7 +115,7 @@ struct AskDocumentView: View {
                 Button("Open Document…", systemImage: "folder", action: open)
                 ClipboardFileButton(allowedTypes: documentTypes, onPasteFile: setSource)
                 if let source = draft.source {
-                    Text(source.lastPathComponent).lineLimit(1).help(source.path)
+                    Text(source.lastPathComponent).lineLimit(1).truncationMode(.middle).help(source.path)
                 }
             }
             .disabled(job != nil)
@@ -168,15 +165,8 @@ struct AskDocumentView: View {
                         showPreview(index, location: first.location)
                     }.disabled(job != nil)
                 }
-                if job != nil {
-                    Button("Cancel") { job?.cancel() }
-                }
             }
-            if let progress {
-                ProgressView(value: progress.fraction) { Text(progress.message).font(.callout) }
-            } else if job != nil {
-                ProgressView(busyTitle).controlSize(.small)
-            }
+            if draft.index == nil { jobFeedback }
             if let index = draft.index {
                 Text("\(index.sections.count.formatted()) \(index.isPDF ? "pages" : "sections") indexed")
                     .font(.callout).foregroundStyle(.secondary)
@@ -219,6 +209,25 @@ struct AskDocumentView: View {
                     .disabled(draft.question.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
             .disabled(!modelReady || job != nil)
+            jobFeedback
+        }
+    }
+
+    @ViewBuilder
+    private var jobFeedback: some View {
+        if job != nil {
+            HStack {
+                if let progress {
+                    ProgressView(value: progress.fraction) { Text(progress.message).font(.callout) }
+                } else {
+                    ProgressView(busyTitle).controlSize(.small)
+                }
+                Button("Cancel") { job?.cancel() }
+            }
+        }
+        if let issue {
+            Label(issue, systemImage: "exclamationmark.circle")
+                .font(.callout).foregroundStyle(.red).textSelection(.enabled)
         }
     }
 

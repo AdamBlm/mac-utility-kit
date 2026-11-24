@@ -176,14 +176,12 @@ struct PDFExportPagePicker: View {
                         range = PageSelection.expression(for: edits)
                     } label: {
                         VStack(spacing: 5) {
-                            if let page = document.page(at: index) {
-                                Image(nsImage: page.thumbnail(of: NSSize(width: 62, height: 76), for: .cropBox))
-                            }
+                            PDFPageThumbnail(page: document.page(at: index))
                             Label("Page \(index + 1)", systemImage: marked.contains(index) ? "checkmark.circle.fill" : "circle")
                                 .font(.caption)
                         }
-                        .padding(5)
                     }
+                    .buttonStyle(PDFPageCardStyle(selected: marked.contains(index)))
                     .accessibilityAddTraits(marked.contains(index) ? .isSelected : [])
                 }
             }

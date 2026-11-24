@@ -69,7 +69,14 @@ struct PDFCropControls: View {
                         .font(.callout).foregroundStyle(.secondary)
                 }
                 if let page = document.page(at: previewPage - 1), let reference = page.pageRef {
-                    preview(page, size: PDFCrop.visibleSize(for: reference), showsCrop: cropsPreviewPage)
+                    let size = PDFCrop.visibleSize(for: reference)
+                    if size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0 {
+                        ViewThatFits(in: .horizontal) {
+                            preview(page, size: size, showsCrop: cropsPreviewPage, limit: 360)
+                            preview(page, size: size, showsCrop: cropsPreviewPage, limit: 245)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
                 }
             }
             Text("Cropping changes the visible area. Use Redact PDF to permanently remove content.")
@@ -147,8 +154,8 @@ struct PDFCropControls: View {
         }
     }
 
-    private func preview(_ page: PDFPage, size: CGSize, showsCrop: Bool) -> some View {
-        let scale = min(1, 280 / max(1, max(size.width, size.height)))
+    private func preview(_ page: PDFPage, size: CGSize, showsCrop: Bool, limit: CGFloat) -> some View {
+        let scale = min(1, limit / max(size.width, size.height))
         let canvas = CGSize(width: size.width * scale, height: size.height * scale)
         let thumbnail = page.thumbnail(of: canvas, for: .cropBox)
         return Image(nsImage: thumbnail)
@@ -180,6 +187,7 @@ struct PDFCropControls: View {
                     offsets.left = selection.minX
                     options.offsets = offsets
                 })
+            .fixedSize()
             .accessibilityLabel("Crop preview for page \(previewPage)")
     }
 

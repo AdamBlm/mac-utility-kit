@@ -158,15 +158,17 @@ struct TextExtractionResultView: View {
                     }
                 }
                 if let page = file.result.pages.first(where: { $0.id == selectedPage }) ?? file.result.pages.first {
-                    HStack(alignment: .top, spacing: 12) {
+                    LazyVGrid(columns: [GridItem(.adaptive(minimum: 175), spacing: 12, alignment: .top)],
+                              alignment: .leading, spacing: 12) {
                         OCRSourcePreview(input: file.source, pageNumber: page.pageNumber, pageRange: "", password: password, region: .constant(nil))
-                            .frame(minWidth: 130, idealWidth: 225, maxWidth: 250, minHeight: 185)
+                            .frame(height: 185)
                         ScrollView {
                             Text(page.error ?? (page.text.isEmpty ? "No text recognized." : page.text))
                                 .textSelection(.enabled)
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
-                        .frame(minWidth: 150, maxHeight: 220)
+                        .frame(maxHeight: 220)
+                        .accessibilityLabel("Recognized text")
                     }
                 }
             }
@@ -280,7 +282,7 @@ private struct OCRSourcePreview: View {
                     .frame(width: width, height: height)
                     .overlay {
                         if let box = dragRegion ?? region {
-                            let accent = WorkspacePalette(dark: colorScheme == .dark).accent
+                            let accent = WorkspacePalette(dark: colorScheme == .dark, category: .text).accent
                             Rectangle()
                                 .fill(accent.opacity(0.16))
                                 .overlay { Rectangle().strokeBorder(accent, lineWidth: 2) }

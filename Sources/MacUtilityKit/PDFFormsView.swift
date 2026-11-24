@@ -100,7 +100,8 @@ struct PDFFormsView: View {
                     PDFFormsPreview(document: session.document, page: page, revision: revision,
                                     candidates: candidates, reviewedCandidate: reviewedCandidate,
                                     selection: fields.first { $0.id == selected }?.bounds, onClick: picked)
-                        .frame(minHeight: 270, maxHeight: 350)
+                        .frame(height: 340)
+                        .clipShape(.rect(cornerRadius: 8))
                         .id("forms-page-preview")
                     HStack {
                         Picker("Field type", selection: $kind) {
@@ -178,6 +179,7 @@ struct PDFFormsView: View {
                         ExternalEngineSetupButton(engine: .forms) { draft.python = $0 }
                     }
                     Button("Export PDF…", systemImage: "square.and.arrow.up", action: export)
+                        .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                         .disabled(draft.python == nil || edit != originalEdit)
                     if edit != originalEdit {
                         Text("Apply field changes before exporting.").font(.caption).foregroundStyle(.secondary)

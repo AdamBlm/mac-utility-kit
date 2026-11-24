@@ -41,7 +41,7 @@ struct KeepAwakeView: View {
                             let remaining = ContinuousClock.now.duration(to: deadline).components
                             let seconds = max(0, remaining.seconds + (remaining.attoseconds > 0 ? 1 : 0))
                             Text(Duration.seconds(seconds).formatted(.time(pattern: .hourMinuteSecond)))
-                                .monospacedDigit()
+                                .font(.title2.monospacedDigit())
                                 .accessibilityLabel("Time remaining: \(seconds) seconds")
                         }
                     } else {
@@ -50,6 +50,7 @@ struct KeepAwakeView: View {
                     }
                     HStack {
                         Button("Stop", systemImage: "stop.fill") { controller.stop() }
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                         if controller.deadline != nil {
                             Button("Add 15 Minutes", systemImage: "clock.badge.plus") { controller.extend(minutes: 15) }
                         }
@@ -76,6 +77,7 @@ struct KeepAwakeView: View {
                     Button("Start", systemImage: "play.fill") {
                         controller.start(minutes: minutes, keepDisplayAwake: keepDisplayAwake)
                     }
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(duration != .indefinite && minutes == nil)
                 }
                 if let error = controller.error { Text(error).font(.callout).foregroundStyle(.red) }

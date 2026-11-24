@@ -80,6 +80,7 @@ struct PDFPageControls: View {
                         Button("All") { range = ""; anchor = nil }
                         Button("Clear") { range = "none"; anchor = nil }
                     }
+                    .controlSize(.small)
                     ScrollView(.horizontal) {
                         LazyHStack {
                             ForEach(0..<count, id: \.self) { index in
@@ -87,18 +88,16 @@ struct PDFPageControls: View {
                                     select(index, from: selected ?? [])
                                 } label: {
                                     VStack {
-                                        if let thumbnail = current?.document?.page(at: index)?.thumbnail(
-                                            of: NSSize(width: 64, height: 82), for: .cropBox
-                                        ) {
-                                            Image(nsImage: thumbnail)
-                                        }
+                                        PDFPageThumbnail(page: current?.document?.page(at: index))
                                         Label("Page \(index + 1)", systemImage: selectedIndices.contains(index)
                                               ? "checkmark.circle.fill" : "circle").font(.caption)
                                     }
                                 }
+                                .buttonStyle(PDFPageCardStyle(selected: selectedIndices.contains(index)))
                                 .accessibilityAddTraits(selectedIndices.contains(index) ? .isSelected : [])
                             }
                         }
+                        .padding(3)
                     }
                 }
             }

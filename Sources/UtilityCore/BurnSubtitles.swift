@@ -81,9 +81,12 @@ public enum BurnSubtitles {
         let offset = Int((options.offset * 1_000).rounded())
         let source = try parsedCues ?? SubRip.parse(options.srt)
         var clipped = 0
-        let adjusted = source.compactMap { cue -> SubtitleCue? in
-            let shiftedStart = cue.startMilliseconds + offset
-            let shiftedEnd = cue.endMilliseconds + offset
+        let adjusted = try source.compactMap { cue -> SubtitleCue? in
+            let (shiftedStart, startOverflow) = cue.startMilliseconds.addingReportingOverflow(offset)
+            let (shiftedEnd, endOverflow) = cue.endMilliseconds.addingReportingOverflow(offset)
+            guard !startOverflow, !endOverflow else {
+                throw ToolError.invalid("A subtitle timestamp is outside the supported range after applying the offset.")
+            }
             let start = max(0, shiftedStart)
             let end = min(limit, shiftedEnd)
             guard start < end else { return nil }

@@ -19,11 +19,11 @@ struct CleanLinksView: View {
                     .frame(minHeight: 100)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("Links, one per line")
                 Toggle("Replace recognized redirects with their destination", isOn: $draft.unwrapRedirects)
                 Button("Clean Links", systemImage: "link", action: clean)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(draft.input.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
                 if let issue {
                     Text(issue).font(.callout).foregroundStyle(.secondary)

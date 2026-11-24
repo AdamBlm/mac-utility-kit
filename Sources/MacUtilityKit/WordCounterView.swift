@@ -32,7 +32,7 @@ struct WordCounterView: View {
                     .frame(minHeight: 150, idealHeight: 205)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("Text to count")
                 HStack {
                     Button("Open text file…", systemImage: "folder") { chooseFile() }
@@ -58,16 +58,13 @@ struct WordCounterView: View {
                 } else if count == nil {
                     ProgressView("Counting…").controlSize(.small)
                 }
-                Grid(alignment: .leading, horizontalSpacing: 28, verticalSpacing: 16) {
-                    GridRow {
-                        statistic("Words", count?.words.formatted() ?? "—")
-                        statistic("Characters", count?.characters.formatted() ?? "—")
-                        statistic("Sentences", count?.sentences.formatted() ?? "—")
-                    }
-                    GridRow {
-                        statistic("Paragraphs", count?.paragraphs.formatted() ?? "—")
-                        statistic("Reading time", count.map { readingTime($0.readingSeconds) } ?? "—")
-                    }
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 115, maximum: 150), spacing: 16, alignment: .topLeading)],
+                          alignment: .leading, spacing: 16) {
+                    statistic("Words", count?.words.formatted() ?? "—")
+                    statistic("Characters", count?.characters.formatted() ?? "—")
+                    statistic("Sentences", count?.sentences.formatted() ?? "—")
+                    statistic("Paragraphs", count?.paragraphs.formatted() ?? "—")
+                    statistic("Reading time", count.map { readingTime($0.readingSeconds) } ?? "—")
                 }
                 Divider()
                 Toggle("Exclude whitespace from character count", isOn: $draft.options.excludesWhitespace)
@@ -140,8 +137,13 @@ struct WordCounterView: View {
 
     private func replaceText(_ text: String) {
         importTask?.cancel()
-        importError = nil
-        draft.text = text
+        do {
+            try WordCounter.validateSize(text)
+            importError = nil
+            draft.text = text
+        } catch {
+            importError = error.localizedDescription
+        }
     }
 
     private func chooseFile() {

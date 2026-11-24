@@ -9,6 +9,10 @@ public enum DownloadPhotoAlbums {
 
     public static func importSelected(_ entries: [DownloadImage]) async throws -> DownloadsResult {
         if Task.isCancelled { return DownloadsResult(wasCancelled: true) }
+        guard let description = Bundle.main.object(forInfoDictionaryKey: "NSPhotoLibraryUsageDescription") as? String,
+              !description.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            throw ToolError.invalid("This build cannot request Photos access. You can still copy the files to a folder.")
+        }
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         if Task.isCancelled { return DownloadsResult(wasCancelled: true) }
         guard status == .authorized || status == .limited else {

@@ -36,7 +36,7 @@ struct RecordAudioView: View {
             }
 
             WorkspaceSection("Recording", palette: palette) {
-                meter
+                meter(palette: palette)
                 HStack {
                     controls
                     Spacer()
@@ -76,9 +76,9 @@ struct RecordAudioView: View {
         }
     }
 
-    private var meter: some View {
+    private func meter(palette: WorkspacePalette) -> some View {
         let level = controller.level
-        let color: Color = level.isNearClipping ? .red : (level.peakDB > -6 ? .orange : .accentColor)
+        let color: Color = level.isNearClipping ? .red : (level.peakDB > -6 ? .orange : palette.controlTint)
         return VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Input level").font(.callout)
@@ -133,7 +133,7 @@ struct RecordAudioView: View {
                 Text("Save or discard this recording before starting another.")
                     .font(.callout).foregroundStyle(.secondary)
             }
-            HStack {
+            WorkspaceFlowLayout(spacing: 8) {
                 Button(playing ? "Pause" : "Play", systemImage: playing ? "pause.fill" : "play.fill") {
                     preview(recording)
                 }

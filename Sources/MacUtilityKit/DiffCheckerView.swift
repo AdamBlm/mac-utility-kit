@@ -44,8 +44,8 @@ struct DiffCheckerView: View {
         InteractiveToolLayout(tool: .diffChecker) { palette in
             WorkspaceSection("Texts", palette: palette) {
                 HStack(alignment: .top, spacing: 16) {
-                    editor(.original)
-                    editor(.modified)
+                    editor(.original, palette: palette)
+                    editor(.modified, palette: palette)
                 }
                 Button("Swap Sides", systemImage: "arrow.left.arrow.right") {
                     let original = draft.original
@@ -55,7 +55,7 @@ struct DiffCheckerView: View {
                     invalidate()
                 }
                 .disabled(!hasInput || !fileTasks.isEmpty)
-                HStack(spacing: 20) {
+                WorkspaceFlowLayout(spacing: 14) {
                     Toggle("Ignore whitespace", isOn: $draft.ignoreWhitespace)
                     Toggle("Ignore blank lines", isOn: $draft.ignoreBlankLines)
                     Toggle("Ignore case", isOn: $draft.ignoreCase)
@@ -82,7 +82,7 @@ struct DiffCheckerView: View {
         .task(id: revision) { await compare() }
     }
 
-    private func editor(_ side: Side) -> some View {
+    private func editor(_ side: Side, palette: WorkspacePalette) -> some View {
         let isLoading = fileTasks[side] != nil
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
@@ -105,6 +105,9 @@ struct DiffCheckerView: View {
             }))
             .font(.body.monospaced())
             .frame(minHeight: 108, maxHeight: 160)
+            .scrollContentBackground(.hidden)
+            .padding(6)
+            .workspaceInset(palette)
             .disabled(isLoading)
             .accessibilityLabel("\(side.rawValue) text")
             if let url = draft[keyPath: side.source].url {

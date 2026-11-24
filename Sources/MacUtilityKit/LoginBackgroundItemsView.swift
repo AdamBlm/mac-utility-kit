@@ -25,13 +25,12 @@ struct LoginBackgroundItemsView: View {
     var body: some View {
         InteractiveToolLayout(tool: .loginBackgroundItems) { palette in
             WorkspaceSection("Inventory", palette: palette) {
-                HStack {
+                WorkspaceFlowLayout {
                     Button("Refresh", systemImage: "arrow.clockwise", action: refresh).disabled(task != nil)
                     Button("Manage in System Settings", systemImage: "gearshape") {
                         refreshAfterSettings = true
                         SMAppService.openSystemSettingsLoginItems()
                     }
-                    Spacer()
                     if task != nil {
                         ProgressView().controlSize(.small).accessibilityLabel("Refreshing items")
                         Button("Cancel", action: cancel)

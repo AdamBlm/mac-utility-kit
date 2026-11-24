@@ -165,7 +165,7 @@ struct QRToolsView: View {
                 }
                 .labelsHidden()
             }
-            HStack(spacing: 18) {
+            WorkspaceFlowLayout(spacing: 16) {
                 ColorPicker("Foreground", selection: colorBinding($draft.options.foreground), supportsOpacity: false)
                 ColorPicker("Background", selection: colorBinding($draft.options.background), supportsOpacity: false)
             }
@@ -179,12 +179,11 @@ struct QRToolsView: View {
                     .foregroundStyle(.secondary)
             }
             if let preview, previewInput == input {
-                Image(decorative: preview, scale: 1)
+                Image(preview, scale: 1, label: Text("Generated QR code"))
                     .interpolation(.none)
                     .resizable()
                     .scaledToFit()
                     .frame(width: 210, height: 210)
-                    .accessibilityLabel("Generated QR code")
                 HStack {
                     Button("Copy PNG", systemImage: "doc.on.doc") {
                         copy(preview, concealed: (try? input.payload.encoded()).map(QRTools.isWiFiPayload) ?? false)

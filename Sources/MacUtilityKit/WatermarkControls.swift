@@ -74,12 +74,13 @@ struct WatermarkControls: View {
             if let sample, sample.request == preview {
                 switch sample.result {
                 case .success(let image):
-                    Image(decorative: image, scale: 1)
-                        .resizable()
-                        .scaledToFit()
-                        .frame(maxWidth: .infinity, maxHeight: 300)
-                        .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-                        .accessibilityLabel("Watermark preview")
+                    ImagePreviewViewport(image: image, maxHeight: 300) { _ in
+                        Image(decorative: image, scale: 1)
+                            .resizable()
+                            .background(.primary.opacity(0.04))
+                            .clipShape(.rect(cornerRadius: 8))
+                            .accessibilityLabel("Watermark preview")
+                    }
                 case .failure(let error):
                     Text(error.localizedDescription).font(.callout).foregroundStyle(.secondary)
                 }

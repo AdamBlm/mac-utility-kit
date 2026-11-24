@@ -81,7 +81,7 @@ struct DiskSpeedView: View {
             .disabled(work != nil)
             HStack {
                 Button("Run Test", systemImage: "gauge.with.dots.needle.33percent", action: run)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(work != nil || inspection?.request != inspectionRequest || destinationIssue != nil)
                 if work != nil {
                     Button("Cancel") { work?.cancel() }
@@ -116,8 +116,11 @@ struct DiskSpeedView: View {
     private func results(_ result: DiskSpeedResult) -> some View {
         let details = result.passDetails()
         return VStack(alignment: .leading, spacing: 9) {
-            LabeledContent(details.isEmpty ? "Write" : "Median write", value: throughput(result.writeMegabytesPerSecond))
-            LabeledContent(details.isEmpty ? "Read" : "Median read", value: throughput(result.readMegabytesPerSecond))
+            MacBenchmarkSummary(values: [
+                (details.isEmpty ? "Write" : "Median write", throughput(result.writeMegabytesPerSecond)),
+                (details.isEmpty ? "Read" : "Median read", throughput(result.readMegabytesPerSecond))
+            ])
+            Divider()
             Text(result.passes.count == 1 ? "\(result.sizeMiB.formatted()) MiB · One pass"
                  : "\(result.sizeMiB.formatted()) MiB per pass · Median of three")
                 .foregroundStyle(.secondary)

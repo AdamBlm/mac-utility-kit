@@ -2,7 +2,7 @@
 
 Mac Utility Kit brings 105 tools into one native macOS app. Combine or compress PDFs, batch-edit images, convert video and audio, extract text from scans, and handle everyday Mac and developer tasks. File processing runs on your Mac.
 
-**[Download Mac Utility Kit (.dmg)](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.2/Mac.Utility.Kit.Preview.2.dmg)** for Apple silicon Macs running macOS 15 or later. [All releases](https://github.com/AdamBlm/mac-utility-kit/releases)
+**[Download Mac Utility Kit (.dmg)](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.3/Mac.Utility.Kit.Preview.3.dmg)** for Apple silicon Macs running macOS 15 or later. [All releases](https://github.com/AdamBlm/mac-utility-kit/releases)
 
 ![Browse Tools in dark mode, with eight category cards and a sidebar for search, favorites, recents, and PDF Reader](docs/images/browse-tools.png)
 

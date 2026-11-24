@@ -119,7 +119,7 @@ struct BatchRenameView: View {
                 TextField("Replace with", text: rule.replacement)
             }
             .textFieldStyle(.roundedBorder)
-            HStack {
+            WorkspaceFlowLayout(spacing: 12) {
                 Toggle("Match case", isOn: rule.caseSensitive)
                 Toggle("Regular expression", isOn: rule.regularExpression)
             }
@@ -175,7 +175,7 @@ struct BatchRenameView: View {
             && draft.options.rules.contains { $0.kind == .number }
         let hasChanges = changes.contains { $0.source.path.utf8.elementsEqual($0.destination.path.utf8) == false }
         return WorkspaceSection("File Preview", palette: palette) {
-            HStack {
+            WorkspaceFlowLayout(spacing: 8) {
                 Button("Add Files…", systemImage: "folder") {
                     let panel = NSOpenPanel()
                     panel.allowsMultipleSelection = true
@@ -186,7 +186,6 @@ struct BatchRenameView: View {
                 } else {
                     Button("Clear Queue") { draft.files = [] }
                 }
-                Spacer()
                 if draft.completed != nil {
                     Button("Undo Last Rename", systemImage: "arrow.uturn.backward") { undo() }
                 }
@@ -197,7 +196,9 @@ struct BatchRenameView: View {
                     .buttonStyle(.borderedProminent)
                     .disabled(!hasChanges)
             }
-            if case .failure(let error)? = plan {
+            if plan == nil, draft.files.contains(where: \.isIncluded) {
+                ProgressView("Updating filename preview…").controlSize(.small)
+            } else if case .failure(let error)? = plan {
                 Label(error.localizedDescription, systemImage: "exclamationmark.triangle")
                     .foregroundStyle(.secondary)
                     .font(.callout)
@@ -226,7 +227,7 @@ struct BatchRenameView: View {
                             .labelStyle(.iconOnly).buttonStyle(.borderless)
                             .disabled(id == draft.files.last?.id)
                     }
-                    Button("Remove file", systemImage: "xmark") {
+                    Button("Remove \(name)", systemImage: "xmark") {
                         draft.files.removeAll { $0.id == id }
                     }
                     .labelStyle(.iconOnly)

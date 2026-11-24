@@ -67,12 +67,15 @@ struct VideoCropCanvas: View {
     private func drag(scale: CGFloat, corner: Corner?) -> some Gesture {
         DragGesture(minimumDistance: 0, coordinateSpace: .named(coordinateSpace))
             .onChanged { value in
+                guard let maxX = Int(exactly: sourceSize.width.rounded(.down)),
+                      let maxY = Int(exactly: sourceSize.height.rounded(.down)),
+                      (2...Int(Int32.max)).contains(maxX), (2...Int(Int32.max)).contains(maxY),
+                      value.translation.width.isFinite, value.translation.height.isFinite else { return }
                 let origin = startingRegion ?? region
                 startingRegion = origin
-                let maxX = Int(sourceSize.width.rounded(.down))
-                let maxY = Int(sourceSize.height.rounded(.down))
-                let dx = Int((value.translation.width / scale).rounded())
-                let dy = Int((value.translation.height / scale).rounded())
+                // Moving farther than the source dimensions cannot change a clamped crop.
+                let dx = Int(min(CGFloat(maxX), max(-CGFloat(maxX), value.translation.width / scale)).rounded())
+                let dy = Int(min(CGFloat(maxY), max(-CGFloat(maxY), value.translation.height / scale)).rounded())
                 if let corner {
                     update(resize(origin, maxX: maxX, maxY: maxY, corner: corner, dx: dx, dy: dy))
                 } else {

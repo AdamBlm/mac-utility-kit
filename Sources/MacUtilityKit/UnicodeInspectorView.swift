@@ -46,6 +46,9 @@ struct UnicodeInspectorView: View {
                     .id(editorRevision)
                     .font(.body.monospaced())
                     .frame(minHeight: 105)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .workspaceInset(palette)
                     .disabled(importTask != nil)
                     .accessibilityLabel("Text to inspect")
                 if !draft.text.isEmpty {

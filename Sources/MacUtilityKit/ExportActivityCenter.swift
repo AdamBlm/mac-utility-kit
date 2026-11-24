@@ -9,6 +9,10 @@ import UtilityCore
 final class ExportActivityCenter {
     static let shared = ExportActivityCenter()
 
+    static var canPostNotifications: Bool {
+        Bundle.main.bundleIdentifier != nil && Bundle.main.bundleURL.pathExtension.lowercased() == "app"
+    }
+
     struct Status {
         let id: UUID
         let title: String
@@ -71,7 +75,8 @@ final class ExportActivityCenter {
     }
 
     func postCompletion(_ tool: Tool, outputs count: Int, issues: Int = 0, awaitingReview: Int = 0) {
-        guard !NSApp.isActive, UserDefaults.standard.bool(forKey: "exports.completionNotifications") else { return }
+        guard Self.canPostNotifications, !NSApp.isActive,
+              UserDefaults.standard.bool(forKey: "exports.completionNotifications") else { return }
         let content = UNMutableNotificationContent()
         content.title = tool.title
         if issues > 0 || awaitingReview > 0 {
@@ -220,6 +225,11 @@ struct ExportNotificationPreference: View {
             if !value {
                 enabled = false
                 message = nil
+                return
+            }
+            guard ExportActivityCenter.canPostNotifications else {
+                enabled = false
+                message = "Completion notifications require the packaged Mac Utility Kit app."
                 return
             }
             Task {

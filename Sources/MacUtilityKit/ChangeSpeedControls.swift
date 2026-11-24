@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import SwiftUI
 import UtilityCore
 
@@ -194,8 +194,7 @@ private struct ChangeSpeedPreview: View {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             } else if let player, let item = player.currentItem {
                 VStack(alignment: .leading, spacing: 6) {
-                    VideoPlayer(player: player)
-                        .frame(height: 210)
+                    VideoPreviewPlayer(player: player)
                         .accessibilityLabel("Adjusted speed preview")
                     Text("Short sample from the first visible frame.")
                         .font(.caption).foregroundStyle(.secondary)

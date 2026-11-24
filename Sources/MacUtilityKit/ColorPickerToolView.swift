@@ -17,15 +17,15 @@ struct ColorPickerToolView: View {
             WorkspaceSection("Sample", palette: palette) {
                 HStack {
                     Button("Sample Screen Color", systemImage: "eyedropper", action: sample)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                         .disabled(task != nil)
                     if task != nil {
                         Text("Click a color or press Esc to cancel.")
                             .font(.callout).foregroundStyle(.secondary)
                     }
                 }
-                SettingRow("RGB and HSL precision") {
-                    Picker("Precision", selection: $draft.precision) {
+                SettingRow("Precision") {
+                    Picker("RGB and HSL precision", selection: $draft.precision) {
                         ForEach(ScreenColorPrecision.allCases) { precision in
                             Text(precision.rawValue == 1 ? "1 decimal" : "\(precision.rawValue) decimals")
                                 .tag(precision)
@@ -51,6 +51,7 @@ struct ColorPickerToolView: View {
                             let string = color.value(format, precision: draft.precision)
                             Text(string).font(.body.monospaced())
                                 .textSelection(.enabled)
+                                .accessibilityLabel("\(format.rawValue): \(string)")
                                 .frame(maxWidth: .infinity, alignment: .leading)
                             Button("Copy \(format.rawValue)", systemImage: "doc.on.doc") {
                                 DeveloperToolFiles.copy(string)

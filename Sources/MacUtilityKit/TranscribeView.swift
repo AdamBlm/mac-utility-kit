@@ -108,7 +108,7 @@ struct TranscribeView: View {
             WorkspaceSection("Local transcription", palette: palette) {
                 executablePicker("whisper-cli", selection: $draft.options.executable)
                 SettingRow("Model") {
-                    if let model = draft.options.model { Text(model.lastPathComponent).help(model.path) }
+                    if let model = draft.options.model { Text(model.lastPathComponent).lineLimit(1).truncationMode(.middle).help(model.path) }
                     Button("Choose Model…") {
                         if let url = DeveloperToolFiles.choose() {
                             modelLanguages = nil
@@ -144,10 +144,13 @@ struct TranscribeView: View {
                     .buttonStyle(.borderedProminent)
                 if draft.task != nil {
                     ProgressView(value: draft.progress).controlSize(.small)
+                        .accessibilityLabel("Transcription progress")
                     Button("Cancel") { draft.task?.cancel() }
                 }
             }
-            if let error = draft.error { Text(error).font(.callout).foregroundStyle(.red) }
+            if let error = draft.error {
+                Label(error, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.red)
+            }
             if let source = draft.resultInput, source == draft.input {
                 WorkspaceSection("Transcript", palette: palette) {
                     if draft.forcedEnglish {
@@ -254,8 +257,8 @@ struct TranscribeView: View {
         if let playbackIssue, !playbackIssue.isSelection {
             Label(playbackIssue.message, systemImage: "exclamationmark.circle").font(.callout)
         }
-        ForEach(draft.cues.indices, id: \.self) { index in
-            let cue = draft.cues[index]
+        let resultStamp = draft.resultSourceStamp
+        ForEach(Array(draft.cues.enumerated()), id: \.offset) { index, cue in
             HStack(spacing: 6) {
                 let isListening = listening?.segment == .cue(index)
                 Button(isListening ? "Stop Segment \(index + 1)" : "Play Segment \(index + 1)",
@@ -271,9 +274,12 @@ struct TranscribeView: View {
                     .foregroundStyle(.secondary)
             }
             TextField("Segment \(index + 1)", text: Binding(get: {
-                draft.cues[index].text
+                guard draft.resultInput == source, draft.resultSourceStamp == resultStamp,
+                      draft.cues.indices.contains(index) else { return cue.text }
+                return draft.cues[index].text
             }, set: {
-                guard draft.cues.indices.contains(index) else { return }
+                guard draft.resultInput == source, draft.resultSourceStamp == resultStamp,
+                      draft.cues.indices.contains(index) else { return }
                 draft.cues[index] = SubtitleCue(startMilliseconds: cue.startMilliseconds,
                                                 endMilliseconds: cue.endMilliseconds, text: $0)
             }), axis: .vertical)

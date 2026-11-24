@@ -100,7 +100,7 @@ struct WebPagePDFView: View {
                 Button("Preview PDF", systemImage: "doc.viewfinder") { render(showPreview: true) }
                     .disabled(!canRender)
                 Button("Export PDF…", systemImage: "square.and.arrow.up") { render(showPreview: false) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(!canRender)
                 if exportTask != nil {
                     ProgressView("Rendering PDF…").controlSize(.small)

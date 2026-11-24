@@ -38,7 +38,7 @@ struct MouseFixesView: View {
                 }
                 Text("LinearMouse needs Accessibility access to apply these profiles. macOS shows its permission in System Settings.")
                     .foregroundStyle(.secondary)
-                HStack {
+                WorkspaceFlowLayout {
                     if let app {
                         Button("Open LinearMouse", systemImage: "cursorarrow") { NSWorkspace.shared.open(app) }
                     } else {
@@ -91,7 +91,7 @@ struct MouseFixesView: View {
                         Text("Both direction settings apply to vertical scrolling.")
                             .foregroundStyle(.secondary)
                         Button("Apply Profiles", action: apply)
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                             .disabled(!engineSupported || !verified || mouse == nil || trackpad == nil
                                       || (!smooth && mouseDirection == .inherit && trackpadDirection == .inherit))
                     }

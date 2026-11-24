@@ -13,7 +13,6 @@ struct PDFOrganizerView: View {
     @State private var selectionAnchor: Int?
     @State private var showsRemoved = false
     @State private var dragScope = UUID().uuidString
-    @Environment(\.colorScheme) private var colorScheme
 
     init(document: PDFDocument, pages: Binding<[PDFPageEdit]?>, history: Binding<PDFOrganizerHistory>? = nil) {
         self.document = document
@@ -155,35 +154,21 @@ struct PDFOrganizerView: View {
             }
             .padding(3)
         }
-        .frame(height: 104)
     }
 
     private func thumbnail(_ page: OrganizerPage, in strip: [OrganizerPage]) -> some View {
         let selected = selection.contains(page.number)
-        let palette = WorkspacePalette(dark: colorScheme == .dark)
-        let image = document.page(at: page.number - 1)?
-            .thumbnail(of: NSSize(width: 68, height: 68), for: .cropBox)
 
         return Button {
             select(page.number, in: strip, modifiers: NSEvent.modifierFlags)
         } label: {
             VStack(spacing: 4) {
-                if let image {
-                    Image(nsImage: image)
-                        .rotationEffect(.degrees(Double(page.quarterTurns) * 90))
-                        .frame(width: 68, height: 68)
-                }
+                PDFPageThumbnail(page: document.page(at: page.number - 1),
+                                 quarterTurns: page.quarterTurns, isDimmed: page.removed)
                 Text("Page \(page.number)")
-                    .font(.caption)
-            }
-            .frame(width: 84, height: 94)
-            .background(selected ? palette.wash : palette.canvas, in: RoundedRectangle(cornerRadius: 8))
-            .overlay {
-                RoundedRectangle(cornerRadius: 8)
-                    .strokeBorder(selected ? palette.accent : palette.line)
             }
         }
-        .buttonStyle(.plain)
+        .buttonStyle(PDFPageCardStyle(selected: selected))
         .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
             // Arrow events can carry the numeric-pad flag.
             let modifiers = press.modifiers.intersection([.option, .shift, .control, .command])

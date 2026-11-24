@@ -10,7 +10,7 @@ struct BatteryHealthView: View {
 
     var body: some View {
         InteractiveToolLayout(tool: .batteryHealth) { palette in
-            HStack {
+            WorkspaceFlowLayout {
                 Button("Refresh", systemImage: "arrow.clockwise") { refreshID = UUID() }
                     .disabled(loading)
                 Button("Copy Report", systemImage: "doc.on.doc") {
@@ -55,15 +55,21 @@ struct BatteryHealthView: View {
     @ViewBuilder
     private func batteryRows(_ battery: BatteryHealthSnapshot.InternalBattery) -> some View {
         if let charge = battery.charge {
-            ProgressView(value: Double(charge), total: 100)
-                .accessibilityLabel("Battery charge")
+            ProgressView(value: Double(charge), total: 100) {
+                Text("Battery Charge").font(.callout.weight(.medium))
+            } currentValueLabel: {
+                Text(percent(charge) ?? "")
+                    .font(.title2.weight(.semibold).monospacedDigit())
+            }
+            .accessibilityLabel("Battery charge")
+        } else {
+            row("Charge", nil)
         }
-        ForEach(fields(battery), id: \.0) { label, value in row(label, value) }
+        ForEach(batteryDetails(battery), id: \.0) { label, value in row(label, value) }
     }
 
-    private func fields(_ battery: BatteryHealthSnapshot.InternalBattery) -> [(String, String?)] {
+    private func batteryDetails(_ battery: BatteryHealthSnapshot.InternalBattery) -> [(String, String?)] {
         [
-            ("Charge", percent(battery.charge)),
             ("Charging state", battery.isCharging.map { $0 ? "Charging" : "Not charging" }),
             ("Condition", battery.condition), ("Maximum capacity", percent(battery.maximumCapacity)),
             ("Cycle count", battery.cycleCount?.formatted()), ("Design capacity", capacity(battery.designCapacity)),
@@ -93,7 +99,8 @@ struct BatteryHealthView: View {
     private func report(_ snapshot: BatteryHealthSnapshot) -> String {
         var lines = ["Mac Utility Kit Battery Health", "Power source: \(snapshot.powerSource ?? "Unavailable")"]
         if let battery = snapshot.battery {
-            lines += fields(battery).map { "\($0.0): \($0.1 ?? "Unavailable")" }
+            let fields = [("Charge", percent(battery.charge))] + batteryDetails(battery)
+            lines += fields.map { "\($0.0): \($0.1 ?? "Unavailable")" }
         } else {
             lines.append("No internal battery detected.")
         }
