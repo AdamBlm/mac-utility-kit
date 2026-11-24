@@ -3,7 +3,7 @@ set -euo pipefail
 cd "$(dirname "$0")/.."
 bundle_id="${MUK_BUNDLE_ID-app.macutilitykit.preview}"
 release_version="${MUK_RELEASE_VERSION-0.0.1}"
-build_version="${MUK_BUILD_VERSION-3}"
+build_version="${MUK_BUILD_VERSION-4}"
 if [[ ! "$bundle_id" =~ ^[A-Za-z0-9-]+(\.[A-Za-z0-9-]+)+$ ]]; then
     printf 'MUK_BUNDLE_ID must contain dot-separated letters, digits, or hyphens.\n' >&2
     exit 2

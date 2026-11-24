@@ -7,7 +7,7 @@
 <p align="center">105 native macOS tools for PDFs, media, files, and everyday work.</p>
 
 <p align="center">
-  <strong><a href="https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.3/Mac.Utility.Kit.Preview.3.dmg">Download for Mac</a></strong>
+  <strong><a href="https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.4/Mac.Utility.Kit.Preview.4.dmg">Download for Mac</a></strong>
   · <a href="https://github.com/AdamBlm/mac-utility-kit/releases">Release notes</a>
   · <a href="docs/tool-guide.md">Tool guide</a>
 </p>
@@ -33,7 +33,7 @@ Press **⌘K** to find a tool by name. Star tools you use often to keep them in 
 
 ## Install on your Mac
 
-[Download the DMG](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.3/Mac.Utility.Kit.Preview.3.dmg), open it, and drag Mac Utility Kit into **Applications**.
+[Download the DMG](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.4/Mac.Utility.Kit.Preview.4.dmg), open it, and drag Mac Utility Kit into **Applications**.
 
 ### Opening a preview download for the first time
 
