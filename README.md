@@ -17,6 +17,12 @@ Open **Browse Tools** and pick a category, or press **⌘K** to jump to a tool b
 
 See the [full tool catalog](docs/feature-inventory.md) or the [tool guide](docs/tool-guide.md) for controls and format support.
 
+## Compress PDFs locally
+
+Open **Documents → Convert & Compress → Compress PDF**. In the current source build, **Balanced** targets 150 PPI for supported embedded images. Choose **Smaller** for a 96 PPI target and stronger JPEG compression, or **Higher Quality** for lossless compression with qpdf.
+
+The image pass removes fully opaque transparency masks and preserves images with real transparency. Use the page sample to estimate the result before exporting. File size depends on the images and structure of the source PDF.
+
 ## Open files from Finder
 
 Right-click a PDF or image in Finder to open it directly in a Mac Utility Kit tool. Finder may group these actions under **Services**.
