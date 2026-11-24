@@ -69,7 +69,7 @@ struct RedactPDFView: View {
                             }
                         }
                     }
-                    WorkspaceSection("Export", palette: palette) { exportControls(loaded) }
+                    WorkspaceSection("Export", palette: palette) { exportControls(loaded, palette: palette) }
                 }
                 if let issue { Text(issue).font(.callout).foregroundStyle(.red) }
                 if let status { Text(status).font(.callout).foregroundStyle(.secondary) }
@@ -191,13 +191,13 @@ struct RedactPDFView: View {
         .disabled(work != nil)
     }
 
-    private func exportControls(_ loaded: Loaded) -> some View {
+    private func exportControls(_ loaded: Loaded, palette: WorkspacePalette) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Text("The exported copy keeps visible page content as images. Searchable text, annotations, forms, links and document metadata are removed.")
                 .font(.callout).foregroundStyle(.secondary)
             HStack {
                 Button("Export Redacted Copy…", systemImage: "square.and.arrow.up") { export(loaded) }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(draft.marks.isEmpty || work != nil)
                 if let operation {
                     if operation == .export {

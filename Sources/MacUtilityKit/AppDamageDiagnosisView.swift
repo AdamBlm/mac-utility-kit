@@ -62,9 +62,14 @@ struct AppDamageDiagnosisView: View {
     }
 
     private func diagnostic(_ label: String, _ value: String?) -> some View {
-        SettingRow(label) {
-            Text(value ?? "Unavailable").foregroundStyle(.secondary).textSelection(.enabled)
+        VStack(alignment: .leading, spacing: 4) {
+            Text(label).font(.callout.weight(.medium))
+            Text(value ?? "Unavailable")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .textSelection(.enabled)
         }
+        .accessibilityElement(children: .combine)
     }
 
     private func choose() {

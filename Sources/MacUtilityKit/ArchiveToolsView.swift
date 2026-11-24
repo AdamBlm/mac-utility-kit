@@ -96,7 +96,7 @@ struct ArchiveToolsView: View {
             Button("Add Files or Folders…", systemImage: "plus", action: browseInputs)
             ForEach(draft.inputs, id: \.self) { url in
                 HStack {
-                    Text(url.lastPathComponent).lineLimit(1).help(url.path)
+                    Text(url.lastPathComponent).lineLimit(1).truncationMode(.middle).help(url.path)
                     Spacer()
                     Button("Remove \(url.lastPathComponent)", systemImage: "xmark") {
                         draft.inputs.removeAll { $0 == url }
@@ -144,10 +144,9 @@ struct ArchiveToolsView: View {
         let current = browsedRows?.request == request ? browsedRows : nil
         let visible = isUnfiltered ? entries : current?.rows
         return VStack(alignment: .leading, spacing: 8) {
-            HStack {
+            WorkspaceFlowLayout(spacing: 8) {
                 Text("\(selection.count.formatted()) of \(entries.count.formatted()) selected")
                     .foregroundStyle(.secondary)
-                Spacer()
                 if request.filter.isEmpty {
                     Button("Select All") { selection = Set(entries.map(\.id)) }.disabled(entries.isEmpty)
                 } else {

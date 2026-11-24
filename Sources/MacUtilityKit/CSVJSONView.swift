@@ -45,7 +45,7 @@ struct CSVJSONView: View {
                        isOn: $draft.includesHeader)
             }
             WorkspaceSection("Input", palette: palette) {
-                HStack {
+                WorkspaceFlowLayout(spacing: 8) {
                     Button("Open…", systemImage: "folder", action: open).disabled(isLoading)
                         .help("Open a UTF-8 text file")
                     ClipboardFileButton(allowedTypes: [.data], buttonOnlyTitle: "Paste File", onPasteFile: load)
@@ -62,6 +62,9 @@ struct CSVJSONView: View {
                 .id(editorRevision)
                 .font(.body.monospaced())
                 .frame(minHeight: 120, maxHeight: 180)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .workspaceInset(palette)
                 .disabled(isLoading)
                 .accessibilityLabel(draft.direction == .jsonToCSV ? "JSON input" : "CSV input")
                 if let fileIssue { Text(fileIssue).font(.callout).foregroundStyle(.secondary) }
@@ -71,7 +74,7 @@ struct CSVJSONView: View {
                     if let comparison, comparison.revision == revision {
                         switch comparison.result {
                         case .success(let result):
-                            preview(result)
+                            preview(result, palette: palette)
                         case .failure(let error):
                             Label(error.localizedDescription, systemImage: "exclamationmark.circle")
                                 .font(.callout)
@@ -92,7 +95,7 @@ struct CSVJSONView: View {
         }
     }
 
-    private func preview(_ result: CSVJSON.Result) -> some View {
+    private func preview(_ result: CSVJSON.Result, palette: WorkspacePalette) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Text("\(result.rows.count) rows · \(result.columns.count) columns")
@@ -110,7 +113,9 @@ struct CSVJSONView: View {
                             GridRow { previewCells(row, header: false) }
                         }
                     }
+                    .padding(9)
                 }
+                .workspaceInset(palette)
             }
             if result.rows.count > 10 || result.columns.count > 12 {
                 Text("Showing up to 10 rows and 12 columns. Copy and export use the full output.")

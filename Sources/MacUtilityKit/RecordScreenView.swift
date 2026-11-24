@@ -1,5 +1,5 @@
 import AppKit
-import AVKit
+import AVFoundation
 import SwiftUI
 import UniformTypeIdentifiers
 import UtilityCore
@@ -183,14 +183,18 @@ struct RecordScreenView: View {
                             .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Button("Preview", systemImage: "play.rectangle") { play(file) }
+                    if preview == file {
+                        Button("Hide Preview", systemImage: "xmark") { closePreview() }
+                    } else {
+                        Button("Preview", systemImage: "play.rectangle") { play(file) }
+                    }
                     Button("Save MP4…", systemImage: "square.and.arrow.down") { save(file, name: label) }
                         .disabled(controller.saving)
                 }
             }
             if preview != nil {
-                VideoPlayer(player: player)
-                    .frame(minHeight: 140, idealHeight: 225)
+                VideoPreviewPlayer(player: player)
+                    .accessibilityLabel("Screen recording preview")
             }
             if controller.canStart == false && controller.files.contains(where: { controller.saved[$0.url] == nil }) {
                 Text("Save or discard these files before starting another recording.")

@@ -25,7 +25,12 @@ struct PDFProtectionView: View {
         InteractiveToolLayout(tool: tool) { palette in
             WorkspaceSection("Document", palette: palette) {
                 HStack {
-                    if let input { Text(input.lastPathComponent).lineLimit(1) }
+                    if let input {
+                        Text(input.lastPathComponent)
+                            .lineLimit(1)
+                            .truncationMode(.middle)
+                            .help(input.path)
+                    }
                     Button(input == nil ? "Choose PDF…" : "Replace PDF…", systemImage: "folder", action: choosePDF)
                     ClipboardFileButton(allowedTypes: [.pdf], onPastePDF: { data in
                         setInput(try stageClipboardPDF(data))
@@ -44,6 +49,7 @@ struct PDFProtectionView: View {
                             PDFReaderCanvas(view: verifiedPreview)
                                 .id(ObjectIdentifier(verifiedPreview))
                                 .frame(height: 320)
+                                .clipShape(.rect(cornerRadius: 8))
                                 .accessibilityLabel("Unlocked PDF preview")
                         }
                     } else {
@@ -61,7 +67,7 @@ struct PDFProtectionView: View {
                 }
                 .disabled(task != nil)
                 Button("Export PDF…", systemImage: "square.and.arrow.up", action: export)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(!canExport)
             }
             if task != nil {

@@ -5,6 +5,7 @@ import UtilityCore
 struct DocumentConvertControls: View {
     let inputs: [URL]
     @Binding var options: DocumentConvertOptions
+    @Environment(\.colorScheme) private var colorScheme
     @State private var selected: URL?
     @State private var request: Request?
     @State private var sample: Measurement?
@@ -165,7 +166,7 @@ struct DocumentConvertControls: View {
                         .padding(8)
                 }
                 .frame(minHeight: 84, maxHeight: 230)
-                .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
+                .workspaceInset(WorkspacePalette(dark: colorScheme == .dark, category: .documents))
                 if preview.truncated {
                     Text("Preview shows the first 20,000 characters.")
                         .font(.callout).foregroundStyle(.secondary)

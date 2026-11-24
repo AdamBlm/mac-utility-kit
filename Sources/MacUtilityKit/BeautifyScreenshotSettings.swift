@@ -25,7 +25,7 @@ struct BeautifyScreenshotSettings: View {
         let previews = previewInputs
         let input = selected.flatMap { previews.contains($0) ? $0 : nil } ?? previews.first
         let request = Request(input: input, options: options)
-        let palette = WorkspacePalette(dark: colorScheme == .dark)
+        let palette = WorkspacePalette(dark: colorScheme == .dark, category: .images)
         SettingRow("Background") {
             Picker("Background", selection: $options.background) {
                 ForEach(ScreenshotBackground.allCases.filter { options.format == .png || $0 != .transparent }) {
@@ -102,13 +102,14 @@ struct BeautifyScreenshotSettings: View {
             }
         }
         if complete == request, let image {
-            Image(decorative: image, scale: 1)
-                .resizable().aspectRatio(contentMode: .fit)
-                .frame(maxWidth: .infinity, maxHeight: 340)
-                .background {
-                    if options.background == .transparent { TransparencyGrid(palette: palette) }
-                }
-                .accessibilityLabel("Composed screenshot preview")
+            ImagePreviewViewport(image: image) { _ in
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .background {
+                        if options.background == .transparent { TransparencyGrid(palette: palette) }
+                    }
+                    .accessibilityLabel("Composed screenshot preview")
+            }
             Text("\(image.width) × \(image.height) pixels")
                 .font(.callout).monospacedDigit().foregroundStyle(.secondary)
         } else if complete == request, let error {

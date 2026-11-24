@@ -11,6 +11,20 @@ struct ToolBrowseSection {
 }
 
 extension ToolCategory {
+    /// Colors for this category's hue (the OKLCH hue angle is noted on each `WorkspaceTint` value).
+    var workspaceTint: WorkspaceTint {
+        switch self {
+        case .images: .images
+        case .documents: .documents
+        case .video: .video
+        case .audio: .audio
+        case .text: .text
+        case .files: .files
+        case .mac: .mac
+        case .developer: .developer
+        }
+    }
+
     var browseSymbol: String {
         switch self {
         case .images: "photo.on.rectangle"

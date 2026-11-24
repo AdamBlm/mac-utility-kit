@@ -18,24 +18,30 @@ final class ScreenRegionSelector {
     private var views: [RegionOverlay] = []
     private var displayList: [Display] = []
     private var continuation: CheckedContinuation<Selection?, Never>?
+    private var selectionID: UUID?
     private var dragStart: CGPoint?
     private var region: CGRect?
     private var observers: [NSObjectProtocol] = []
 
     func select() async -> Selection? {
         guard continuation == nil else { return nil }
-        return await withTaskCancellationHandler {
+        let id = UUID()
+        let selection: Selection? = await withTaskCancellationHandler {
             await withCheckedContinuation { continuation in
                 guard !Task.isCancelled else {
                     continuation.resume(returning: nil)
                     return
                 }
+                self.selectionID = id
                 self.continuation = continuation
                 present()
             }
         } onCancel: {
-            Task { @MainActor in self.cancel() }
+            Task { @MainActor in
+                if self.selectionID == id { self.cancel() }
+            }
         }
+        return Task.isCancelled ? nil : selection
     }
 
     func cancel() { finish(with: nil) }
@@ -48,9 +54,13 @@ final class ScreenRegionSelector {
         guard !screensByID.isEmpty else { cancel(); return }
         displayList = screensByID.map(\.0)
         let center = NotificationCenter.default
+        guard let id = selectionID else { return }
         for signal in [NSApplication.didResignActiveNotification, NSApplication.didChangeScreenParametersNotification] {
             observers.append(center.addObserver(forName: signal, object: NSApp, queue: .main) { [weak self] _ in
-                MainActor.assumeIsolated { self?.cancel() }
+                Task { @MainActor in
+                    guard let self, self.selectionID == id else { return }
+                    self.cancel()
+                }
             })
         }
         let mouse = NSEvent.mouseLocation
@@ -117,6 +127,7 @@ final class ScreenRegionSelector {
     private func finish(with result: Selection?) {
         guard let continuation else { return }
         self.continuation = nil
+        selectionID = nil
         for observer in observers { NotificationCenter.default.removeObserver(observer) }
         observers.removeAll()
         for panel in panels { panel.orderOut(nil) }

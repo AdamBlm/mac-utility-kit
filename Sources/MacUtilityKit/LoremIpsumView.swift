@@ -34,14 +34,8 @@ struct LoremIpsumView: View {
                     .labelsHidden()
                 }
                 Toggle("Start with Lorem ipsum", isOn: $draft.startsWithLorem)
-                HStack {
-                    Button(output.isEmpty ? "Generate" : "Regenerate", systemImage: "arrow.clockwise", action: generate)
-                        .buttonStyle(.borderedProminent)
-                    Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(output) }
-                        .disabled(output.isEmpty)
-                    Button("Save…", systemImage: "square.and.arrow.up") { save(output, format: format) }
-                        .disabled(output.isEmpty)
-                }
+                Button(output.isEmpty ? "Generate" : "Regenerate", systemImage: "arrow.clockwise", action: generate)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             }
             if !output.isEmpty {
@@ -49,8 +43,14 @@ struct LoremIpsumView: View {
                     ScrollView {
                         Text(output).textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(9)
                     }
                     .frame(maxHeight: 280)
+                    .workspaceInset(palette)
+                    HStack {
+                        Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(output) }
+                        Button("Save…", systemImage: "square.and.arrow.up") { save(output, format: format) }
+                    }
                 }
             }
         }

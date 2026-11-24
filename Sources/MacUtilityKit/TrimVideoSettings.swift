@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import Combine
 import SwiftUI
 import UtilityCore
@@ -65,8 +65,8 @@ struct TrimVideoSettings: View {
             }
         }
         if let duration = activeDuration, let item = player.currentItem, playbackError == nil {
-            VideoPlayer(player: player)
-                .frame(maxWidth: .infinity, minHeight: 180, idealHeight: 240)
+            VideoPreviewPlayer(player: player)
+                .accessibilityLabel("Trim video preview")
                 .onReceive(item.publisher(for: \.status).receive(on: DispatchQueue.main)) { status in
                     guard item === player.currentItem else { return }
                     previewReady = status == .readyToPlay

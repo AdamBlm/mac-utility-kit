@@ -18,7 +18,8 @@ struct PresentationModeView: View {
                             let remaining = ContinuousClock.now.duration(to: deadline).components
                             let seconds = max(0, remaining.seconds + (remaining.attoseconds > 0 ? 1 : 0))
                             Text(Duration.seconds(seconds).formatted(.time(pattern: .hourMinuteSecond)))
-                                .monospacedDigit().accessibilityLabel("Time remaining")
+                                .font(.title2.monospacedDigit())
+                                .accessibilityLabel("Time remaining: \(seconds) seconds")
                         }
                     } else {
                         Text("Runs until stopped.").foregroundStyle(.secondary)
@@ -27,7 +28,7 @@ struct PresentationModeView: View {
                     if controller.hidesDock { Text("Dock auto-hide enabled").foregroundStyle(.secondary) }
                     if controller.keepsAwake { Text("Idle sleep prevention active").foregroundStyle(.secondary) }
                     Button("Stop", systemImage: "stop.fill") { controller.stop() }
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 } else {
                     Toggle("Hide desktop items", isOn: $hideDesktop)
                     if hideDesktop {
@@ -52,7 +53,7 @@ struct PresentationModeView: View {
                     Button("Start", systemImage: "play.fill") {
                         controller.start(hideDesktop: hideDesktop, hideDock: hideDock, keepAwake: keepAwake, minutes: minutes)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(!(hideDesktop || hideDock || keepAwake) || (hideDock && controller.needsRecovery))
                 }
                 if let issue = controller.issue { Text(issue).font(.callout).foregroundStyle(.secondary) }

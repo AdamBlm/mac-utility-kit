@@ -22,6 +22,7 @@ struct AudioTrimControls: View {
     let inputs: [URL]
     @Binding var options: AudioTrimOptions
     @Binding var review: AudioTrimReview?
+    @Environment(\.colorScheme) private var colorScheme
     @State private var refreshID = UUID()
     @State private var loaded: Loaded?
     @State private var player: AVAudioPlayer?
@@ -136,7 +137,8 @@ struct AudioTrimControls: View {
             Text("Showing \(input.lastPathComponent). Times apply to each file.")
                 .font(.callout).foregroundStyle(.secondary)
         }
-        AudioTrimWaveformView(peaks: waveform.peaks, duration: duration, start: options.start,
+        let palette = WorkspacePalette(dark: colorScheme == .dark, category: .audio)
+        AudioTrimWaveformView(palette: palette, peaks: waveform.peaks, duration: duration, start: options.start,
                               end: options.end ?? duration, playhead: playhead) { start, end in
             options.start = start
             options.end = end
@@ -147,17 +149,18 @@ struct AudioTrimControls: View {
             Text(Self.timecode(duration))
         }
         .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
+        .accessibilityHidden(true)
 
         SettingRow("Start") {
             AudioTrimTimeField(label: "Selection start", seconds: $options.start)
-            Text("seconds or timecode").font(.callout).foregroundStyle(.secondary)
+            Text("Seconds or timecode").font(.callout).foregroundStyle(.secondary)
         }
         SettingRow("End") {
             if let end = options.end {
                 AudioTrimTimeField(label: "Selection end", seconds: Binding(
                     get: { options.end ?? end }, set: { options.end = $0 }
                 ))
-                Button("Use End") { options.end = nil }
+                Button("Use End of File") { options.end = nil }
             } else {
                 Text("End of audio").foregroundStyle(.secondary)
                 Button("Set Time") { options.end = duration }

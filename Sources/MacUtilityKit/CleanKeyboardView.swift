@@ -27,7 +27,7 @@ struct CleanKeyboardView: View {
                     Button("Stop Cleaning", systemImage: "stop.circle.fill") {
                         finish(message: "Keyboard input restored.")
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 } else {
                     Picker("Duration", selection: $seconds) {
                         Text("15 seconds").tag(15)
@@ -36,14 +36,14 @@ struct CleanKeyboardView: View {
                     }
                     .pickerStyle(.segmented)
                     Toggle("Dim displays during cleaning", isOn: $dimScreen)
-                    HStack {
+                    WorkspaceFlowLayout {
                         if hasPermission {
                             Button("Start Cleaning", systemImage: "keyboard") {
                                 defer { hasPermission = input.hasPermission }
                                 session.start(seconds: seconds)
                                 if session.active && dimScreen { dimmer.show() }
                             }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                         } else {
                             Button("Request Accessibility Access", action: input.requestPermission)
                             Button("Open Accessibility Settings", systemImage: "gearshape", action: openAccessibility)

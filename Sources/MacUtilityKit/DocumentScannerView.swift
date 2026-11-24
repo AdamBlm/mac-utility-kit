@@ -103,10 +103,25 @@ struct DocumentScannerView: View {
                 }
                 ForEach(Array(draft.pages.enumerated()), id: \.element.id) { index, page in
                     HStack {
-                        Button("\(index + 1). \(page.name)") { draft.selection = page.id }
-                            .buttonStyle(.plain)
-                            .font(draft.selection == page.id ? .headline : .body)
-                        Spacer()
+                        Button {
+                            draft.selection = page.id
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(decorative: page.image, scale: 1)
+                                    .resizable().scaledToFit()
+                                    .frame(width: 32, height: 40)
+                                    .accessibilityHidden(true)
+                                Text("\(index + 1). \(page.name)")
+                                    .font(draft.selection == page.id ? .body.weight(.semibold) : .body)
+                                    .lineLimit(1)
+                                    .truncationMode(.middle)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityAddTraits(draft.selection == page.id ? .isSelected : [])
+                        .help(page.name)
                         Button("Move up", systemImage: "arrow.up") { move(page, by: -1) }
                             .disabled(index == 0 || exporting)
                         Button("Move down", systemImage: "arrow.down") { move(page, by: 1) }
@@ -115,6 +130,10 @@ struct DocumentScannerView: View {
                             .disabled(exporting)
                     }
                     .labelStyle(.iconOnly)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 5)
+                    .background(draft.selection == page.id ? palette.wash : palette.insetFill,
+                                in: .rect(cornerRadius: 8))
                 }
             }
             if let index = selectedIndex {
@@ -179,7 +198,7 @@ struct DocumentScannerView: View {
                     }
                     HStack {
                         Button("Save PDF…", systemImage: "square.and.arrow.up", action: save)
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                             .disabled(exporting || importing || draft.pages.contains { !$0.corners.isValid })
                         if let exported {
                             Button("Reveal PDF", systemImage: "folder") {

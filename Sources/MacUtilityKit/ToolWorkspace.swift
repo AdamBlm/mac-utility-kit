@@ -31,8 +31,9 @@ struct ToolWorkspace: View {
     @State private var passthroughRefreshID = UUID()
     @State private var comparison: ImageComparisonResult?
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.workspaceToolChrome) private var chrome
 
-    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
+    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark, category: tool.group) }
 
     private struct VideoPassthroughRequest: Equatable {
         let inputs: [URL]
@@ -234,15 +235,7 @@ struct ToolWorkspace: View {
         return VStack(spacing: 0) {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    HStack(spacing: 15) {
-                        ToolEmblem(tool: tool, palette: palette)
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(tool.title)
-                                .font(.system(size: 29, weight: .semibold))
-                                .tracking(-0.65)
-                                .accessibilityAddTraits(.isHeader)
-                        }
-                    }
+                    WorkspaceToolHeader(tool: tool, palette: palette)
 
                     sourceFiles(for: tool)
 
@@ -430,7 +423,7 @@ struct ToolWorkspace: View {
                                         .foregroundStyle(palette.accent)
                                         .accessibilityHidden(true)
                                     VStack(alignment: .leading, spacing: 2) {
-                                        Text(output.lastPathComponent).lineLimit(1)
+                                        Text(output.lastPathComponent).lineLimit(1).truncationMode(.middle)
                                         if tool == .extractFrames {
                                             Text(output.deletingLastPathComponent().lastPathComponent)
                                                 .font(.caption)
@@ -461,14 +454,13 @@ struct ToolWorkspace: View {
                 .padding(.vertical, 30)
                 .frame(maxWidth: .infinity, alignment: .top)
             }
-            .background(palette.canvas)
-            Divider()
             HStack(spacing: 12) {
                 Button {
                     chooseDestination(for: tool)
                 } label: {
                     Label(draft.destination.lastPathComponent, systemImage: "folder")
                         .lineLimit(1)
+                        .truncationMode(.middle)
                 }
                 .help("Choose output folder")
                 .accessibilityLabel("Output folder: \(draft.destination.lastPathComponent)")
@@ -483,19 +475,29 @@ struct ToolWorkspace: View {
                     if tool == .trimVideo { exportDraft.options.trimSourceVersions = trimReview?.sourceVersions }
                     session.start(tool, draft: exportDraft, recheckVideoInputs: Set(failures.map(\.index)))
                 }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.inputs.isEmpty || session.isRunning || exportSettingsIncomplete
                               || (tool.requiresSinglePDF && !pdfEditorReady)
                               || session.reports[tool]?.videoReviews.isEmpty == false)
             }
             .controlSize(.large)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(palette.barFill, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                    .strokeBorder(palette.hairline)
+                    .allowsHitTesting(false)
+            }
+            .shadow(color: palette.shadow, radius: 14, y: 8)
             .frame(maxWidth: 660)
             .padding(.horizontal, 32)
-            .padding(.vertical, 12)
+            .padding(.top, 4)
+            .padding(.bottom, 14)
             .frame(maxWidth: .infinity)
-            .background(palette.surface)
         }
+        .workspaceBackground(palette)
     }
 
     private func resizePreview(for input: URL) -> String {
@@ -533,7 +535,7 @@ struct ToolWorkspace: View {
                                     .frame(width: 20)
                                     .accessibilityHidden(true)
                                 VStack(alignment: .leading, spacing: 4) {
-                                    Text(labels[index]).lineLimit(1).help(input.path)
+                                    Text(labels[index]).lineLimit(1).truncationMode(.middle).help(input.path)
                                     if tool == .resizeImages {
                                         Text(resizePreview(for: input))
                                             .font(.caption).foregroundStyle(.secondary)
@@ -542,6 +544,7 @@ struct ToolWorkspace: View {
                                 Spacer()
                                 if tool == .mergePDFs || tool == .imagesToPDF {
                                     Button("Move up", systemImage: "arrow.up") {
+                                        guard draft.inputs.indices.contains(index), draft.inputs[index] == input else { return }
                                         draft.moveInputUp(at: index)
                                     }
                                     .labelStyle(.iconOnly)
@@ -551,6 +554,7 @@ struct ToolWorkspace: View {
                                     .disabled(index == 0)
                                 }
                                 Button("Remove", systemImage: "minus.circle") {
+                                    guard draft.inputs.indices.contains(index), draft.inputs[index] == input else { return }
                                     draft.removeInput(at: index)
                                 }
                                 .labelStyle(.iconOnly)
@@ -570,11 +574,11 @@ struct ToolWorkspace: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .background(draft.inputs.isEmpty ? palette.wash : palette.surface,
-                        in: RoundedRectangle(cornerRadius: 16))
+            .background(draft.inputs.isEmpty ? palette.wash : palette.panelFill,
+                        in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
-                RoundedRectangle(cornerRadius: 16)
-                    .strokeBorder(dropTarget == tool ? palette.accent : palette.line,
+                RoundedRectangle(cornerRadius: 16, style: .continuous)
+                    .strokeBorder(dropTarget == tool ? palette.accent : (draft.inputs.isEmpty ? palette.line : palette.hairline),
                                   style: StrokeStyle(lineWidth: 1, dash: draft.inputs.isEmpty ? [5, 4] : []))
                     .allowsHitTesting(false)
             }
@@ -603,6 +607,7 @@ struct ToolWorkspace: View {
                 HStack {
                     Button("Choose files…") { chooseInputs(for: tool) }
                         .buttonStyle(.borderedProminent)
+                        .tint(palette.controlTint)
                     pasteFilesButton(for: tool)
                 }
                 .controlSize(.large)
@@ -615,7 +620,16 @@ struct ToolWorkspace: View {
             Spacer(minLength: 48)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .background(palette.canvas)
+        .overlay(alignment: .top) {
+            // Same column and padding as the loaded page's breadcrumb.
+            if let chrome {
+                WorkspaceBreadcrumb(crumbs: chrome.crumbs(for: tool), palette: palette)
+                    .frame(maxWidth: 660, alignment: .leading)
+                    .padding(.horizontal, 32)
+                    .padding(.top, 30)
+            }
+        }
+        .workspaceBackground(palette)
         .overlay {
             if dropTarget == tool {
                 RoundedRectangle(cornerRadius: 18)
@@ -660,7 +674,7 @@ struct ToolWorkspace: View {
         .frame(maxWidth: .infinity)
         .padding(.vertical, 23)
         .background(dropTarget == tool ? palette.accent.opacity(0.12) : .clear,
-                    in: RoundedRectangle(cornerRadius: 16))
+                    in: RoundedRectangle(cornerRadius: 16, style: .continuous))
     }
 
     func option<Value>(_ path: WritableKeyPath<ToolOptions, Value>) -> Binding<Value> {

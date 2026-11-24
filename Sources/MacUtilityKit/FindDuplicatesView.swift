@@ -81,7 +81,7 @@ struct FindDuplicatesView: View {
             }
             Text("Symbolic links and package subfolders are skipped.")
                 .font(.callout).foregroundStyle(.secondary)
-            HStack {
+            WorkspaceFlowLayout(spacing: 8) {
                 Button("Scan for Duplicates", systemImage: "magnifyingglass", action: scan)
                     .buttonStyle(.borderedProminent)
                     .disabled(busy || draft.folders.isEmpty)

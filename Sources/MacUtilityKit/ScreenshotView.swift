@@ -62,7 +62,7 @@ struct ScreenshotView: View {
                 if draft.mode != .scrolling {
                     Toggle("Include cursor", isOn: $draft.showsCursor).disabled(task != nil)
                 }
-                captureActions
+                captureActions(palette: palette)
                 if permissionNeeded {
                     Text("Allow Mac Utility Kit in System Settings → Privacy & Security → Screen & System Audio Recording, then try again.")
                         .font(.callout).foregroundStyle(.secondary)
@@ -121,10 +121,10 @@ struct ScreenshotView: View {
         }
     }
 
-    private var captureActions: some View {
-        HStack {
+    private func captureActions(palette: WorkspacePalette) -> some View {
+        WorkspaceFlowLayout {
             Button(captureTitle, systemImage: "camera.viewfinder", action: startCapture)
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 .disabled(task != nil || !hasSource)
             if scrolling != nil {
                 Button("Finish Capture") { scrolling = nil }
@@ -163,25 +163,24 @@ struct ScreenshotView: View {
             if !draft.seams.isEmpty {
                 Toggle("Show seams", isOn: $showsSeams)
             }
-            ScrollView([.horizontal, .vertical]) {
-                GeometryReader { geometry in
-                    Image(decorative: image, scale: 1)
-                        .resizable()
-                        .frame(width: geometry.size.width, height: geometry.size.height)
-                        .overlay(alignment: .topLeading) {
-                            if showsSeams {
-                                ForEach(draft.seams, id: \.self) { row in
-                                    Rectangle().fill(palette.accent.opacity(0.9))
-                                        .frame(height: 1)
-                                        .offset(y: geometry.size.height * CGFloat(row) / CGFloat(image.height))
-                                }
+            ImagePreviewViewport(
+                image: image,
+                maxHeight: 450,
+                sizing: !draft.seams.isEmpty ? .fitWidth : .fit
+            ) { size in
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .overlay(alignment: .topLeading) {
+                        if showsSeams {
+                            ForEach(draft.seams, id: \.self) { row in
+                                Rectangle().fill(palette.accent.opacity(0.9))
+                                    .frame(height: 1)
+                                    .offset(y: size.height * CGFloat(row) / CGFloat(image.height))
                             }
                         }
-                        .accessibilityLabel("Screenshot preview")
-                }
-                .frame(width: min(360, CGFloat(image.width)), height: previewHeight(image))
+                    }
+                    .accessibilityLabel("Screenshot preview")
             }
-            .frame(maxHeight: 450)
             Text("\(image.width) × \(image.height) pixels").font(.callout).foregroundStyle(.secondary).monospacedDigit()
             SettingRow("Format") {
                 Picker("Export format", selection: $draft.format) {
@@ -206,10 +205,6 @@ struct ScreenshotView: View {
             }
         }
         .disabled(task != nil)
-    }
-
-    private func previewHeight(_ image: CGImage) -> CGFloat {
-        min(360, CGFloat(image.width)) * CGFloat(image.height) / CGFloat(image.width)
     }
 
     private func requestAccess() -> Bool {

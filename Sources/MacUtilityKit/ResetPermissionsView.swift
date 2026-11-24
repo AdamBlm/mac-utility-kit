@@ -38,11 +38,11 @@ struct ResetPermissionsView: View {
                     Text("Reset \(category.title) for \(target.name). The app may ask for access again.")
                         .font(.callout).foregroundStyle(.secondary)
                 }
-                HStack {
+                WorkspaceFlowLayout {
                     Button("Reset Permission…", systemImage: "arrow.counterclockwise") {
                         if let target { confirmed = Request(target: target, category: category) }
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(target == nil || active != nil)
                     Button("Open Privacy Settings", systemImage: "gearshape") {
                         if let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy") {

@@ -389,15 +389,12 @@ private struct PDFDeletionSettings: View {
                                 range = changed.isEmpty ? "" : PageSelection.expression(for: changed.sorted())
                             } label: {
                                 VStack(spacing: 6) {
-                                    if let page = document.page(at: index) {
-                                        Image(nsImage: page.thumbnail(of: NSSize(width: 66, height: 78), for: .cropBox))
-                                            .opacity(marked.contains(index) ? 0.5 : 1)
-                                    }
+                                    PDFPageThumbnail(page: document.page(at: index), isDimmed: marked.contains(index))
                                     Label("Page \(index + 1)", systemImage: marked.contains(index) ? "minus.circle.fill" : "circle")
                                         .font(.caption)
                                 }
-                                .padding(5)
                             }
+                            .buttonStyle(PDFPageCardStyle(selected: marked.contains(index)))
                             .help("Shift-click to mark this page and the pages between it and the previous selection.")
                             .accessibilityAddTraits(marked.contains(index) ? .isSelected : [])
                         }

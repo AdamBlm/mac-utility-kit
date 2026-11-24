@@ -31,26 +31,28 @@ struct UUIDGeneratorView: View {
                 }
                 Toggle("Uppercase", isOn: $draft.uppercase)
                 Toggle("Include hyphens", isOn: $draft.hyphenated)
-                HStack {
-                    Button("Generate", systemImage: "arrow.clockwise", action: generate)
-                        .buttonStyle(.borderedProminent)
-                    Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(draft.generated) }
-                        .disabled(draft.generated.isEmpty)
-                    Button("Export…", systemImage: "square.and.arrow.up", action: export)
-                        .disabled(draft.generated.isEmpty)
+                Button("Generate", systemImage: "arrow.clockwise", action: generate)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
+                if let issue {
+                    Text(issue).font(.callout).foregroundStyle(.red)
                 }
-                if !draft.generated.isEmpty {
+            }
+            if !draft.generated.isEmpty {
+                WorkspaceSection("Generated UUIDs", palette: palette) {
                     ScrollView {
                         Text(draft.generated)
                             .font(.body.monospaced())
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(9)
                     }
                     .frame(maxHeight: 180)
+                    .workspaceInset(palette)
                     .accessibilityLabel("Generated UUIDs")
-                }
-                if let issue {
-                    Text(issue).font(.callout).foregroundStyle(.red)
+                    HStack {
+                        Button("Copy", systemImage: "doc.on.doc") { DeveloperToolFiles.copy(draft.generated) }
+                        Button("Export…", systemImage: "square.and.arrow.up", action: export)
+                    }
                 }
             }
             WorkspaceSection("Inspect", palette: palette) {

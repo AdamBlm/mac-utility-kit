@@ -35,6 +35,9 @@ struct JWTDecoderView: View {
                 }))
                 .font(.body.monospaced())
                 .frame(minHeight: 118, maxHeight: 160)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .workspaceInset(palette)
                 .accessibilityLabel("JWT compact token")
                 if !token.isEmpty && decoded == nil {
                     ProgressView("Decoding…").controlSize(.small)
@@ -53,10 +56,10 @@ struct JWTDecoderView: View {
                     }
                 }
                 WorkspaceSection("Header", palette: palette) {
-                    code(result.header)
+                    code(result.header, palette: palette)
                 }
                 WorkspaceSection(verification?.passed == true ? "Payload" : "Payload · Unverified", palette: palette) {
-                    code(result.payload)
+                    code(result.payload, palette: palette)
                 }
             }
         }
@@ -160,13 +163,15 @@ struct JWTDecoderView: View {
         }
     }
 
-    private func code(_ text: String) -> some View {
+    private func code(_ text: String, palette: WorkspacePalette) -> some View {
         ScrollView {
             Text(text).font(.callout.monospaced())
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
+                .padding(9)
         }
         .frame(maxHeight: 240)
+        .workspaceInset(palette)
     }
 
     private func verify(_ result: JWTDecoder.Token) {

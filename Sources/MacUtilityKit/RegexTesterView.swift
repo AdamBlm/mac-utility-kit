@@ -39,7 +39,7 @@ struct RegexTesterView: View {
                     .frame(minHeight: 100)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("Sample text")
                 Toggle("Ignore case", isOn: $draft.options.ignoresCase)
                 Toggle("Match ^ and $ on each line", isOn: $draft.options.multiline)
@@ -58,7 +58,7 @@ struct RegexTesterView: View {
                                           replacement: draft.previewsReplacement ? draft.replacement : nil,
                                           options: draft.options)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(request != nil)
                     Text("ICU regular expressions · UTF-16 offsets").font(.callout).foregroundStyle(.secondary)
                     if request != nil { ProgressView().controlSize(.small) }
