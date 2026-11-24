@@ -14,18 +14,11 @@ struct ScreenshotAnnotationCanvas: View {
     }
 
     var body: some View {
-        GeometryReader { geometry in
-            let size = canvasSize(availableWidth: geometry.size.width)
-            if draft.zoom == 0 {
+        ImagePreviewViewport(image: image, sizing: draft.zoom == 0 ? .fit : .zoom(draft.zoom)) { size in
+            if size.width > 0, size.height > 0 {
                 artwork(size: size)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            } else {
-                ScrollView([.horizontal, .vertical]) {
-                    artwork(size: size)
-                }
             }
         }
-        .frame(height: 340)
         .onChange(of: draft.activeTool) { drag = nil }
     }
 
@@ -69,12 +62,6 @@ struct ScreenshotAnnotationCanvas: View {
     private var selectedLayer: ScreenshotAnnotation? {
         guard draft.activeTool == nil, let selected = draft.selected else { return nil }
         return liveLayers.first { $0.id == selected }
-    }
-
-    private func canvasSize(availableWidth: CGFloat) -> CGSize {
-        let scale = draft.zoom > 0 ? draft.zoom :
-            max(0.001, min(availableWidth / CGFloat(image.width), 340 / CGFloat(image.height)))
-        return CGSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
     }
 
     private func normalized(_ point: CGPoint, size: CGSize) -> CGPoint {

@@ -46,7 +46,7 @@ enum ExternalTool {
             defer { try? tail.close() }
             let length = try tail.seekToEnd()
             try tail.seek(toOffset: length > 2048 ? length - 2048 : 0)
-            let message = String(decoding: try tail.readToEnd() ?? Data(), as: UTF8.self)
+            let message = String(decoding: try tail.read(upToCount: 2048) ?? Data(), as: UTF8.self)
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             guard message.isEmpty else { throw ToolError.invalid(message) }
             switch result.terminationStatus {

@@ -47,13 +47,16 @@ struct PasswordGeneratorView: View {
                     Toggle("Capitalize each word", isOn: $capitalized)
                 }
                 Button("Generate", systemImage: "key", action: generate)
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             }
             if let generated {
                 WorkspaceSection("Generated Secret", palette: palette) {
                     Text(revealed ? generated.value : String(repeating: "•", count: min(generated.value.count, 28)))
                         .font(.body.monospaced())
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(9)
+                        .workspaceInset(palette)
                         .accessibilityLabel(revealed ? generated.value : "Hidden generated secret")
                     Text("\(Int(generated.entropyBits.rounded(.down))) bits of randomness")
                         .font(.callout).foregroundStyle(.secondary)

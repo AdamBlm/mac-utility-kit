@@ -1,4 +1,4 @@
-import AVKit
+import AVFoundation
 import Combine
 import SwiftUI
 import UtilityCore
@@ -104,12 +104,12 @@ struct VideoMergeControls: View {
     private func clipOrder(plan: VideoMergePlan?) -> some View {
         VStack(alignment: .leading, spacing: 7) {
             Text("Clip order").font(.headline)
-            ForEach(inputs.indices, id: \.self) { index in
-                let input = inputs[index]
+            ForEach(Array(inputs.enumerated()), id: \.offset) { index, input in
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("\(index + 1). \(input.lastPathComponent)").lineLimit(1).truncationMode(.middle).help(input.path)
-                        if let clip = plan?.clips[index] {
+                        if let clips = plan?.clips, clips.indices.contains(index) {
+                            let clip = clips[index]
                             let interval = "\(time(clip.start))–\(time(clip.start + clip.duration))"
                             Text([interval, warning(for: clip)].compactMap { $0 }.joined(separator: " · "))
                                 .font(.caption.monospacedDigit()).foregroundStyle(.secondary)
@@ -117,11 +117,11 @@ struct VideoMergeControls: View {
                     }
                     Spacer()
                     Button("Move \(input.lastPathComponent) up", systemImage: "chevron.up") {
-                        move(index, by: -1)
+                        move(input, at: index, by: -1)
                     }
                     .labelStyle(.iconOnly).disabled(index == 0)
                     Button("Move \(input.lastPathComponent) down", systemImage: "chevron.down") {
-                        move(index, by: 1)
+                        move(input, at: index, by: 1)
                     }
                     .labelStyle(.iconOnly).disabled(index == inputs.count - 1)
                 }
@@ -183,8 +183,9 @@ struct VideoMergeControls: View {
         return warnings.isEmpty ? nil : warnings.joined(separator: " · ")
     }
 
-    private func move(_ index: Int, by offset: Int) {
-        guard inputs.indices.contains(index), inputs.indices.contains(index + offset) else { return }
+    private func move(_ input: URL, at index: Int, by offset: Int) {
+        guard inputs.indices.contains(index), inputs[index] == input,
+              inputs.indices.contains(index + offset) else { return }
         inputs.swapAt(index, index + offset)
     }
 
@@ -227,8 +228,7 @@ private struct BoundaryPlayer: View {
             if let issue {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             } else if let player, let item = player.currentItem {
-                VideoPlayer(player: player)
-                    .frame(minHeight: 160, idealHeight: 210, maxHeight: 260)
+                VideoPreviewPlayer(player: player)
                     .accessibilityLabel("Playback across the selected cut")
                     .onReceive(item.publisher(for: \.status).receive(on: DispatchQueue.main)) { status in
                         guard status == .failed else { return }

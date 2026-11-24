@@ -53,7 +53,6 @@ struct AudioCleanupControls: View {
             if options.executable == nil {
                 ExternalEngineSetupButton(engine: .ffmpeg) { options.executable = $0 }
             }
-            if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             SettingRow("Output") {
                 Picker("Output", selection: $options.output) {
                     ForEach(AudioCleanupOutput.allCases) { Text($0.title).tag($0) }
@@ -92,7 +91,10 @@ struct AudioCleanupControls: View {
                 .labelsHidden().pickerStyle(.segmented)
             }
             if let duration = loaded?.duration, duration >= 0.1 && !((loaded?.tracks ?? []).isEmpty) {
+                Divider()
                 segmentControls(duration, request: request)
+            } else if url != nil && loaded == nil {
+                ProgressView("Reading audio tracks…").controlSize(.small)
             }
             if let detail = issue ?? loaded?.issue {
                 Text(detail).font(.callout).foregroundStyle(.secondary)
@@ -105,6 +107,7 @@ struct AudioCleanupControls: View {
 
     private func segmentControls(_ duration: Double, request: PreviewRequest?) -> some View {
         VStack(alignment: .leading, spacing: 9) {
+            Text("Compare Original and Cleaned").font(.subheadline.weight(.semibold))
             if inputs.count > 1, let input = inputs.first {
                 Text("Previewing \(input.lastPathComponent). The selected track number applies to each file.")
                     .font(.callout).foregroundStyle(.secondary)
@@ -123,9 +126,9 @@ struct AudioCleanupControls: View {
                 .labelsHidden()
             }
             if let request, let preview, preview.request == request {
-                HStack {
-                    Button("Original", systemImage: "speaker.wave.2") { play(preview.sample, cleaned: false) }
-                    Button("Cleaned", systemImage: "speaker.wave.2") { play(preview.sample, cleaned: true) }
+                WorkspaceFlowLayout(spacing: 8) {
+                    Button("Play Original", systemImage: "speaker.wave.2") { play(preview.sample, cleaned: false) }
+                    Button("Play Cleaned", systemImage: "speaker.wave.2") { play(preview.sample, cleaned: true) }
                     Button("Stop", systemImage: "stop") { stop() }.disabled(player == nil)
                 }
                 Text("Playback levels matched by RMS · \(time(preview.sample.duration))")

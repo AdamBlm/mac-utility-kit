@@ -25,15 +25,18 @@ struct DisplayControlView: View {
                     HStack {
                         Button("Choose m1ddc…", systemImage: "folder", action: choose)
                             .disabled(operation != nil)
-                        if let executable = draft.executable {
-                            Text(executable.path).font(.caption).foregroundStyle(.secondary).lineLimit(1)
-                        } else {
-                            Text("Install m1ddc to query compatible external displays.")
-                                .font(.callout).foregroundStyle(.secondary)
-                        }
                         Spacer()
                         Button("Refresh", systemImage: "arrow.clockwise", action: refresh)
                             .disabled(engine == nil || operation != nil)
+                    }
+                    if let executable = draft.executable {
+                        Text(executable.path)
+                            .font(.caption).foregroundStyle(.secondary)
+                            .lineLimit(1).truncationMode(.middle)
+                            .help(executable.path)
+                    } else {
+                        Text("Install m1ddc to query compatible external displays.")
+                            .font(.callout).foregroundStyle(.secondary)
                     }
                     if !displays.isEmpty {
                         SettingRow("Display") {
@@ -103,22 +106,24 @@ struct DisplayControlView: View {
     private func control(_ feature: DisplayControl.Feature, display: DisplayControl.Display) -> some View {
         SettingRow(feature.rawValue) {
             if let setting = settings[feature] {
-                HStack(spacing: 12) {
-                    Slider(value: Binding(get: { Double(proposed[feature] ?? setting.current) },
-                                          set: { proposed[feature] = Int($0.rounded()) }),
-                           in: 0...Double(setting.maximum), step: 1)
-                        .accessibilityLabel(feature.rawValue)
-                    Text("\(proposed[feature] ?? setting.current) / \(setting.maximum)")
-                        .font(.callout.monospacedDigit())
-                        .fixedSize()
-                    Button("Apply") { apply(feature, display: display) }
-                        .disabled(proposed[feature] == setting.current)
-                        .accessibilityLabel("Apply \(feature.rawValue.lowercased())")
+                VStack(alignment: .leading, spacing: 6) {
+                    HStack(spacing: 12) {
+                        Slider(value: Binding(get: { Double(proposed[feature] ?? setting.current) },
+                                              set: { proposed[feature] = Int($0.rounded()) }),
+                               in: 0...Double(setting.maximum), step: 1)
+                            .accessibilityLabel(feature.rawValue)
+                        Text("\(proposed[feature] ?? setting.current) / \(setting.maximum)")
+                            .font(.callout.monospacedDigit())
+                            .fixedSize()
+                        Button("Apply") { apply(feature, display: display) }
+                            .disabled(proposed[feature] == setting.current)
+                            .accessibilityLabel("Apply \(feature.rawValue.lowercased())")
+                    }
+                    .disabled(operation != nil)
+                    .help("Current monitor value \(setting.current). Supported range 0 to \(setting.maximum).")
+                    Text("Current \(setting.current) · Range 0–\(setting.maximum)")
+                        .font(.caption).foregroundStyle(.secondary)
                 }
-                .disabled(operation != nil)
-                .help("Current monitor value \(setting.current). Supported range 0 to \(setting.maximum).")
-                Text("Current \(setting.current) · Range 0–\(setting.maximum)")
-                    .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text(operation == nil ? "Unavailable" : "Checking…")
                     .font(.callout).foregroundStyle(.secondary)

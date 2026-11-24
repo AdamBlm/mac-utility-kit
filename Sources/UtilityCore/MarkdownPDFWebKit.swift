@@ -5,6 +5,7 @@ import WebKit
 public final class MarkdownPDFWebPage: NSObject, WKNavigationDelegate {
     public let webView: WKWebView
     private var loading: CheckedContinuation<Void, any Error>?
+    private var loadID: UUID?
     private var navigation: WKNavigation?
 
     public override init() {
@@ -23,19 +24,24 @@ public final class MarkdownPDFWebPage: NSObject, WKNavigationDelegate {
 
     public func load(_ document: MarkdownPDFDocument) async throws {
         cancelLoad()
+        let id = UUID()
         try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
                 guard !Task.isCancelled else {
                     continuation.resume(throwing: CancellationError())
                     return
                 }
+                loadID = id
                 loading = continuation
                 navigation = webView.loadHTMLString(document.html, baseURL: nil)
                 if navigation == nil { finish(ToolError.invalid("WebKit could not load the Markdown preview.")) }
             }
         } onCancel: {
-            Task { @MainActor in self.cancelLoad() }
+            Task { @MainActor in
+                if self.loadID == id { self.cancelLoad() }
+            }
         }
+        try Task.checkCancellation()
     }
 
     public func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
@@ -76,6 +82,7 @@ public final class MarkdownPDFWebPage: NSObject, WKNavigationDelegate {
 
     private func finish(_ error: (any Error)?) {
         navigation = nil
+        loadID = nil
         guard let loading else { return }
         self.loading = nil
         if let error { loading.resume(throwing: error) }

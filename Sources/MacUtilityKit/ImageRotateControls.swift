@@ -157,13 +157,13 @@ struct ImageRotateControls: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(title).font(.callout.weight(.semibold))
             Text("\(width) × \(height)").font(.caption.monospacedDigit()).foregroundStyle(.secondary)
-            Image(decorative: image, scale: 1)
-                .resizable()
-                .scaledToFit()
-                .frame(maxWidth: .infinity, maxHeight: 195)
-                .padding(5)
-                .background(.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 8))
-                .accessibilityLabel(title + " preview")
+            ImagePreviewViewport(image: image, maxHeight: 195) { _ in
+                Image(decorative: image, scale: 1)
+                    .resizable()
+                    .background(.primary.opacity(0.04))
+                    .clipShape(.rect(cornerRadius: 8))
+                    .accessibilityLabel(title + " preview")
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

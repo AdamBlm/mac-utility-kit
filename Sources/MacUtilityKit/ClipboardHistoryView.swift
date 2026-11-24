@@ -16,16 +16,20 @@ struct ClipboardHistoryView: View {
     var body: some View {
         InteractiveToolLayout(tool: .clipboardHistory) { palette in
             WorkspaceSection("Recording", palette: palette) {
-                HStack {
+                WorkspaceFlowLayout {
                     switch controller.status {
-                    case .disabled: Button("Enable history", action: controller.start)
-                    case .paused: Button("Resume recording", action: controller.start)
-                    case .recording: Button("Pause recording", action: controller.pause)
+                    case .disabled:
+                        Button("Enable History", action: controller.start)
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
+                    case .paused:
+                        Button("Resume Recording", action: controller.start)
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
+                    case .recording:
+                        Button("Pause Recording", action: controller.pause)
                     }
                     if controller.status != .disabled {
-                        Button("Disable recording", action: controller.disable)
+                        Button("Disable Recording", action: controller.disable)
                     }
-                    Spacer()
                     Picker("Keep recent entries", selection: Binding(
                         get: { controller.retention },
                         set: { controller.retention = $0 }
@@ -43,6 +47,7 @@ struct ClipboardHistoryView: View {
                     .foregroundStyle(.secondary)
                 HStack {
                     TextField("Bundle identifier", text: $excludedIdentifier)
+                        .textFieldStyle(.roundedBorder)
                     Button("Exclude") {
                         controller.exclude(excludedIdentifier)
                         excludedIdentifier = ""
@@ -62,11 +67,12 @@ struct ClipboardHistoryView: View {
             WorkspaceSection("History", palette: palette) {
                 HStack {
                     TextField("Search history", text: $search)
+                        .textFieldStyle(.roundedBorder)
                     Picker("Filter", selection: $filter) {
                         ForEach(Filter.allCases, id: \.self) { Text($0.rawValue).tag($0) }
                     }
-                    .fixedSize()
-                    Button("Clear unpinned") {
+                    .labelsHidden()
+                    Button("Clear Unpinned") {
                         controller.clearUnpinned()
                         message = nil
                     }
@@ -77,29 +83,53 @@ struct ClipboardHistoryView: View {
                     Text(controller.entries.isEmpty ? "No clipboard entries yet." : "No matching entries.")
                         .foregroundStyle(.secondary)
                 }
+                let pinLimitReached = controller.entries.filter(\.pinned).count >= 20
                 ForEach(visibleEntries) { entry in
-                    HStack {
-                        switch entry.content {
-                        case .text(let text):
-                            Text(text).lineLimit(2).frame(maxWidth: .infinity, alignment: .leading)
-                        case .image(let data, _):
-                            ClipboardHistoryThumbnail(data: data)
-                            Text("Image").frame(maxWidth: .infinity, alignment: .leading)
-                        }
-                        if let app = entry.foregroundApp {
-                            Text(app).foregroundStyle(.secondary).lineLimit(1)
-                                .accessibilityLabel("Foreground app: \(app)")
-                        }
-                        Text(entry.date, style: .time).foregroundStyle(.secondary)
-                        Button("Copy") {
-                            message = controller.copy(entry) ? "Copied to clipboard." : "Could not copy this entry."
-                        }
-                        Button(entry.pinned ? "Unpin" : "Pin") { controller.togglePin(entry.id) }
-                            .disabled(!entry.pinned && controller.entries.filter(\.pinned).count >= 20)
-                        Button("Remove", role: .destructive) { controller.remove(entry.id) }
-                    }
+                    Divider()
+                    historyRow(entry, pinLimitReached: pinLimitReached)
                 }
             }
+        }
+    }
+
+    private func historyRow(_ entry: ClipboardHistoryController.Entry, pinLimitReached: Bool) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                switch entry.content {
+                case .text(let text):
+                    Text(text).lineLimit(2)
+                case .image(let data, _):
+                    HStack {
+                        ClipboardHistoryThumbnail(data: data)
+                        Text("Image")
+                    }
+                }
+                HStack(spacing: 6) {
+                    if let app = entry.foregroundApp {
+                        Text(app).lineLimit(1).truncationMode(.middle)
+                            .accessibilityLabel("Foreground app: \(app)")
+                    }
+                    Text(entry.date, style: .time)
+                }
+                .font(.caption.monospacedDigit())
+                .foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            HStack(spacing: 5) {
+                Button("Copy", systemImage: "doc.on.doc") {
+                    message = controller.copy(entry) ? "Copied to clipboard." : "Could not copy this entry."
+                }
+                .help("Copy entry")
+                Button(entry.pinned ? "Unpin" : "Pin", systemImage: entry.pinned ? "pin.fill" : "pin") {
+                    controller.togglePin(entry.id)
+                }
+                .disabled(!entry.pinned && pinLimitReached)
+                .help(entry.pinned ? "Unpin entry" : "Pin entry")
+                Button("Remove", systemImage: "trash", role: .destructive) { controller.remove(entry.id) }
+                    .help("Remove entry")
+            }
+            .labelStyle(.iconOnly)
         }
     }
 

@@ -74,7 +74,7 @@ struct StorageExplorerView: View {
 
     var body: some View {
         InteractiveToolLayout(tool: .storageExplorer) { palette in
-            WorkspaceSection("Location", palette: palette) { scanControls }
+            WorkspaceSection("Location", palette: palette) { scanControls(palette: palette) }
             if let report = draft.report {
                 WorkspaceSection("Usage", palette: palette) { browse(report) }
                 if !report.issues.isEmpty {
@@ -109,12 +109,12 @@ struct StorageExplorerView: View {
         }
     }
 
-    private var scanControls: some View {
+    private func scanControls(palette: WorkspacePalette) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 Button("Choose Folder or Volume…", systemImage: "folder", action: chooseFolder)
                 Button("Scan", systemImage: "chart.bar.xaxis", action: scan)
-                    .buttonStyle(.borderedProminent).disabled(draft.folder == nil)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette)).disabled(draft.folder == nil)
             }
             .disabled(busy)
             if let folder = draft.folder {

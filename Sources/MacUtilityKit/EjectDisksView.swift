@@ -22,7 +22,7 @@ struct EjectDisksView: View {
     var body: some View {
         InteractiveToolLayout(tool: .ejectAllDisks) { palette in
             WorkspaceSection("Devices", palette: palette) {
-                inventory
+                inventory(palette: palette)
             }
             if !draft.outcomes.isEmpty {
                 WorkspaceSection("Results", palette: palette) {
@@ -44,7 +44,7 @@ struct EjectDisksView: View {
         }
     }
 
-    private var inventory: some View {
+    private func inventory(palette: WorkspacePalette) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Button("Refresh", systemImage: "arrow.clockwise", action: scheduleRefresh)
@@ -75,7 +75,7 @@ struct EjectDisksView: View {
                     confirmation = draft.devices.map(\.id).filter { draft.selected.contains($0) }
                     confirmsEject = !confirmation.isEmpty
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 .disabled(isBusy || draft.selected.isEmpty)
             }
         }

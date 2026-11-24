@@ -49,18 +49,20 @@ struct AudioMergeControls: View {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             }
             if !inputs.isEmpty {
-                Text("Clip order").font(.headline)
-                ForEach(inputs.indices, id: \.self) { index in
-                    let name = inputs[index].lastPathComponent
+                Divider()
+                Text("Clip Order").font(.subheadline.weight(.semibold))
+                ForEach(Array(inputs.enumerated()), id: \.offset) { index, input in
+                    let name = input.lastPathComponent
                     HStack {
                         Text("\(index + 1). \(name)").lineLimit(1).truncationMode(.middle)
+                            .help(input.path)
                         Spacer()
                         Button("Move \(name) up", systemImage: "chevron.up") {
-                            move(index, by: -1)
+                            move(input, at: index, by: -1)
                         }
                         .labelStyle(.iconOnly).disabled(index == 0)
                         Button("Move \(name) down", systemImage: "chevron.down") {
-                            move(index, by: 1)
+                            move(input, at: index, by: 1)
                         }
                         .labelStyle(.iconOnly).disabled(index == inputs.count - 1)
                     }
@@ -76,8 +78,9 @@ struct AudioMergeControls: View {
         }
     }
 
-    private func move(_ index: Int, by offset: Int) {
-        guard inputs.indices.contains(index), inputs.indices.contains(index + offset) else { return }
+    private func move(_ input: URL, at index: Int, by offset: Int) {
+        guard inputs.indices.contains(index), inputs[index] == input,
+              inputs.indices.contains(index + offset) else { return }
         inputs.swapAt(index, index + offset)
     }
 }

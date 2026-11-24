@@ -53,7 +53,7 @@ struct DeadPixelTestView: View {
                                       interval: interval, startingColor: startingColor)
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                 .disabled(selectedDisplay?.status != .available || session.active)
                 if let issue = session.issue {
                     Text(issue).font(.callout).foregroundStyle(.secondary)

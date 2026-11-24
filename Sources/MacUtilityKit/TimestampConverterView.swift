@@ -53,19 +53,20 @@ struct TimestampConverterView: View {
                 HStack {
                     if draft.direction == .toDate {
                         TextField("Unix timestamp", text: $draft.unixInput)
+                            .font(.body.monospaced())
                             .accessibilityLabel("Unix timestamp in \(draft.unit.rawValue.lowercased())")
                     } else {
                         TextField("Local date and time or ISO 8601", text: Binding(get: { draft.localInput }, set: {
                             draft.localInput = $0
                             draft.selectedMatch = nil
                         }))
+                            .font(.body.monospaced())
                             .accessibilityLabel("Local date and time or ISO 8601 timestamp")
                             .help("Accepts explicit offsets such as +05:30 or +0530.")
                     }
                     Button("Now", systemImage: "clock", action: useNow)
                 }
                 .textFieldStyle(.roundedBorder)
-                .font(.body.monospaced())
                 if draft.direction == .toUnix {
                     Text("Use the selected time zone for a date without an offset.")
                         .font(.caption).foregroundStyle(.secondary)

@@ -247,6 +247,8 @@ private struct AudioExtractionControls: View {
                 Text(issue).font(.callout).foregroundStyle(.secondary)
             }
             if let previewInput {
+                Divider()
+                Text("Track Preview").font(.subheadline.weight(.semibold))
                 if inputs.count > 1 {
                     SettingRow("Preview source") {
                         Picker("Preview source", selection: Binding(
@@ -260,12 +262,14 @@ private struct AudioExtractionControls: View {
                         .labelsHidden()
                     }
                 }
-                Button("Preview track", systemImage: "play.rectangle") { preview(previewInput) }
-                    .disabled(previewDisabled || (try? AudioExtraction.selectedTrack(in: tracks, options: options, forPreview: true)) == nil)
-                Button("Recheck Tracks", systemImage: "arrow.clockwise") {
-                    review = AudioExtractionReview()
-                    languages = []
-                    revision += 1
+                WorkspaceFlowLayout(spacing: 8) {
+                    Button("Preview Track", systemImage: "play.rectangle") { preview(previewInput) }
+                        .disabled(previewDisabled || (try? AudioExtraction.selectedTrack(in: tracks, options: options, forPreview: true)) == nil)
+                    Button("Recheck Tracks", systemImage: "arrow.clockwise") {
+                        review = AudioExtractionReview()
+                        languages = []
+                        revision += 1
+                    }
                 }
                 if review.inputs != inputs || !inputs.allSatisfy({ review.tracks[$0] != nil || review.errors[$0] != nil }) {
                     ProgressView("Reading audio tracks…").controlSize(.small)

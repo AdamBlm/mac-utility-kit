@@ -63,19 +63,20 @@ struct TranslateView: View {
                     ClipboardFileButton(allowedTypes: TranslationDocument.acceptedInputTypes,
                                         buttonOnlyTitle: "Paste File", onPasteFile: load)
                         .disabled(isLoadingFile)
-                    if let name = draft.filename { Text(name).font(.caption).lineLimit(1) }
+                    if let name = draft.filename { Text(name).font(.caption).lineLimit(1).truncationMode(.middle).help(name) }
                     if isLoadingFile { ProgressView().controlSize(.small) }
                 }
                 .disabled(pending != nil)
-                HStack(alignment: .top, spacing: 14) {
-                    textEditor("Original", text: Binding(get: { draft.input }, set: {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14, alignment: .top)],
+                          alignment: .leading, spacing: 14) {
+                    textEditor("Original", palette: palette, text: Binding(get: { draft.input }, set: {
                         draft.input = $0
                         draft.filename = nil
                         clear()
                     }))
                     .id(editorRevision)
                     .disabled(pending != nil || isLoadingFile)
-                    textEditor("Translation", text: $output)
+                    textEditor("Translation", palette: palette, text: $output)
                         .disabled(completed == nil || pending != nil)
                 }
                 if let progress {
@@ -123,12 +124,15 @@ struct TranslateView: View {
         Locale.current.localizedString(forIdentifier: language.minimalIdentifier) ?? language.minimalIdentifier
     }
 
-    private func textEditor(_ name: String, text: Binding<String>) -> some View {
+    private func textEditor(_ name: String, palette: WorkspacePalette, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(name).font(.headline)
             TextEditor(text: text)
                 .font(.body.monospaced())
-                .frame(minHeight: 160, maxHeight: 260)
+                .frame(minHeight: 160, idealHeight: 190, maxHeight: 260)
+                .scrollContentBackground(.hidden)
+                .padding(6)
+                .workspaceInset(palette)
                 .accessibilityLabel(name)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
