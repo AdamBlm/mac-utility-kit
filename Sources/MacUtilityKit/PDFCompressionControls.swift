@@ -36,7 +36,7 @@ struct PDFCompressionControls: View {
                 .labelsHidden()
             }
             if options.engine == .automatic {
-                Text("Automatic compares available methods and keeps the smallest verified result for this preset.")
+                Text("Automatic tries to shrink embedded images first and uses other methods when needed.")
                     .font(.callout).foregroundStyle(.secondary)
                 if options.qpdfExecutable == nil {
                     ExternalEngineSetupButton(engine: .qpdf) { options.qpdfExecutable = $0 }
@@ -101,15 +101,21 @@ struct PDFCompressionControls: View {
     private var effectiveSettings: String {
         if options.isLossless { return "Lossless · embedded images stay unchanged" }
         let quality = options.imageQuality ?? options.defaultQuality
+        if options.engine == .qpdf && options.preset == .higherQuality {
+            return "JPEG quality \(quality) · image dimensions stay unchanged"
+        }
         return options.engine == .qpdf
-            ? "JPEG quality \(quality) · image dimensions stay unchanged"
-            : "JPEG quality \(quality) · target \(options.imageDPI ?? options.defaultDPI) DPI"
+            ? "Targets \(options.imageDPI ?? options.defaultDPI) PPI for supported images"
+            : "JPEG quality \(quality) · target \(options.imageDPI ?? options.defaultDPI) PPI"
     }
 
     private var imageSettings: some View {
         VStack(alignment: .leading, spacing: 8) {
             Toggle("Set JPEG quality", isOn: Binding(get: { options.imageQuality != nil }, set: { enabled in
-                options.imageQuality = enabled ? options.defaultQuality : nil
+                options.imageQuality = enabled
+                    ? (options.engine == .qpdf && options.preset != .higherQuality
+                       ? options.defaultEmbeddedImageQuality : options.defaultQuality)
+                    : nil
             }))
             if let quality = options.imageQuality {
                 SettingRow("JPEG quality") {
@@ -119,15 +125,15 @@ struct PDFCompressionControls: View {
                     Text("\(quality)%").monospacedDigit().frame(width: 46, alignment: .trailing)
                 }
             }
-            if options.engine == .ghostscript {
-                Toggle("Set target DPI", isOn: Binding(get: { options.imageDPI != nil }, set: { enabled in
+            if options.engine == .ghostscript || options.preset != .higherQuality {
+                Toggle("Set target PPI", isOn: Binding(get: { options.imageDPI != nil }, set: { enabled in
                     options.imageDPI = enabled ? options.defaultDPI : nil
                 }))
-                SettingRow("Target DPI") {
+                SettingRow("Target PPI") {
                     if let dpi = options.imageDPI {
-                        Stepper("\(dpi) DPI", value: Binding(get: { dpi }, set: { options.imageDPI = $0 }), in: 72...600, step: 6)
+                        Stepper("\(dpi) PPI", value: Binding(get: { dpi }, set: { options.imageDPI = $0 }), in: 72...600, step: 6)
                     } else {
-                        Text("\(options.defaultDPI) DPI").foregroundStyle(.secondary)
+                        Text("\(options.defaultDPI) PPI").foregroundStyle(.secondary)
                     }
                 }
             }

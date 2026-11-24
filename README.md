@@ -1,21 +1,49 @@
-# Mac Utility Kit
+<p align="center">
+  <img src="assets/branding/mac-utility-kit.svg" alt="" width="80" height="80">
+</p>
 
-Mac Utility Kit brings 105 tools into one native macOS app. Combine or compress PDFs, batch-edit images, convert video and audio, extract text from scans, and handle everyday Mac and developer tasks. File processing runs on your Mac.
+<h1 align="center">Mac Utility Kit</h1>
 
-**[Download Mac Utility Kit (.dmg)](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.3/Mac.Utility.Kit.Preview.3.dmg)** for Apple silicon Macs running macOS 15 or later. [All releases](https://github.com/AdamBlm/mac-utility-kit/releases)
+<p align="center">105 native macOS tools for PDFs, media, files, and everyday work.</p>
 
-![Browse Tools in dark mode, with eight category cards and a sidebar for search, favorites, recents, and PDF Reader](docs/images/browse-tools.png)
+<p align="center">
+  <strong><a href="https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.4/Mac.Utility.Kit.Preview.4.dmg">Download for Mac</a></strong>
+  · <a href="https://github.com/AdamBlm/mac-utility-kit/releases">Release notes</a>
+  · <a href="docs/tool-guide.md">Tool guide</a>
+</p>
 
-## Find the right tool
+<p align="center"><sub>Apple silicon · macOS 15 or later · Free and open source</sub></p>
 
-Open **Browse Tools** and pick a category, or press **⌘K** to jump to a tool by name. Each category groups tools by task. For example, **Documents → Convert & Compress** includes Compress PDF and Office-to-PDF tools, and **Documents → Pages** includes Merge PDFs and Extract Pages. Star a tool to save it in **Favorites**, or select **Recents** to revisit one you opened.
+![Browse Tools in the tinted Mac Utility Kit workspace](docs/images/browse-tools.png)
 
-- **Images and PDFs** — Resize a batch of images, remove backgrounds, pick which pages to keep in a merge, or add searchable text to a scan.
-- **Video and audio** — Compress or convert footage, trim clips, extract audio, or transcribe a recording with a local Whisper model.
-- **Text, files, and Mac utilities** — Compare text, rename files in batches, inspect disk usage, or find duplicate files.
-- **Developer tools** — Format JSON, convert CSV, test regular expressions, and generate or verify hashes.
+## Explore the tools
 
-See the [full tool catalog](docs/feature-inventory.md) or the [tool guide](docs/tool-guide.md) for controls and format support.
+| Category | What you can do |
+| --- | --- |
+| [Images](docs/feature-inventory.md#images-13) | Resize and compress in batches, remove backgrounds, blur faces, or annotate screenshots. |
+| [Documents](docs/feature-inventory.md#docs-23) | Compress PDFs, choose pages for a merge, sign forms, or make scans searchable. |
+| [Video](docs/feature-inventory.md#video-16) | Compress, trim, merge, and convert clips, create GIFs, or record your screen. |
+| [Audio](docs/feature-inventory.md#audio-6) | Record, trim, convert, or clean up audio. |
+| [Text and speech](docs/feature-inventory.md#text--speech-10) | Extract text from images, transcribe recordings, translate, or read documents aloud. |
+| [Files](docs/feature-inventory.md#files-5) | Rename in batches, find duplicates, organize downloads, or open archives. |
+| [Mac](docs/feature-inventory.md#mac-18) | Check battery health, see what fills your disk, manage displays, or keep your Mac awake. |
+| [Developer](docs/feature-inventory.md#developer-14) | Format JSON, compare text, convert CSV, test regex, or verify checksums. |
+
+Press **⌘K** to find a tool by name. Star tools you use often to keep them in **Favorites**. Find recently opened tools under **Recents**.
+
+## Install on your Mac
+
+[Download the DMG](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.4/Mac.Utility.Kit.Preview.4.dmg), open it, and drag Mac Utility Kit into **Applications**.
+
+### Opening a preview download for the first time
+
+Preview downloads use an ad hoc signature. macOS may block the first launch because the preview has no Apple Developer ID signature or notarization.
+
+1. If you downloaded the preview from this project's GitHub Releases page and trust the source, drag **Mac Utility Kit.app** into **Applications** and try opening it.
+2. If macOS blocks it, open **System Settings → Privacy & Security**, then select **Open Anyway**.
+3. Confirm when prompted. macOS saves the exception for this copy of the app. Managed Macs may restrict this option. [Apple's first-launch guidance](https://support.apple.com/en-us/102445)
+
+I’m keeping the preview simple while I see how much interest there is. If enough people find the app useful, I’d like to cover the cost of Apple Developer Program membership so I can offer signed and notarized downloads.
 
 ## Open files from Finder
 
@@ -33,27 +61,6 @@ The chosen tool opens with the files loaded. You can review the settings before 
 
 If the actions are missing, install a build that includes Finder actions in **Applications**, then check **System Settings → Keyboard → Keyboard Shortcuts → Services**.
 
-## Run a local preview
-
-You’ll need an Apple silicon Mac with macOS 15 or later and Xcode 26 or later. From the source checkout, run:
-
-```sh
-./scripts/build-app.sh
-open "build/Mac Utility Kit.app"
-```
-
-This builds an ad hoc signed preview for local use. See [Contributing](CONTRIBUTING.md) for tests and disk-image packaging.
-
-### Opening a preview download for the first time
-
-Preview downloads use an ad hoc signature. macOS may block the first launch because the preview has no Apple Developer ID signature or notarization.
-
-1. If you downloaded the preview from this project's GitHub Releases page and trust the source, drag **Mac Utility Kit.app** into **Applications** and try opening it.
-2. If macOS blocks it, open **System Settings → Privacy & Security**, then select **Open Anyway**.
-3. Confirm when prompted. macOS saves the exception for this copy of the app. Managed Macs may restrict this option. [Apple's first-launch guidance](https://support.apple.com/en-us/102445)
-
-I’m keeping the preview simple while I see how much interest there is. If enough people find the app useful, I’d like to cover the cost of Apple Developer Program membership so I can offer signed and notarized downloads.
-
 ## Optional engines
 
 Many tools work with the frameworks that ship with macOS. If a feature needs an additional engine, open **Settings → Engines** or follow the setup instructions in that tool. Setup panels can provide a Homebrew command or let you select an installed executable.
@@ -62,7 +69,7 @@ Many tools work with the frameworks that ship with macOS. If a feature needs an 
 | --- | --- |
 | Downloading video from supported sites | yt-dlp, plus FFmpeg for stream merging or conversion |
 | WebM export, animated GIFs, or burning in subtitles | FFmpeg with the encoders or filters required by the tool |
-| Compressing PDFs | qpdf for structural optimization, Ghostscript for image downsampling, or both |
+| Compressing PDFs | qpdf or Ghostscript, depending on the document and compression settings |
 | Encrypting or decrypting PDFs | qpdf |
 | Office document conversion | LibreOffice |
 | Transcription | whisper.cpp and a downloaded model |
@@ -75,12 +82,18 @@ File workflows such as image editing, PDF compression, OCR, and transcription ru
 
 The optional `muk` CLI and local MCP server expose a subset of tools. See [Terminal and local MCP](docs/tool-guide.md#terminal-and-local-mcp) for commands and setup.
 
-## Project docs
+## Build or contribute
 
-- [Contributing](CONTRIBUTING.md)
-- [Open-source components and reuse research](docs/reuse/README.md)
-- [Development plan and tool specifications](docs/plan/README.md)
-- [Third-party license notices](licenses/)
+You’ll need an Apple silicon Mac with macOS 15 or later and Xcode 26 or later.
+
+```sh
+./scripts/build-app.sh
+open "build/Mac Utility Kit.app"
+```
+
+Report a bug or suggest an improvement in [GitHub Issues](https://github.com/AdamBlm/mac-utility-kit/issues). For pull requests, testing, and packaging, see the [contributing guide](CONTRIBUTING.md).
+
+[Development plan](docs/plan/README.md) · [Open-source components](docs/reuse/README.md) · [Third-party notices](licenses/)
 
 ## License
 

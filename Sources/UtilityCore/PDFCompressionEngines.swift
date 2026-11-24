@@ -37,6 +37,11 @@ enum PDFCompressionEngines {
         return result
     }
 
+    static func allowsEmbeddedImageChanges(in document: PDFDocument) throws -> Bool {
+        let traits = try imageTraits(in: document)
+        return traits.hasImages && traits.allowsImageChanges
+    }
+
     static func canRewriteImages(in document: PDFDocument) throws -> Bool {
         try imageTraits(in: document).canDownsample
     }
