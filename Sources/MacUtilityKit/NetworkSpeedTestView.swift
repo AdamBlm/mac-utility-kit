@@ -25,7 +25,7 @@ struct NetworkSpeedTestView: View {
                 }
                 HStack {
                     Button("Start Test", systemImage: "speedometer", action: start)
-                        .buttonStyle(.borderedProminent).disabled(work != nil)
+                        .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette)).disabled(work != nil)
                     if work != nil {
                         ProgressView("Measuring connection…").controlSize(.small)
                         Button("Cancel") { work?.cancel() }
@@ -35,12 +35,20 @@ struct NetworkSpeedTestView: View {
             if let issue { Text(issue).font(.callout).foregroundStyle(.secondary) }
             if let result {
                 WorkspaceSection("Results", palette: palette) {
-                    let fields = rows(result)
-                    ForEach(fields, id: \.0) { label, value in
+                    let metrics = [
+                        ("Download", throughput(result.downloadBitsPerSecond)),
+                        ("Upload", throughput(result.uploadBitsPerSecond)),
+                        ("Idle latency", latency(result.idleLatencyMilliseconds))
+                    ]
+                    let details = detailRows(result)
+                    MacBenchmarkSummary(values: metrics)
+                    Divider()
+                    ForEach(details, id: \.0) { label, value in
                         LabeledContent(label, value: value).font(.callout.monospacedDigit())
                     }
                     Button("Copy Results", systemImage: "doc.on.doc") {
-                        DeveloperToolFiles.copy((["Network Speed Test"] + fields.map { "\($0.0): \($0.1)" }).joined(separator: "\n"))
+                        let lines = (metrics + details).map { "\($0.0): \($0.1)" }
+                        DeveloperToolFiles.copy((["Network Speed Test"] + lines).joined(separator: "\n"))
                         copied = true
                     }
                     if copied { Text("Copied").foregroundStyle(.secondary).font(.callout) }
@@ -55,13 +63,8 @@ struct NetworkSpeedTestView: View {
         }
     }
 
-    private func rows(_ result: NetworkSpeedResult) -> [(String, String)] {
-        var fields = [
-            ("Test mode", result.mode.rawValue),
-            ("Download", throughput(result.downloadBitsPerSecond)),
-            ("Upload", throughput(result.uploadBitsPerSecond)),
-            ("Idle latency", latency(result.idleLatencyMilliseconds))
-        ]
+    private func detailRows(_ result: NetworkSpeedResult) -> [(String, String)] {
+        var fields = [("Test mode", result.mode.rawValue)]
         if result.mode == .sequential {
             fields.append(("Download responsiveness", responsiveness(result.downloadResponsiveness)))
             fields.append(("Upload responsiveness", responsiveness(result.uploadResponsiveness)))

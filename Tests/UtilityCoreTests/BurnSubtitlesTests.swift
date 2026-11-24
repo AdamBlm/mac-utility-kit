@@ -75,6 +75,15 @@ import Testing
         #expect(throws: ToolError.self) { try BurnSubtitles.plan(duration: 2.1, options: options) }
     }
 
+    @Test func rejectsOverflowWhenOffsettingPreparsedCues() {
+        var options = BurnSubtitlesOptions()
+        options.offset = 1
+        let cues = [SubtitleCue(startMilliseconds: 0, endMilliseconds: Int.max, text: "Overflow")]
+        #expect(throws: ToolError.self) {
+            try BurnSubtitles.plan(duration: 2, options: options, parsedCues: cues)
+        }
+    }
+
     @Test(.enabled(if: ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"] != nil))
     func burnsVisibleOffsetCueIntoFrameAndKeepsAudio() async throws {
         let ffmpeg = URL(fileURLWithPath: try #require(ProcessInfo.processInfo.environment["MAC_UTILITY_FFMPEG_TEST"]))

@@ -62,6 +62,7 @@ struct CaptureTextView: View {
                     Image(decorative: image, scale: 1)
                         .resizable()
                         .aspectRatio(contentMode: .fit)
+                        .clipShape(.rect(cornerRadius: 8))
                         .frame(maxWidth: .infinity, maxHeight: 220)
                         .accessibilityLabel("Captured screen region")
                     if draft.text.isEmpty {
@@ -74,6 +75,8 @@ struct CaptureTextView: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .frame(maxHeight: 240)
+                        .padding(8)
+                        .workspaceInset(palette)
                     }
                     HStack {
                         Button("Copy", systemImage: "doc.on.doc") {

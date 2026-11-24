@@ -117,6 +117,21 @@ import UtilityCore
         #expect(document.string?.contains("[Image unavailable]") == true)
     }
 
+    @available(macOS 26.0, *)
+    @MainActor
+    @Test func cancellingALoadDoesNotCancelItsReplacement() async throws {
+        let page = MarkdownPDFWebPage()
+        let original = try await MarkdownPDF.prepare("# First document")
+        let replacement = try await MarkdownPDF.prepare("# Replacement")
+        // Install the first navigation before cancelling without polling WebKit's loading state.
+        let first = Task.immediate { try await page.load(original) }
+        defer { first.cancel() }
+
+        first.cancel()
+        try await page.load(replacement)
+        await #expect(throws: CancellationError.self) { try await first.value }
+    }
+
     @MainActor
     @Test func printsSearchablePaginatedPDFWithAPreservedLinkAndWrappedCode() async throws {
         var options = MarkdownPDFOptions()

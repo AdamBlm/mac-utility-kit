@@ -45,7 +45,7 @@ struct CoordinatePickerView: View {
                     Map(position: $camera) {
                         ForEach(Array(draft.markers.enumerated()), id: \.element.id) { index, marker in
                             Marker("Point \(index + 1)", coordinate: location(marker.coordinate))
-                                .tint(marker.id == selectedMarker ? .orange : .accentColor)
+                                .tint(marker.id == selectedMarker ? .orange : palette.controlTint)
                         }
                         if draft.markers.count == 2 {
                             MapPolyline(coordinates: draft.markers.map { location($0.coordinate) })
@@ -122,6 +122,9 @@ struct CoordinatePickerView: View {
             WorkspaceSection("List Lookup", palette: palette) {
                 TextEditor(text: $draft.batch)
                     .frame(minHeight: 72)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .workspaceInset(palette)
                     .accessibilityLabel("Coordinates or place names, one per line")
                     .disabled(batchRequest != nil)
                 Button("Look Up List", systemImage: "list.bullet") { startBatch() }

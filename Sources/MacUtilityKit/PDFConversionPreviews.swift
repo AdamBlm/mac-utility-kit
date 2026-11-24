@@ -94,7 +94,7 @@ struct ImagePDFPagePreview: View {
     let pageNumber: Int
     let options: ImagesToPDFOptions
     let background: Color
-    @State private var thumbnail: CGImage?
+    @State private var thumbnail: (source: URL, image: CGImage)?
 
     var body: some View {
         Group {
@@ -122,7 +122,7 @@ struct ImagePDFPagePreview: View {
                     kCGImageSourceThumbnailMaxPixelSize: 520
                 ] as CFDictionary)
             }.value
-            if !Task.isCancelled { thumbnail = preview }
+            if !Task.isCancelled { thumbnail = preview.map { (source: input, image: $0) } }
         }
     }
 
@@ -133,8 +133,8 @@ struct ImagePDFPagePreview: View {
             background
             ZStack(alignment: .topLeading) {
                 Color.clear
-                if let thumbnail {
-                    Image(decorative: thumbnail, scale: 1)
+                if let thumbnail, thumbnail.source == input {
+                    Image(decorative: thumbnail.image, scale: 1)
                         .resizable()
                         .frame(width: layout.image.width * scale, height: layout.image.height * scale)
                         .position(x: (layout.image.midX - box.minX) * scale,

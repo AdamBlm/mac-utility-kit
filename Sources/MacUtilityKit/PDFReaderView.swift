@@ -16,7 +16,7 @@ struct PDFReaderView: View {
     @State private var query = ""
     @FocusState private var searching: Bool
 
-    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
+    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark, category: .documents) }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -42,12 +42,14 @@ struct PDFReaderView: View {
                         .padding(.horizontal, 16)
                         .padding(.bottom, 8)
                 }
-                Divider()
                 HStack(spacing: 0) {
                     if thumbnails {
                         PDFReaderThumbnails(pdfView: reader.view)
-                            .frame(width: 112)
-                        Divider()
+                            .frame(width: 102)
+                        Rectangle()
+                            .fill(palette.hairline)
+                            .frame(width: 1)
+                            .allowsHitTesting(false)
                     }
                     PDFReaderCanvas(view: reader.view)
                 }
@@ -62,7 +64,7 @@ struct PDFReaderView: View {
                             .textFieldStyle(.roundedBorder)
                             .frame(width: 210)
                             .onSubmit(unlock)
-                        Button("Unlock", action: unlock).buttonStyle(.borderedProminent)
+                        Button("Unlock", action: unlock).buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                         if let message = reader.error {
                             Text(message).foregroundStyle(.secondary)
                         }
@@ -77,12 +79,14 @@ struct PDFReaderView: View {
                 } description: {
                     Text(reader.error ?? "Open a PDF or drop it here.")
                 } actions: {
-                    Button("Open PDF…", action: choosePDF).buttonStyle(.borderedProminent)
+                    Button("Open PDF…", action: choosePDF).buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     pastePDFButton
                 }
             }
         }
-        .background(palette.canvas)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .workspaceBackground(palette)
+        .tint(palette.controlTint)
         .onChange(of: reader.document.map(ObjectIdentifier.init)) { _, _ in resetInputs() }
         .onDisappear { reader.resetSearch() }
         .dropDestination(for: URL.self) { urls, _ in
@@ -144,36 +148,47 @@ struct PDFReaderView: View {
                 }
                 .fixedSize()
             }
-            HStack(spacing: 9) {
-                Button(thumbnails ? "Hide thumbnails" : "Show thumbnails", systemImage: "sidebar.left") {
-                    thumbnails.toggle()
-                }
-                .labelStyle(.iconOnly)
-                .help(thumbnails ? "Hide thumbnails" : "Show thumbnails")
-                Button("Previous page", systemImage: "chevron.left") { reader.navigatePage(by: -1) }
-                    .labelStyle(.iconOnly)
-                    .disabled(reader.pageNumber <= 1)
-                Text("\(reader.pageNumber) / \(document.pageCount)").monospacedDigit().fixedSize()
-                    .accessibilityLabel("Page \(reader.pageNumber) of \(document.pageCount)")
-                Button("Next page", systemImage: "chevron.right") { reader.navigatePage(by: 1) }
-                    .labelStyle(.iconOnly)
-                    .disabled(reader.pageNumber >= document.pageCount)
-                Divider().frame(height: 18)
-                Button("Zoom out", systemImage: "minus.magnifyingglass") { reader.view.zoomOut(nil) }
-                    .labelStyle(.iconOnly)
-                Button("Fit page", systemImage: "arrow.up.left.and.arrow.down.right") { reader.view.autoScales = true }
-                    .labelStyle(.iconOnly)
-                    .help("Fit page")
-                Button("Zoom in", systemImage: "plus.magnifyingglass") { reader.view.zoomIn(nil) }
-                    .labelStyle(.iconOnly)
-                Spacer(minLength: 0)
+            WorkspaceFlowLayout(spacing: 12) {
+                pageControls(document)
                 searchControls
             }
         }
         .buttonStyle(.borderless)
         .padding(.horizontal, 16)
         .padding(.vertical, 10)
-        .background(palette.surface)
+        .background(palette.barFill)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(palette.hairline)
+                .frame(height: 1)
+                .allowsHitTesting(false)
+        }
+    }
+
+    private func pageControls(_ document: PDFDocument) -> some View {
+        HStack(spacing: 9) {
+            Button(thumbnails ? "Hide thumbnails" : "Show thumbnails", systemImage: "sidebar.left") {
+                thumbnails.toggle()
+            }
+            .labelStyle(.iconOnly)
+            .help(thumbnails ? "Hide thumbnails" : "Show thumbnails")
+            Button("Previous page", systemImage: "chevron.left") { reader.navigatePage(by: -1) }
+                .labelStyle(.iconOnly)
+                .disabled(reader.pageNumber <= 1)
+            Text("\(reader.pageNumber) / \(document.pageCount)").monospacedDigit().fixedSize()
+                .accessibilityLabel("Page \(reader.pageNumber) of \(document.pageCount)")
+            Button("Next page", systemImage: "chevron.right") { reader.navigatePage(by: 1) }
+                .labelStyle(.iconOnly)
+                .disabled(reader.pageNumber >= document.pageCount)
+            Divider().frame(height: 18).accessibilityHidden(true)
+            Button("Zoom out", systemImage: "minus.magnifyingglass") { reader.view.zoomOut(nil) }
+                .labelStyle(.iconOnly)
+            Button("Fit page", systemImage: "arrow.up.left.and.arrow.down.right") { reader.view.autoScales = true }
+                .labelStyle(.iconOnly)
+                .help("Fit page")
+            Button("Zoom in", systemImage: "plus.magnifyingglass") { reader.view.zoomIn(nil) }
+                .labelStyle(.iconOnly)
+        }
     }
 
     private func handoffButton(_ tool: Tool) -> some View {

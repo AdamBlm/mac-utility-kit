@@ -55,3 +55,18 @@ import UtilityCore
     await #expect(throws: ToolError.self) { try await WordCounter.loadText(linked) }
     #expect(try await WordCounter.loadText(file) == expected)
 }
+
+@Test func wordCounterRejectsOversizedInputBeforeAnalysisOrFileDecoding() async throws {
+    let maximumBytes = 2 * 1024 * 1024
+    let text = String(repeating: "a", count: maximumBytes + 1)
+    await #expect(throws: ToolError.self) { try await WordCounter.analyze(text) }
+
+    let file = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+    try Data().write(to: file)
+    defer { try? FileManager.default.removeItem(at: file) }
+    let handle = try FileHandle(forWritingTo: file)
+    try handle.truncate(atOffset: UInt64(maximumBytes + 1))
+    try handle.close()
+    let error = await #expect(throws: ToolError.self) { try await WordCounter.loadText(file) }
+    #expect(error?.errorDescription == "Choose a plain-text file up to 2 MiB.")
+}

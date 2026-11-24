@@ -71,7 +71,7 @@ struct SummarizeView: View {
                     Button("Open…", systemImage: "folder", action: open)
                     ClipboardFileButton(allowedTypes: Tool.summarize.inputTypes, onPasteFile: { setSource($0) })
                     if let file = draft.file {
-                        Text(file.lastPathComponent).lineLimit(1).font(.callout)
+                        Text(file.lastPathComponent).lineLimit(1).truncationMode(.middle).font(.callout).help(file.path)
                         Button("Use Pasted Text", systemImage: "text.alignleft") {
                             setSource(nil)
                         }
@@ -83,7 +83,10 @@ struct SummarizeView: View {
                         clearResult()
                     }))
                     .font(.body.monospaced())
-                    .frame(minHeight: 120, maxHeight: 200)
+                    .frame(minHeight: 120, idealHeight: 150, maxHeight: 200)
+                    .scrollContentBackground(.hidden)
+                    .padding(6)
+                    .workspaceInset(palette)
                     .accessibilityLabel("Text to summarize")
                 } else if isPDF {
                     SettingRow("PDF password") {

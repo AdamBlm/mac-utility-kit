@@ -206,7 +206,8 @@ struct OfficePDFControls: View {
         .font(.callout)
         if let rendered = try? OfficePDF.renderedPage(document, page: page, handout: showsHandout) {
             Image(decorative: rendered.image, scale: 1)
-                .resizable().scaledToFit().frame(maxWidth: 420, maxHeight: 270)
+                .resizable().scaledToFit().frame(maxWidth: 470, maxHeight: 310)
+                .frame(maxWidth: .infinity)
                 .accessibilityLabel("Preview of \(displayUnit) \(page)")
             Text("\(Double(rendered.size.width).formatted(.number.precision(.fractionLength(0...1)))) × \(Double(rendered.size.height).formatted(.number.precision(.fractionLength(0...1)))) pt")
                 .font(.callout.monospacedDigit()).foregroundStyle(.secondary)

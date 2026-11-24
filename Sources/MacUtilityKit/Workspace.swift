@@ -14,13 +14,27 @@ struct Workspace: View {
     @State private var finderFavorites: FinderFileAction?
     @State private var captureHandoffError: String?
     @State private var search = ""
+    @State private var sidebarVisible = true
     @AppStorage("workspace.favoriteTools") private var storedFavorites = ""
     @AppStorage("workspace.recentTools") private var storedRecents = ""
     @FocusState private var searching: Bool
     @State private var session = WorkspaceSession()
 
     @Environment(\.colorScheme) private var colorScheme
-    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark) }
+    /// Window palette, tinted by the selected category or the open tool's category, else home.
+    private var palette: WorkspacePalette { WorkspacePalette(dark: colorScheme == .dark, category: selectedCategory) }
+    private var selectedCategory: ToolCategory? {
+        switch selection {
+        case .browse(.category(let category)):
+            return category
+        case .tool(let tool):
+            return tool.group
+        case .pdfReader:
+            return .documents
+        case .browse:
+            return nil
+        }
+    }
     private var searchTerm: String { search.trimmingCharacters(in: .whitespacesAndNewlines) }
     private var favorites: [Tool] { storedFavorites.split(separator: ",").compactMap { Tool(rawValue: String($0)) } }
     private var recents: [Tool] { storedRecents.split(separator: ",").compactMap { Tool(rawValue: String($0)) } }
@@ -52,14 +66,25 @@ struct Workspace: View {
     }
 
     var body: some View {
-        NavigationSplitView {
+        HStack(spacing: 0) {
+            if sidebarVisible {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 7) {
                     Image(systemName: "magnifyingglass")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(palette.secondaryText)
                         .accessibilityHidden(true)
-                    TextField("Find a tool", text: $search)
+                    // The system placeholder is too faint on the tinted panel; draw our own.
+                    TextField("Find a tool", text: $search, prompt: Text(""))
                         .textFieldStyle(.plain)
+                        .overlay(alignment: .leading) {
+                            if search.isEmpty {
+                                Text("Find a tool")
+                                    .foregroundStyle(palette.secondaryText)
+                                    .lineLimit(1)
+                                    .allowsHitTesting(false)
+                                    .accessibilityHidden(true)
+                            }
+                        }
                         .focused($searching)
                         .onSubmit {
                             guard !searchTerm.isEmpty else { return }
@@ -75,7 +100,7 @@ struct Workspace: View {
                         searching = true
                     } label: {
                         Text("⌘K").font(.system(size: 10, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(palette.secondaryText)
                     }
                     .buttonStyle(.plain)
                     .keyboardShortcut("k")
@@ -83,7 +108,7 @@ struct Workspace: View {
                 }
                 .padding(.horizontal, 9)
                 .padding(.vertical, 8)
-                .background(.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 8))
+                .workspaceInset(palette, cornerRadius: 10)
 
                 ScrollView {
                     if searchTerm.isEmpty {
@@ -95,10 +120,14 @@ struct Workspace: View {
                 .scrollIndicators(.hidden)
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 14)
+            // Content sits inside the floating panel drawn by WorkspaceSidebarBackground.
+            .padding(.horizontal, WorkspaceSidebarBackground.inset + 8)
             .padding(.top, 12)
-            .navigationSplitViewColumnWidth(min: 170, ideal: 184, max: 220)
-        } detail: {
+            .padding(.bottom, WorkspaceSidebarBackground.inset + 6)
+            .frame(width: 190)
+            .frame(maxHeight: .infinity, alignment: .top)
+            .background { WorkspaceSidebarBackground(palette: palette) }
+            }
             Group {
                 switch selection {
                 case .browse(let page):
@@ -132,6 +161,11 @@ struct Workspace: View {
                         openAnnotation: openAnnotation
                     )
                     .id(selection)
+                    .environment(\.workspaceToolChrome, WorkspaceToolChrome(
+                        isFavorite: favorites.contains(selection),
+                        toggleFavorite: { toggleFavorite(selection) },
+                        navigate: { self.selection = .browse($0) }
+                    ))
                 }
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -140,6 +174,18 @@ struct Workspace: View {
                 } else if let active = ExportActivityCenter.shared.active {
                     jobBanner(active.title, progress: active.progress) { ExportActivityCenter.shared.cancel(active.id) }
                 }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+        .toolbar {
+            ToolbarItem(placement: .navigation) {
+                Button {
+                    withAnimation(.easeInOut(duration: 0.2)) { sidebarVisible.toggle() }
+                } label: {
+                    Label("Toggle Sidebar", systemImage: "sidebar.leading")
+                }
+                .keyboardShortcut("s", modifiers: [.command, .control])
+                .help(sidebarVisible ? "Hide Sidebar" : "Show Sidebar")
             }
         }
         .background(LauncherWorkspaceBridge(controller: launcherController, openTool: { tool in
@@ -171,7 +217,7 @@ struct Workspace: View {
             if let url { openOutput(url) }
         }
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
-        .tint(palette.accent)
+        .tint(palette.controlTint)
         .alert("Could Not Open Capture", isPresented: Binding(
             get: { captureHandoffError != nil },
             set: { if !$0 { captureHandoffError = nil } }
@@ -196,8 +242,13 @@ struct Workspace: View {
         .font(.callout)
         .padding(.horizontal, 20)
         .padding(.vertical, 8)
-        .background(palette.surface)
-        .overlay(alignment: .bottom) { Divider() }
+        .background(palette.barFill)
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(palette.hairline)
+                .frame(height: 1)
+                .allowsHitTesting(false)
+        }
     }
 
     private var readerButton: some View {
@@ -297,7 +348,8 @@ struct Workspace: View {
             VStack(alignment: .leading, spacing: 2) {
                 Text("Categories").modifier(CategoryHeadingStyle())
                 ForEach(ToolCategory.allCases) { category in
-                    sidebarButton(category.title, icon: category.browseSymbol, destination: .browse(.category(category)))
+                    sidebarButton(category.title, icon: category.browseSymbol, destination: .browse(.category(category)),
+                                  tint: category.workspaceTint)
                 }
             }
 
@@ -321,7 +373,7 @@ struct Workspace: View {
                 VStack(alignment: .leading, spacing: 4) {
                     Text(group.category.title).modifier(CategoryHeadingStyle())
                     ForEach(group.tools) { tool in
-                        sidebarButton(tool.title, icon: tool.symbol, destination: .tool(tool))
+                        sidebarButton(tool.title, icon: tool.symbol, destination: .tool(tool), tint: tool.group.workspaceTint)
                             .contextMenu {
                                 Button(favorites.contains(tool) ? "Remove from Favorites" : "Add to Favorites") {
                                     toggleFavorite(tool)
@@ -339,20 +391,40 @@ struct Workspace: View {
         storedFavorites = updated.map(\.rawValue).joined(separator: ",")
     }
 
-    private func sidebarButton(_ title: String, icon: String, destination: Destination) -> some View {
-        let isSelected = selection == destination
+    /// The selected row, plus the open tool's category row (display only; selection is unchanged).
+    private func isHighlighted(_ destination: Destination) -> Bool {
+        if selection == destination { return true }
+        if case .tool(let tool) = selection, case .browse(.category(let category)) = destination {
+            return tool.group == category
+        }
+        return false
+    }
+
+    private func sidebarButton(_ title: String, icon: String, destination: Destination,
+                               tint: WorkspaceTint? = nil) -> some View {
+        let isSelected = isHighlighted(destination)
         return Button {
             selection = destination
         } label: {
-            Label(title, systemImage: icon)
-                .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
-                .labelStyle(.fixedIcon)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 9)
-                .foregroundStyle(isSelected ? palette.accent : .primary)
-                .background(isSelected ? palette.wash : .clear, in: RoundedRectangle(cornerRadius: 8))
-                .contentShape(Rectangle())
+            HStack(spacing: 10) {
+                if let tint {
+                    WorkspaceTile(symbol: icon, tint: tint, size: 24)
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 14))
+                        .foregroundStyle(palette.secondaryText)
+                        .frame(width: 24, height: 24)
+                        .accessibilityHidden(true)
+                }
+                Text(title)
+                    .lineLimit(1)
+            }
+            .font(.system(size: 13, weight: isSelected ? .semibold : .regular))
+            .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+            .padding(.horizontal, 9)
+            .foregroundStyle(.primary)
+            .background(isSelected ? palette.selectionFill : .clear, in: RoundedRectangle(cornerRadius: 9, style: .continuous))
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(isSelected ? .isSelected : [])

@@ -50,8 +50,12 @@ struct WiFiPasswordView: View {
                         }
                     }
                     Button("Refresh saved networks", systemImage: "arrow.clockwise", action: refresh)
+                        .labelStyle(.iconOnly)
+                        .help("Refresh saved networks")
                         .disabled(inventory != nil || lookup != nil)
-                    if inventory != nil { ProgressView().controlSize(.small) }
+                    if inventory != nil {
+                        ProgressView().controlSize(.small).accessibilityLabel("Reading saved networks")
+                    }
                 }
                 if networks.isEmpty && inventory == nil {
                     Text("macOS hasn’t shared saved network names with this app. Enter the network details manually.")
@@ -82,7 +86,7 @@ struct WiFiPasswordView: View {
                         .onChange(of: hidden) { qr = nil }
                     if security != .open { passwordControls }
                     Button("Show Wi-Fi QR", action: generate)
-                        .buttonStyle(.borderedProminent)
+                        .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                         .disabled((selected?.name ?? manualName).isEmpty || (security != .open && password.isEmpty))
                 }
                 if let message { Text(message).foregroundStyle(.secondary) }

@@ -17,8 +17,10 @@ struct HiddenSettingsView: View {
             }
             ForEach(HiddenSetting.Application.allCases) { application in
                 WorkspaceSection(application.rawValue, palette: palette) {
-                    ForEach(HiddenSetting.allCases.filter { $0.application == application }) { setting in
+                    let settings = HiddenSetting.allCases.filter { $0.application == application }
+                    ForEach(settings) { setting in
                         let value = current[setting, default: .unavailable]
+                        if setting != settings.first { Divider() }
                         VStack(alignment: .leading, spacing: 5) {
                             Text(setting.title).font(.headline)
                             Text(setting.effect).font(.callout).foregroundStyle(.secondary)
@@ -28,7 +30,7 @@ struct HiddenSettingsView: View {
                                     .font(.callout).foregroundStyle(.secondary)
                             }
                             if value.canChange {
-                                HStack {
+                                WorkspaceFlowLayout {
                                     Picker("New value", selection: Binding(
                                         get: { proposed[setting, default: value] },
                                         set: { proposed[setting] = $0 }

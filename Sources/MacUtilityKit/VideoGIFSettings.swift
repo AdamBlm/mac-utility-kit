@@ -269,7 +269,8 @@ struct VideoGIFSettings: View {
             if previewTask != nil { ProgressView("Encoding preview…").controlSize(.small) }
             if let preview {
                 GIFAnimationView(data: preview.data)
-                    .frame(maxWidth: .infinity, minHeight: 160, idealHeight: 210, maxHeight: 300)
+                    .clipShape(.rect(cornerRadius: 8))
+                    .frame(maxWidth: .infinity)
                     .accessibilityLabel("GIF animation preview")
                 let bytes = preview.estimatedBytes.formatted(.byteCount(style: .file))
                 Text(preview.showsFullClip
@@ -353,6 +354,11 @@ private struct GIFAnimationView: NSViewRepresentable {
         let view = NSImageView()
         view.imageScaling = .scaleProportionallyUpOrDown
         return view
+    }
+
+    func sizeThatFits(_ proposal: ProposedViewSize, nsView: NSImageView, context: Context) -> CGSize? {
+        guard let size = nsView.image?.size else { return nil }
+        return MediaPreviewSizing.fit(size.width / size.height, in: proposal, maximumHeight: 300)
     }
 
     func updateNSView(_ view: NSImageView, context: Context) {

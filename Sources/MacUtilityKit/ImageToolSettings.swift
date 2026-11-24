@@ -11,7 +11,7 @@ extension ToolWorkspace {
                 ForEach(ImageConversionFormat.allCases, id: \.self) { Text($0.title).tag($0) }
             }
             .labelsHidden()
-            .pickerStyle(.segmented)
+            .pickerStyle(.menu)
         }
         if options.format == .webp {
             Toggle("Lossless encoding", isOn: $draft.options.imageConversion.losslessWebP)

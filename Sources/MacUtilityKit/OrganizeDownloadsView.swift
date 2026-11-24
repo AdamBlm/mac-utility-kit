@@ -75,6 +75,9 @@ struct OrganizeDownloadsView: View {
                             ForEach(fileTypes, id: \.self) { Text($0).tag($0) }
                         }
                     }
+                    if groups.isEmpty {
+                        Text("No images match these filters.").font(.callout).foregroundStyle(.secondary)
+                    }
                     ForEach(groups.keys.sorted(), id: \.self) { origin in
                         if let items = groups[origin] { group(origin, items: items) }
                     }
@@ -93,7 +96,7 @@ struct OrganizeDownloadsView: View {
                             }
                         }
                     }
-                    HStack {
+                    WorkspaceFlowLayout(spacing: 8) {
                         Button("Copy to Folder…", systemImage: "folder.badge.plus") { chooseDestination(move: false) }
                         Button("Move to Folder…", systemImage: "arrow.right.circle") { chooseDestination(move: true) }
                         Button("Import into Photos…", systemImage: "photo.on.rectangle") {

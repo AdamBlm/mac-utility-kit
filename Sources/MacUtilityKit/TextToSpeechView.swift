@@ -75,7 +75,7 @@ struct TextToSpeechView: View {
                     .frame(minHeight: 145, idealHeight: 185)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("Text to speak")
                 HStack {
                     Button("Open Document…", systemImage: "folder") { openDocument() }
@@ -99,7 +99,7 @@ struct TextToSpeechView: View {
                             importTask = nil
                         }
                     }
-                    else if let name = draft.sourceName { Text(name).lineLimit(1).foregroundStyle(.secondary) }
+                    else if let name = draft.sourceName { Text(name).lineLimit(1).truncationMode(.middle).foregroundStyle(.secondary).help(name) }
                 }
                 if let pdf = draft.pdfSource {
                     Toggle("Recognize Text in Scans", isOn: $recognizesScans)
@@ -173,6 +173,7 @@ struct TextToSpeechView: View {
                     playback(artifact.audio)
                 } else {
                     Button("Generate Audio", systemImage: "waveform") { render(request) }
+                        .buttonStyle(.borderedProminent)
                         .disabled(!hasText || exceedsLimit)
                 }
                 if exportTask != nil {

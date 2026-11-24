@@ -42,7 +42,7 @@ struct MarkdownPDFView: View {
                     .frame(minHeight: 170, idealHeight: 215)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("Markdown source")
                 HStack {
                     Button("Open Markdown…", systemImage: "folder") {
@@ -120,7 +120,7 @@ struct MarkdownPDFView: View {
                         Button("Preview PDF", systemImage: "doc.viewfinder") { render(prepared, showPreview: true) }
                             .disabled(task != nil)
                         Button("Export PDF…", systemImage: "square.and.arrow.up") { render(prepared, showPreview: false) }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                             .disabled(task != nil)
                         if task != nil {
                             ProgressView().controlSize(.small)

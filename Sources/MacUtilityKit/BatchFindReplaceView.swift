@@ -25,11 +25,11 @@ struct BatchFindReplaceView: View {
                     Button("Add Text Files…", systemImage: "folder", action: openFiles)
                     ClipboardFileButton(allowedTypes: inputTypes, buttonOnlyTitle: "Paste Files", onPaste: { _ = add($0) })
                 }
-                ForEach(Array(inputs.enumerated()), id: \.offset) { index, file in
+                ForEach(inputs, id: \.self) { file in
                     HStack {
                         Text(file.lastPathComponent).lineLimit(1).help(file.path)
                         Spacer()
-                        Button("Remove", systemImage: "xmark") { inputs.remove(at: index) }
+                        Button("Remove", systemImage: "xmark") { inputs.removeAll { $0 == file } }
                             .labelStyle(.iconOnly)
                             .help("Remove \(file.lastPathComponent)")
                     }
@@ -37,8 +37,12 @@ struct BatchFindReplaceView: View {
             }
             .disabled(task != nil)
             WorkspaceSection("Replacement", palette: palette) {
-                TextField("Find", text: $draft.options.pattern)
-                TextField("Replace with", text: $draft.options.replacement)
+                SettingRow("Find") {
+                    TextField("Find", text: $draft.options.pattern, prompt: Text("Text to find"))
+                }
+                SettingRow("Replace with") {
+                    TextField("Replace with", text: $draft.options.replacement, prompt: Text("Leave empty to remove"))
+                }
                 Toggle("Regular expression", isOn: $draft.options.regularExpression)
                 Toggle("Ignore case", isOn: $draft.options.ignoresCase)
                 if draft.options.regularExpression {
@@ -66,9 +70,10 @@ struct BatchFindReplaceView: View {
                                     $0.0.utf8.elementsEqual($0.1.utf8)
                                 }.count
                                 let offset = max(0, sharedPrefix - 120)
-                                HStack(alignment: .top) {
-                                    previewText("Original", file.before, offset: offset)
-                                    previewText("Replacement", file.after, offset: offset)
+                                LazyVGrid(columns: [GridItem(.adaptive(minimum: 210), spacing: 12, alignment: .top)],
+                                          alignment: .leading, spacing: 12) {
+                                    previewText("Original", file.before, offset: offset, palette: palette)
+                                    previewText("Replacement", file.after, offset: offset, palette: palette)
                                 }
                             }
                         }
@@ -98,7 +103,7 @@ struct BatchFindReplaceView: View {
         }
     }
 
-    private func previewText(_ label: String, _ text: String, offset: Int) -> some View {
+    private func previewText(_ label: String, _ text: String, offset: Int, palette: WorkspacePalette) -> some View {
         let remaining = text.dropFirst(offset)
         return VStack(alignment: .leading) {
             Text(label).font(.caption).foregroundStyle(.secondary)
@@ -109,6 +114,8 @@ struct BatchFindReplaceView: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
             .frame(maxHeight: 160)
+            .padding(8)
+            .workspaceInset(palette)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

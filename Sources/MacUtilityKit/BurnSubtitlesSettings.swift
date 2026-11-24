@@ -57,7 +57,7 @@ struct BurnSubtitlesSettings: View {
     var body: some View {
         let previews = previewInputs
         let input = selectedSource.flatMap { previews.contains($0) ? $0 : nil } ?? previews.first
-        let palette = WorkspacePalette(dark: colorScheme == .dark)
+        let palette = WorkspacePalette(dark: colorScheme == .dark, category: .video)
         let batch = BatchRequest(inputs: inputs, srt: options.srt, offset: options.offset)
         if previews.count > 1 {
             SettingRow("Preview video") {
@@ -100,7 +100,7 @@ struct BurnSubtitlesSettings: View {
             .frame(minHeight: 150)
             .scrollContentBackground(.hidden)
             .padding(6)
-            .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+            .workspaceInset(palette)
             .accessibilityLabel("SRT subtitle text and timing")
             .disabled(importing)
         if let importError { Text(importError).font(.callout).foregroundStyle(.red) }
@@ -229,8 +229,8 @@ struct BurnSubtitlesSettings: View {
                 Image(decorative: preview, scale: 1)
                     .resizable()
                     .aspectRatio(contentMode: .fit)
+                    .clipShape(.rect(cornerRadius: 8))
                     .frame(maxWidth: .infinity, maxHeight: 250)
-                    .background(palette.canvas)
                     .accessibilityLabel("Rendered subtitle preview")
             } else if completedPreview == request, let previewError {
                 Text(previewError).foregroundStyle(.red).font(.callout)

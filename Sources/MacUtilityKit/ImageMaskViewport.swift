@@ -8,20 +8,12 @@ struct ImageMaskViewport<Content: View>: View {
     @Environment(\.displayScale) private var displayScale
 
     var body: some View {
-        GeometryReader { geometry in
-            let fit = min(geometry.size.width / CGFloat(image.width), geometry.size.height / CGFloat(image.height), 1)
-            let scale = actualPixels ? 1 / displayScale : fit
-            let size = CGSize(width: CGFloat(image.width) * scale, height: CGFloat(image.height) * scale)
-            if actualPixels {
-                ScrollView([.horizontal, .vertical]) {
-                    content(size).padding(4)
-                }
-            } else {
-                content(size).frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
+        ImagePreviewViewport(image: image,
+                             sizing: actualPixels ? .zoom(1 / displayScale) : .fit,
+                             scrollPadding: actualPixels ? 10 : 0) { size in
+            content(size)
+                .background(.primary.opacity(0.035))
         }
-        .frame(height: 340)
-        .background(.primary.opacity(0.035), in: RoundedRectangle(cornerRadius: 8))
     }
 }
 

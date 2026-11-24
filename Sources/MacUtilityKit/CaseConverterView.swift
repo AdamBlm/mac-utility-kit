@@ -35,7 +35,7 @@ struct CaseConverterView: View {
                     .frame(minHeight: 100)
                     .scrollContentBackground(.hidden)
                     .padding(6)
-                    .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                    .workspaceInset(palette)
                     .accessibilityLabel("Text to convert")
                 HStack {
                     Button("Open text file…", systemImage: "folder") {
@@ -94,6 +94,8 @@ struct CaseConverterView: View {
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .frame(maxHeight: 260)
+                    .padding(8)
+                    .workspaceInset(palette)
                 }
             }
         }

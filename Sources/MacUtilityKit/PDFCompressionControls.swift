@@ -188,6 +188,7 @@ struct PDFCompressionControls: View {
                     if let image = sample.preview {
                         Image(decorative: image, scale: 1)
                             .resizable().scaledToFit().frame(maxWidth: 380, maxHeight: 240)
+                            .frame(maxWidth: .infinity)
                             .accessibilityLabel("First compressed sample page")
                     }
                 }

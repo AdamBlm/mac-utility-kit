@@ -237,8 +237,7 @@ struct FrameExtractionSettings: View {
             Text("Extracts the first frame when the timestamp list is empty.")
                 .font(.callout).foregroundStyle(.secondary)
         }
-        ForEach(options.timestamps.indices, id: \.self) { index in
-            let time = options.timestamps[index]
+        ForEach(Array(options.timestamps.enumerated()), id: \.offset) { _, time in
             HStack {
                 Button("\(time.formatted(timestampFormat)) s") { setTimestamp(time) }
                     .buttonStyle(.plain)
@@ -246,7 +245,9 @@ struct FrameExtractionSettings: View {
                     .help("Preview this timestamp")
                 Spacer()
                 Button("Remove timestamp", systemImage: "minus.circle") {
-                    if options.timestamps.indices.contains(index) { options.timestamps.remove(at: index) }
+                    if let index = options.timestamps.firstIndex(of: time) {
+                        options.timestamps.remove(at: index)
+                    }
                 }
                 .labelStyle(.iconOnly)
             }

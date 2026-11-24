@@ -131,10 +131,10 @@ struct Base64ToolView: View {
                         .frame(minHeight: 140)
                         .scrollContentBackground(.hidden)
                         .padding(6)
-                        .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                        .workspaceInset(palette)
                         .accessibilityLabel("Text input")
                 }
-                HStack {
+                WorkspaceFlowLayout(spacing: 8) {
                     Button("Open file…", systemImage: "folder") {
                         if let url = DeveloperToolFiles.choose() { selectFile(url) }
                     }
@@ -146,7 +146,6 @@ struct Base64ToolView: View {
                             draft.text = text
                         }
                     }
-                    Spacer()
                     Button("Clear") {
                         draft.file = nil
                         draft.text = ""
@@ -174,7 +173,7 @@ struct Base64ToolView: View {
                         }
                         .frame(minHeight: 100, idealHeight: 170, maxHeight: 240)
                         .frame(maxWidth: .infinity, alignment: .leading)
-                        .background(palette.canvas, in: RoundedRectangle(cornerRadius: 8))
+                        .workspaceInset(palette)
                         if preview.endIndex != text.endIndex {
                             Text("Preview limited to 20,000 characters. Copy and export include the full result.")
                                 .font(.callout).foregroundStyle(.secondary)

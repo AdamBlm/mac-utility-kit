@@ -28,7 +28,7 @@ struct UninstallAppView: View {
                 sourceControls
             }
             if let report = draft.report {
-                WorkspaceSection("Review Items", palette: palette) { items(report) }
+                WorkspaceSection("Review Items", palette: palette) { items(report, palette: palette) }
             }
             if let result = draft.result {
                 WorkspaceSection("Trash Results", palette: palette) { results(result) }
@@ -96,7 +96,7 @@ struct UninstallAppView: View {
         }
     }
 
-    private func items(_ report: UninstallApp.Report) -> some View {
+    private func items(_ report: UninstallApp.Report, palette: WorkspacePalette) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(report.bundleIdentifier).font(.callout.monospaced()).textSelection(.enabled)
                 .foregroundStyle(.secondary)
@@ -135,7 +135,7 @@ struct UninstallAppView: View {
             }
             HStack {
                 Button("Move Selected to Trash…", systemImage: "trash") { confirmation = true }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(WorkspacePrimaryButtonStyle(palette: palette))
                     .disabled(draft.selected.isEmpty)
                 if !draft.selected.isEmpty {
                     Text("\(draft.selected.count) selected").font(.callout).foregroundStyle(.secondary)

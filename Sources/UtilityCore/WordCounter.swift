@@ -29,8 +29,18 @@ public struct WordCount: Equatable, Sendable {
 }
 
 public enum WordCounter {
+    private static let maximumTextBytes = 2 * 1024 * 1024
+
+    package static func validateSize(_ text: String) throws {
+        guard text.utf8.count <= maximumTextBytes else {
+            throw ToolError.invalid("Use up to 2 MiB of text.")
+        }
+    }
+
+    @concurrent
     public static func analyze(_ text: String, options: WordCounterOptions = .init()) async throws -> WordCount {
         try Task.checkCancellation()
+        try validateSize(text)
         guard !text.isEmpty else { return .empty }
 
         var frequencies: [String: Int] = [:]
@@ -80,11 +90,17 @@ public enum WordCounter {
         guard LocalInputFile.regularFile(file) != nil else {
             throw ToolError.invalid("Choose a local plain-text file.")
         }
-        let data = try await PlainTextDecoding.loadVerifiedBytes(file, maximumBytes: Int.max)
+        let data: Data
+        do {
+            data = try await PlainTextDecoding.loadVerifiedBytes(file, maximumBytes: maximumTextBytes)
+        } catch PlainTextDecoding.ReadIssue.tooLarge {
+            throw ToolError.invalid("Choose a plain-text file up to 2 MiB.")
+        }
         try Task.checkCancellation()
         guard let text = PlainTextDecoding.decode(data) else {
             throw ToolError.invalid("Could not read this file as UTF-8 or BOM-marked Unicode plain text.")
         }
+        try validateSize(text)
         return text
     }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct AudioTrimWaveformView: View {
+    let palette: WorkspacePalette
     let peaks: [Float]
     let duration: Double
     let start: Double
@@ -16,7 +17,11 @@ struct AudioTrimWaveformView: View {
             let left = position(start, width: width)
             let right = position(end, width: width)
             ZStack(alignment: .topLeading) {
-                RoundedRectangle(cornerRadius: 8).fill(.quaternary.opacity(0.32))
+                RoundedRectangle(cornerRadius: 8).fill(palette.canvas)
+                if left < right {
+                    Rectangle().fill(palette.accent.opacity(0.15))
+                        .frame(width: right - left).offset(x: left)
+                }
                 Canvas { context, size in
                     let middle = size.height / 2
                     var waveform = Path()
@@ -26,18 +31,14 @@ struct AudioTrimWaveformView: View {
                         waveform.move(to: CGPoint(x: x, y: middle - amplitude))
                         waveform.addLine(to: CGPoint(x: x, y: middle + amplitude))
                     }
-                    context.stroke(waveform, with: .color(Color.primary.opacity(0.6)), lineWidth: 1)
-                }
-                if left < right {
-                    Rectangle().fill(Color.accentColor.opacity(0.17))
-                        .frame(width: right - left).offset(x: left)
+                    context.stroke(waveform, with: .color(Color.primary.opacity(0.65)), lineWidth: 1)
                 }
                 if let playhead {
                     Rectangle().fill(.primary).frame(width: 1)
                         .offset(x: position(playhead, width: width))
                 }
-                handle(at: left)
-                handle(at: right)
+                handle(at: left, width: width)
+                handle(at: right, width: width)
             }
             .clipShape(.rect(cornerRadius: 8))
             .contentShape(Rectangle())
@@ -60,8 +61,11 @@ struct AudioTrimWaveformView: View {
         CGFloat(min(1, max(0, seconds / duration))) * width
     }
 
-    private func handle(at x: CGFloat) -> some View {
-        Rectangle().fill(Color.accentColor).frame(width: 3)
-            .offset(x: x - 1)
+    private func handle(at x: CGFloat, width: CGFloat) -> some View {
+        Rectangle().fill(palette.accent).frame(width: 3)
+            .overlay(alignment: .center) {
+                Capsule().fill(palette.accent).frame(width: 7, height: 22)
+            }
+            .offset(x: min(max(0, x - 1.5), max(0, width - 3)))
     }
 }
