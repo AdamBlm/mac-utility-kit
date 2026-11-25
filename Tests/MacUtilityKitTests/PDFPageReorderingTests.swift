@@ -1,8 +1,24 @@
+import CoreGraphics
 import Testing
 import UtilityCore
 @testable import MacUtilityKit
 
 struct PDFPageReorderingTests {
+    @Test func organizerTargetsCardEdgesAndCentersInStripCoordinates() throws {
+        func target(_ x: CGFloat, _ y: CGFloat = 24) -> (index: Int, insertion: PDFPageInsertion)? {
+            PDFPageStripDrag(source: 1, location: CGPoint(x: x, y: y)).target(count: 3, height: 110)
+        }
+        let before = try #require(target(110))
+        #expect(before.index == 1 && before.insertion == .before)
+        let center = try #require(target(159))
+        #expect(center.index == 1 && center.insertion == .onto)
+        let after = try #require(target(209))
+        #expect(after.index == 1 && after.insertion == .after)
+        #expect(target(-1) == nil)
+        #expect(target(318) == nil)
+        #expect(target(159, 120) == nil)
+    }
+
     @Test func insertsOnEitherSideInEitherDirection() {
         let pages = [1, 2, 3, 4]
         #expect(PDFPageInsertion.before.reorder(pages, moving: [4], relativeTo: 1) == [4, 1, 2, 3])

@@ -4,6 +4,12 @@ import UniformTypeIdentifiers
 enum PDFPageInsertion {
     case before, onto, after
 
+    init(horizontalFraction fraction: CGFloat) {
+        if fraction < 0.25 { self = .before }
+        else if fraction > 0.75 { self = .after }
+        else { self = .onto }
+    }
+
     func reorder<Page: Hashable>(_ pages: [Page], moving source: [Page], relativeTo target: Page) -> [Page]? {
         guard !source.isEmpty, !source.contains(target) else { return nil }
         let selected = Set(source)
@@ -31,6 +37,43 @@ extension View {
     }
 }
 
+struct PDFPageStripDrag {
+    static let cardWidth: CGFloat = 98
+    static let cardInset: CGFloat = 4
+
+    let source: Int
+    let location: CGPoint
+
+    func target(count: Int, height: CGFloat) -> (index: Int, insertion: PDFPageInsertion)? {
+        let stride = Self.cardWidth + Self.cardInset * 2
+        guard location.x >= 0, location.x < CGFloat(count) * stride,
+              location.y >= 0, location.y < height else { return nil }
+        let index = Int(location.x / stride)
+        let fraction = (location.x - CGFloat(index) * stride) / stride
+        return (index, PDFPageInsertion(horizontalFraction: fraction))
+    }
+}
+
+struct PDFPageDropIndicator: View {
+    let insertion: PDFPageInsertion
+
+    var body: some View {
+        if insertion == .onto {
+            RoundedRectangle(cornerRadius: 9)
+                .strokeBorder(Color.accentColor, lineWidth: 2)
+                .padding(.horizontal, 4)
+                .allowsHitTesting(false)
+        } else {
+            Capsule().fill(Color.accentColor)
+                .frame(width: 3)
+                .padding(.vertical, 2)
+                .padding(.horizontal, 1)
+                .frame(maxWidth: .infinity, alignment: insertion == .before ? .leading : .trailing)
+                .allowsHitTesting(false)
+        }
+    }
+}
+
 private struct PDFPageReordering: ViewModifier {
     static let type = UTType(exportedAs: "app.macutilitykit.pdf-page-reorder", conformingTo: .data)
     let payload: String
@@ -55,19 +98,8 @@ private struct PDFPageReordering: ViewModifier {
                 return provider
             }
             .onDrop(of: [Self.type], delegate: PageDrop(width: width + 8, insertion: $insertion, reduceMotion: reduceMotion, move: move))
-            .overlay(alignment: insertion == .before ? .leading : .trailing) {
-                if insertion == .onto {
-                    RoundedRectangle(cornerRadius: 9)
-                        .strokeBorder(Color.accentColor, lineWidth: 2)
-                        .padding(.horizontal, 4)
-                        .allowsHitTesting(false)
-                } else if insertion != nil {
-                    Capsule().fill(Color.accentColor)
-                        .frame(width: 3)
-                        .padding(.vertical, 2)
-                        .padding(.horizontal, 1)
-                        .allowsHitTesting(false)
-                }
+            .overlay {
+                if let insertion { PDFPageDropIndicator(insertion: insertion) }
             }
     }
 
@@ -94,7 +126,7 @@ private struct PDFPageReordering: ViewModifier {
             let providers = info.itemProviders(for: [PDFPageReordering.type])
             guard providers.count == 1, let provider = providers.first else { return false }
             let apply = move
-            let animation: Animation? = reduceMotion ? nil : .easeInOut(duration: 0.32)
+            let animation: Animation? = reduceMotion ? nil : .easeOut(duration: 0.16)
             provider.loadDataRepresentation(forTypeIdentifier: PDFPageReordering.type.identifier) { data, _ in
                 guard let data, let payload = String(data: data, encoding: .utf8) else { return }
                 Task { @MainActor in _ = withAnimation(animation) { apply(payload, side) } }
@@ -103,9 +135,7 @@ private struct PDFPageReordering: ViewModifier {
         }
 
         private func edge(at point: CGPoint) -> PDFPageInsertion {
-            if point.x < width * 0.25 { return .before }
-            if point.x > width * 0.75 { return .after }
-            return .onto
+            PDFPageInsertion(horizontalFraction: point.x / width)
         }
     }
 }
