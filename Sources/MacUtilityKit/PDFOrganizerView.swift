@@ -13,6 +13,8 @@ struct PDFOrganizerView: View {
     @State private var selectionAnchor: Int?
     @State private var showsRemoved = false
     @State private var dragScope = UUID().uuidString
+    @State private var movedPages: Set<Int> = []
+    @State private var moveFeedback = UUID()
 
     init(document: PDFDocument, pages: Binding<[PDFPageEdit]?>, history: Binding<PDFOrganizerHistory>? = nil) {
         self.document = document
@@ -79,6 +81,15 @@ struct PDFOrganizerView: View {
             selectionAnchor = nil
             showsRemoved = false
             dragScope = UUID().uuidString
+            movedPages = []
+            moveFeedback = UUID()
+        }
+        .task(id: moveFeedback) {
+            guard !movedPages.isEmpty else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(700))
+                movedPages = []
+            } catch {}
         }
     }
 
@@ -150,6 +161,10 @@ struct PDFOrganizerView: View {
                                       let ordered = edge.reorder(retained, moving: group, relativeTo: target) else { return false }
                                 var remaining = ordered.makeIterator()
                                 apply(layout.map { $0.removed ? $0 : remaining.next() ?? $0 })
+                                selection = Set(group.map(\.number))
+                                selectionAnchor = number
+                                movedPages = selection
+                                moveFeedback = UUID()
                                 return true
                             }
                     } else {
@@ -174,6 +189,13 @@ struct PDFOrganizerView: View {
             }
         }
         .buttonStyle(PDFPageCardStyle(selected: selected))
+        .overlay {
+            if movedPages.contains(page.number) {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
         .pdfPagePreview(document.page(at: page.number - 1), number: page.number, quarterTurns: page.quarterTurns)
         .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
             // Arrow events can carry the numeric-pad flag.

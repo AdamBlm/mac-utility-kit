@@ -11,6 +11,13 @@ struct PDFPageReorderingTests {
         #expect(PDFPageInsertion.after.reorder(pages, moving: [4], relativeTo: 2) == [1, 2, 4, 3])
     }
 
+    @Test func droppingOnAnAdjacentCardMovesPastItInEitherDirection() {
+        let pages = [1, 2, 3, 4]
+        #expect(PDFPageInsertion.onto.reorder(pages, moving: [2], relativeTo: 3) == [1, 3, 2, 4])
+        #expect(PDFPageInsertion.onto.reorder(pages, moving: [3], relativeTo: 2) == [1, 3, 2, 4])
+        #expect(PDFPageInsertion.onto.reorder(pages, moving: [2], relativeTo: 2) == nil)
+    }
+
     @Test func movesNoncontiguousSelectionInDocumentOrderAndIgnoresNoOps() {
         let pages = [1, 2, 3, 4, 5]
         #expect(PDFPageInsertion.after.reorder(pages, moving: [4, 2], relativeTo: 5) == [1, 3, 5, 2, 4])

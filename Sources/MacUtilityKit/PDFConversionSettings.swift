@@ -21,24 +21,9 @@ struct PDFExtractSettings: View {
             }
             PDFExportPagePicker(document: document, range: $options.range, startsWithAll: false,
                                 allowsDescendingRanges: true)
-            if options.order == .selection {
-                Text("Drag pages in the export order below, or enter a range like 8–3 to reverse it.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             if let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options) {
                 DisclosureGroup("Export order · \(pages.count) \(pages.count == 1 ? "page" : "pages")", isExpanded: $showsOrder) {
-                    if options.order == .selection {
-                        exportOrderStrip(pages)
-                    } else {
-                        ScrollView {
-                            Text(PageSelection.expression(for: pages.map { $0 - 1 }))
-                                .font(.callout.monospacedDigit())
-                                .textSelection(.enabled)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                                .padding(.vertical, 4)
-                        }
-                        .frame(maxHeight: 120)
-                    }
+                    exportOrderStrip(pages)
                 }
             }
         }
@@ -71,8 +56,7 @@ struct PDFExtractSettings: View {
                     .background(.quaternary, in: .rect(cornerRadius: 9))
                     .pdfPagePreview(page, number: number)
                     .pdfPageReordering(payload: payload(number), width: 98) { value, edge in
-                        guard options.order == .selection,
-                              let current = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options),
+                        guard let current = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options),
                               let source = current.first(where: { payload($0) == value }),
                               let ordered = edge.reorder(current, moving: [source], relativeTo: number) else { return false }
                         setOrder(ordered)
@@ -87,8 +71,7 @@ struct PDFExtractSettings: View {
     private func payload(_ number: Int) -> String { "\(dragScope):\(number)" }
 
     private func move(_ number: Int, by step: Int) {
-        guard options.order == .selection,
-              let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options),
+        guard let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options),
               let index = pages.firstIndex(of: number), pages.indices.contains(index + step) else { return }
         var ordered = pages
         ordered.swapAt(index, index + step)
@@ -97,6 +80,7 @@ struct PDFExtractSettings: View {
 
     private func setOrder(_ pages: [Int]) {
         options.range = PageSelection.expression(for: pages.map { $0 - 1 })
+        options.order = .selection
     }
 }
 
