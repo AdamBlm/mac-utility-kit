@@ -135,17 +135,22 @@ struct PDFOrganizerView: View {
 
     private func pageStrip(_ strip: [OrganizerPage], acceptsReordering: Bool) -> some View {
         ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
+            LazyHStack(spacing: acceptsReordering ? 0 : 8) {
                 ForEach(strip) { page in
                     if acceptsReordering {
                         thumbnail(page, in: strip)
-                            .draggable("\(dragScope):\(page.number)")
-                            .dropDestination(for: String.self) { items, _ in
-                                guard items.count == 1,
-                                      let item = items.first, item.hasPrefix(dragScope + ":"),
-                                      let number = Int(item.dropFirst(dragScope.count + 1)),
-                                      number != page.number else { return false }
-                                return move(number, to: page.number)
+                            .pdfPageReordering(payload: "\(dragScope):\(page.number)", width: 98) { value, edge in
+                                guard value.hasPrefix(dragScope + ":"),
+                                      let number = Int(value.dropFirst(dragScope.count + 1)) else { return false }
+                                let retained = layout.filter { !$0.removed }
+                                let group = selection.contains(number)
+                                    ? retained.filter { selection.contains($0.number) }
+                                    : retained.filter { $0.number == number }
+                                guard let target = retained.first(where: { $0.number == page.number }),
+                                      let ordered = edge.reorder(retained, moving: group, relativeTo: target) else { return false }
+                                var remaining = ordered.makeIterator()
+                                apply(layout.map { $0.removed ? $0 : remaining.next() ?? $0 })
+                                return true
                             }
                     } else {
                         thumbnail(page, in: strip)
@@ -169,6 +174,7 @@ struct PDFOrganizerView: View {
             }
         }
         .buttonStyle(PDFPageCardStyle(selected: selected))
+        .pdfPagePreview(document.page(at: page.number - 1), number: page.number, quarterTurns: page.quarterTurns)
         .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
             // Arrow events can carry the numeric-pad flag.
             let modifiers = press.modifiers.intersection([.option, .shift, .control, .command])
@@ -289,7 +295,7 @@ struct PDFOrganizerHistory {
     init() {}
 }
 
-private struct OrganizerPage: Equatable, Identifiable {
+private struct OrganizerPage: Hashable, Identifiable {
     let number: Int
     var quarterTurns = 0
     var removed = false

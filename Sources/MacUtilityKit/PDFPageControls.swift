@@ -94,6 +94,7 @@ struct PDFPageControls: View {
                                     }
                                 }
                                 .buttonStyle(PDFPageCardStyle(selected: selectedIndices.contains(index)))
+                                .pdfPagePreview(current?.document?.page(at: index), number: index + 1)
                                 .accessibilityAddTraits(selectedIndices.contains(index) ? .isSelected : [])
                             }
                         }

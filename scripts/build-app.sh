@@ -61,6 +61,13 @@ cat > "$app/Contents/Info.plist" <<PLIST
             <key>LSItemContentTypes</key><array><string>com.adobe.pdf</string></array>
         </dict>
     </array>
+    <key>UTExportedTypeDeclarations</key>
+    <array>
+        <dict>
+            <key>UTTypeIdentifier</key><string>app.macutilitykit.pdf-page-reorder</string>
+            <key>UTTypeConformsTo</key><array><string>public.data</string></array>
+        </dict>
+    </array>
     <key>CFBundleShortVersionString</key><string>$release_version</string>
     <key>CFBundleVersion</key><string>$build_version</string>
     <key>LSMinimumSystemVersion</key><string>15.0</string>
