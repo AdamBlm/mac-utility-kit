@@ -7,7 +7,7 @@
 <p align="center">105 native macOS tools for PDFs, media, files, and everyday work.</p>
 
 <p align="center">
-  <strong><a href="https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.4/Mac.Utility.Kit.Preview.4.dmg">Download for Mac</a></strong>
+  <strong><a href="https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.5/Mac.Utility.Kit.Preview.5.dmg">Download for Mac</a></strong>
   · <a href="https://github.com/AdamBlm/mac-utility-kit/releases">Release notes</a>
   · <a href="docs/tool-guide.md">Tool guide</a>
 </p>
@@ -21,7 +21,7 @@
 | Category | What you can do |
 | --- | --- |
 | [Images](docs/feature-inventory.md#images-13) | Resize and compress in batches, remove backgrounds, blur faces, or annotate screenshots. |
-| [Documents](docs/feature-inventory.md#docs-23) | Compress PDFs, choose pages for a merge, sign forms, or make scans searchable. |
+| [Documents](docs/feature-inventory.md#docs-23) | Compress PDFs, zoom in on pages, drag to reorder them, sign forms, or make scans searchable. |
 | [Video](docs/feature-inventory.md#video-16) | Compress, trim, merge, and convert clips, create GIFs, or record your screen. |
 | [Audio](docs/feature-inventory.md#audio-6) | Record, trim, convert, or clean up audio. |
 | [Text and speech](docs/feature-inventory.md#text--speech-10) | Extract text from images, transcribe recordings, translate, or read documents aloud. |
@@ -33,7 +33,7 @@ Press **⌘K** to find a tool by name. Star tools you use often to keep them in 
 
 ## Install on your Mac
 
-[Download the DMG](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.4/Mac.Utility.Kit.Preview.4.dmg), open it, and drag Mac Utility Kit into **Applications**.
+[Download the DMG](https://github.com/AdamBlm/mac-utility-kit/releases/download/v0.0.1-preview.5/Mac.Utility.Kit.Preview.5.dmg), open it, and drag Mac Utility Kit into **Applications**.
 
 ### Opening a preview download for the first time
 
