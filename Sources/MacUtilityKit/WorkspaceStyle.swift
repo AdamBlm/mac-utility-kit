@@ -315,24 +315,39 @@ struct WorkspaceSidebarBackground: View {
     let palette: WorkspacePalette
     /// Distance between the panel and the column edges.
     static let inset: CGFloat = 5
+    private let fallbackRadius: CGFloat = 10
 
     var body: some View {
         let colors = palette.tintColors
-        let shape = RoundedRectangle(cornerRadius: 18, style: .continuous)
         ZStack {
             LinearGradient(colors: [colors.backgroundTop, colors.backgroundBottom],
                            startPoint: .top, endPoint: .bottom)
-            shape
-                .fill(palette.panelFill)
-                .overlay {
-                    shape.strokeBorder(palette.hairline)
-                }
+            panel
                 .shadow(color: palette.shadow, radius: 16, y: 8)
-                .padding(WorkspaceSidebarBackground.inset)
+                .padding(Self.inset)
         }
         .ignoresSafeArea()
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+
+    @ViewBuilder
+    private var panel: some View {
+        if #available(macOS 26, *) {
+            sidebarPanel(ConcentricRectangle(
+                topLeadingCorner: .concentric(minimum: .fixed(fallbackRadius)),
+                topTrailingCorner: .fixed(fallbackRadius),
+                bottomLeadingCorner: .concentric(minimum: .fixed(fallbackRadius)),
+                bottomTrailingCorner: .fixed(fallbackRadius)
+            ))
+        } else {
+            sidebarPanel(RoundedRectangle(cornerRadius: fallbackRadius, style: .continuous))
+        }
+    }
+
+    private func sidebarPanel<S: Shape>(_ shape: S) -> some View {
+        shape.fill(palette.panelFill)
+            .overlay { shape.stroke(palette.hairline, lineWidth: 1) }
     }
 }
 
