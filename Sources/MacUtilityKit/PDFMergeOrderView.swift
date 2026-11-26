@@ -25,13 +25,14 @@ struct PDFMergeOrderView: View {
                         }
                     }
                     ScrollView(.horizontal) {
-                        LazyHStack(alignment: .top, spacing: 9) {
+                        LazyHStack(alignment: .top, spacing: 0) {
                             ForEach(Array(pages.enumerated()), id: \.element) { index, reference in
                                 if inputs.indices.contains(reference.source) {
                                     pageCard(reference, file: inputs[reference.source], position: index, pages: pages)
                                 }
                             }
                         }
+                        .padding(.horizontal, 4)
                     }
                 }
             } else {
@@ -72,13 +73,13 @@ struct PDFMergeOrderView: View {
         .padding(6)
         .workspaceInset(palette)
         .help("\(file.path), source page \(reference.page + 1), output page \(position + 1)")
-        .draggable(payload(reference))
-        .dropDestination(for: String.self) { incoming, _ in
-            guard incoming.count == 1, let value = incoming.first,
-                  let current = draft.mergePages,
-                  let start = current.firstIndex(where: { payload($0) == value }),
-                  let target = current.firstIndex(of: reference), start != target else { return false }
-            move(start, to: target, in: current)
+        .pdfPagePreview(draft.mergeInspections[reference.source]?.document?.page(at: reference.page),
+                        number: reference.page + 1)
+        .pdfPageReordering(payload: payload(reference), width: 113) { value, edge in
+            guard let current = draft.mergePages,
+                  let source = current.first(where: { payload($0) == value }),
+                  let ordered = edge.reorder(current, moving: [source], relativeTo: reference) else { return false }
+            draft.mergeOrder = ordered
             return true
         }
     }

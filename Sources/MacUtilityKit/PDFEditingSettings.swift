@@ -395,6 +395,7 @@ private struct PDFDeletionSettings: View {
                                 }
                             }
                             .buttonStyle(PDFPageCardStyle(selected: marked.contains(index)))
+                            .pdfPagePreview(document.page(at: index), number: index + 1)
                             .help("Shift-click to mark this page and the pages between it and the previous selection.")
                             .accessibilityAddTraits(marked.contains(index) ? .isSelected : [])
                         }

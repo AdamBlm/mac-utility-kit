@@ -12,7 +12,12 @@ struct PDFOrganizerView: View {
     @State private var selection: Set<Int> = []
     @State private var selectionAnchor: Int?
     @State private var showsRemoved = false
-    @State private var dragScope = UUID().uuidString
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @GestureState private var drag: PDFPageStripDrag?
+    @State private var stripHeight: CGFloat = 0
+    @Namespace private var dragSpace
+    @State private var movedPages: Set<Int> = []
+    @State private var moveFeedback = UUID()
 
     init(document: PDFDocument, pages: Binding<[PDFPageEdit]?>, history: Binding<PDFOrganizerHistory>? = nil) {
         self.document = document
@@ -78,7 +83,15 @@ struct PDFOrganizerView: View {
             selection = []
             selectionAnchor = nil
             showsRemoved = false
-            dragScope = UUID().uuidString
+            movedPages = []
+            moveFeedback = UUID()
+        }
+        .task(id: moveFeedback) {
+            guard !movedPages.isEmpty else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(700))
+                movedPages = []
+            } catch {}
         }
     }
 
@@ -134,25 +147,67 @@ struct PDFOrganizerView: View {
     }
 
     private func pageStrip(_ strip: [OrganizerPage], acceptsReordering: Bool) -> some View {
-        ScrollView(.horizontal) {
-            LazyHStack(spacing: 8) {
+        let target = acceptsReordering ? dropTarget(in: strip) : nil
+        return ScrollView(.horizontal) {
+            LazyHStack(spacing: acceptsReordering ? 0 : 8) {
                 ForEach(strip) { page in
                     if acceptsReordering {
                         thumbnail(page, in: strip)
-                            .draggable("\(dragScope):\(page.number)")
-                            .dropDestination(for: String.self) { items, _ in
-                                guard items.count == 1,
-                                      let item = items.first, item.hasPrefix(dragScope + ":"),
-                                      let number = Int(item.dropFirst(dragScope.count + 1)),
-                                      number != page.number else { return false }
-                                return move(number, to: page.number)
+                            .frame(width: PDFPageStripDrag.cardWidth)
+                            .padding(.horizontal, PDFPageStripDrag.cardInset)
+                            .contentShape(Rectangle())
+                            .opacity(drag?.source == page.number ? 0.55 : 1)
+                            .overlay {
+                                if let target, target.page == page {
+                                    PDFPageDropIndicator(insertion: target.insertion)
+                                }
                             }
+                            .highPriorityGesture(reorderGesture(from: page.number, in: strip))
                     } else {
                         thumbnail(page, in: strip)
                     }
                 }
             }
+            .coordinateSpace(name: dragSpace)
+            .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                if acceptsReordering { stripHeight = height }
+            }
             .padding(3)
+        }
+    }
+
+    private func dropTarget(in strip: [OrganizerPage]) -> (page: OrganizerPage, insertion: PDFPageInsertion)? {
+        guard let drag, let target = drag.target(count: strip.count, height: stripHeight),
+              strip[target.index].number != drag.source else { return nil }
+        return (strip[target.index], target.insertion)
+    }
+
+    private func reorderGesture(from number: Int, in strip: [OrganizerPage]) -> some Gesture {
+        DragGesture(minimumDistance: 4, coordinateSpace: .named(dragSpace))
+            .updating($drag) { value, state, _ in
+                state = PDFPageStripDrag(source: number, location: value.location)
+            }
+            .onEnded { value in
+                let drop = PDFPageStripDrag(source: number, location: value.location)
+                guard let target = drop.target(count: strip.count, height: stripHeight) else { return }
+                reorder(number, relativeTo: strip[target.index].number, insertion: target.insertion)
+            }
+    }
+
+    private func reorder(_ number: Int, relativeTo targetNumber: Int, insertion: PDFPageInsertion) {
+        let retained = layout.filter { !$0.removed }
+        let group = selection.contains(number)
+            ? retained.filter { selection.contains($0.number) }
+            : retained.filter { $0.number == number }
+        guard let target = retained.first(where: { $0.number == targetNumber }),
+              let ordered = insertion.reorder(retained, moving: group, relativeTo: target) else { return }
+        var remaining = ordered.makeIterator()
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.16)) {
+            apply(layout.map { $0.removed ? $0 : remaining.next() ?? $0 })
+            selection = Set(group.map(\.number))
+            selectionAnchor = number
+            movedPages = selection
+            moveFeedback = UUID()
         }
     }
 
@@ -169,6 +224,14 @@ struct PDFOrganizerView: View {
             }
         }
         .buttonStyle(PDFPageCardStyle(selected: selected))
+        .overlay {
+            if movedPages.contains(page.number) {
+                RoundedRectangle(cornerRadius: 9)
+                    .strokeBorder(Color.accentColor, lineWidth: 2)
+                    .allowsHitTesting(false)
+            }
+        }
+        .pdfPagePreview(document.page(at: page.number - 1), number: page.number, quarterTurns: page.quarterTurns)
         .onKeyPress(keys: [.leftArrow, .rightArrow]) { press in
             // Arrow events can carry the numeric-pad flag.
             let modifiers = press.modifiers.intersection([.option, .shift, .control, .command])
@@ -182,7 +245,7 @@ struct PDFOrganizerView: View {
         .accessibilityAddTraits(selected ? .isSelected : [])
         .help(page.removed
               ? "Shift-click to select a range. Command-click to toggle a page."
-              : "Shift-click for a range. Command-click to toggle. Option–Left or Option–Right Arrow moves the focused page.")
+              : "Drag a page to reorder. Shift-click for a range. Command-click to toggle. Option–Left or Option–Right Arrow moves the focused page.")
     }
 
     private func select(_ number: Int, in strip: [OrganizerPage], modifiers: NSEvent.ModifierFlags) {
@@ -289,7 +352,7 @@ struct PDFOrganizerHistory {
     init() {}
 }
 
-private struct OrganizerPage: Equatable, Identifiable {
+private struct OrganizerPage: Hashable, Identifiable {
     let number: Int
     var quarterTurns = 0
     var removed = false

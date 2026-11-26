@@ -8,6 +8,7 @@ struct PDFExtractSettings: View {
     let document: PDFDocument
     @Binding var options: PDFExtractOptions
     @State private var showsOrder = true
+    @State private var dragScope = UUID()
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -20,23 +21,66 @@ struct PDFExtractSettings: View {
             }
             PDFExportPagePicker(document: document, range: $options.range, startsWithAll: false,
                                 allowsDescendingRanges: true)
-            if options.order == .selection {
-                Text("Enter a range like 8–3 to export those pages in reverse order.")
-                    .font(.caption).foregroundStyle(.secondary)
-            }
             if let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options) {
                 DisclosureGroup("Export order · \(pages.count) \(pages.count == 1 ? "page" : "pages")", isExpanded: $showsOrder) {
-                    ScrollView {
-                        Text(PageSelection.expression(for: pages.map { $0 - 1 }))
-                            .font(.callout.monospacedDigit())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(.vertical, 4)
-                    }
-                    .frame(maxHeight: 120)
+                    exportOrderStrip(pages)
                 }
             }
         }
+        .onChange(of: ObjectIdentifier(document)) { dragScope = UUID() }
+    }
+
+    private func exportOrderStrip(_ pages: [Int]) -> some View {
+        ScrollView(.horizontal) {
+            LazyHStack(spacing: 0) {
+                ForEach(Array(pages.enumerated()), id: \.element) { index, number in
+                    let page = document.page(at: number - 1)
+                    VStack(spacing: 4) {
+                        PDFPageThumbnail(page: page)
+                        Text("Page \(number)").font(.caption)
+                        HStack {
+                            Button("Move page \(number) earlier", systemImage: "chevron.left") {
+                                move(number, by: -1)
+                            }
+                            .disabled(index == 0)
+                            Button("Move page \(number) later", systemImage: "chevron.right") {
+                                move(number, by: 1)
+                            }
+                            .disabled(index == pages.count - 1)
+                        }
+                        .labelStyle(.iconOnly)
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                    .padding(7)
+                    .background(.quaternary, in: .rect(cornerRadius: 9))
+                    .pdfPagePreview(page, number: number)
+                    .pdfPageReordering(payload: payload(number), width: 98) { value, edge in
+                        guard let current = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options),
+                              let source = current.first(where: { payload($0) == value }),
+                              let ordered = edge.reorder(current, moving: [source], relativeTo: number) else { return false }
+                        setOrder(ordered)
+                        return true
+                    }
+                }
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private func payload(_ number: Int) -> String { "\(dragScope):\(number)" }
+
+    private func move(_ number: Int, by step: Int) {
+        guard let pages = try? PDFPageEditing.extractPages(pageCount: document.pageCount, options: options),
+              let index = pages.firstIndex(of: number), pages.indices.contains(index + step) else { return }
+        var ordered = pages
+        ordered.swapAt(index, index + step)
+        setOrder(ordered)
+    }
+
+    private func setOrder(_ pages: [Int]) {
+        options.range = PageSelection.expression(for: pages.map { $0 - 1 })
+        options.order = .selection
     }
 }
 
@@ -182,6 +226,7 @@ struct PDFExportPagePicker: View {
                         }
                     }
                     .buttonStyle(PDFPageCardStyle(selected: marked.contains(index)))
+                    .pdfPagePreview(document.page(at: index), number: index + 1)
                     .accessibilityAddTraits(marked.contains(index) ? .isSelected : [])
                 }
             }
